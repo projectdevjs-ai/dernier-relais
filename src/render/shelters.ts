@@ -41,7 +41,7 @@ interface Item {
   alive: boolean;
 }
 
-const DULL = new THREE.Color(0x7d8884);
+const DULL = new THREE.Color(0xa3aaa7);
 const WHITE = new THREE.Color(0xffffff);
 
 export class Shelters {

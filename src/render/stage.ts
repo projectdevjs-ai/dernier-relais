@@ -68,7 +68,7 @@ export class Stage implements StageApi {
       container,
       // Style minimal au départ : la scène 3D s'affiche même si la carte ne se charge pas.
       style: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': pal.land } }] },
-      center, zoom: Number(new URLSearchParams(location.search).get('zoom')) || ZOOM, pitch: PITCH, bearing: -18,
+      center, zoom: ZOOM, pitch: PITCH, bearing: -18,
       minZoom: 15, maxZoom: 20.5, maxPitch: 70,
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
       canvasContextAttributes: { antialias: true },
@@ -191,7 +191,7 @@ export class Stage implements StageApi {
     this.envKey = env.key;
     const pal = paletteFor(env.ambiance, env.night, env.dull);
     applyPalette(this.map, this.style, pal);
-    this.map.setPaintProperty('veil', 'fill-opacity', env.dark ? 0.34 : 0.22);
+    this.map.setPaintProperty('veil', 'fill-opacity', env.dark ? 0.45 : 0.32);
     this.map.setLight({ anchor: 'viewport', position: [1.3, 215, 42], color: env.night > 0.5 ? '#d5e4e4' : env.ambiance === 'clair' ? '#fff6e6' : '#ece9da', intensity: env.ambiance === 'clair' ? 0.42 - env.night * 0.2 : 0.3 - env.night * 0.12 });
     this.map.setSky({ 'sky-color': pal.land, 'horizon-color': pal.urban, 'fog-color': pal.land, 'sky-horizon-blend': 0.7, 'horizon-fog-blend': 0.8, 'fog-ground-blend': 0.4 });
     this.sky.apply(env, w);

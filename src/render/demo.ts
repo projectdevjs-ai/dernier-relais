@@ -1,5 +1,6 @@
 // Démo du rendu seul : un faux état de jeu, le joueur avance lentement, le scanner pulse.
 // Paramètres d'URL : ?ambiance=clair  &nuit=1  &meteo=clair|nuages|pluie|orage|neige|brouillard
+//                    &abri=s1..s4 (se placer près d'un abri)  &cap=0 (cap fixe)  &course=1
 //                    &arret=1 (joueur immobile)  &fete=1 (gerbe sur un abri)  &brume=1 (cases non visitées)
 import { cellAt, cellsAround, type LngLat } from '../core/geo';
 import type { Ambiance, WeatherKind } from '../game/api';

@@ -100,3 +100,6 @@ game.load().then(() => {
 const flush = () => { void game.flush(); };
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
 addEventListener('pagehide', flush);
+
+// Accès pour les essais automatiques (console du navigateur) : sans effet sur le jeu.
+Object.assign(window, { __dr: { game, stage, hud, world, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
