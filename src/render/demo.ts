@@ -23,10 +23,13 @@ const still = q.has('arret');
 function push(): void {
   const t = (performance.now() - start) / 1000;
   const view = mockView(centre, t);
+  // ?abri=s3 : le joueur se promène au pied de cet abri.
+  const near = view.shelters.find(s => s.id === q.get('abri'));
+  const base: LngLat = near ? [near.at[0] + 35 / 75000, near.at[1] + 10 / 111000] : centre;
   // Le joueur fait lentement le tour d'un pâté de maisons (cercle de 40 m, 1,3 m/s).
   const a = still ? 0.6 : 0.6 + (t * 1.3) / 40;
-  view.player.at = [centre[0] + (Math.sin(a) * 40 - 22) / 75000, centre[1] + (Math.cos(a) * 40 - 30) / 111000];
-  view.player.headingDeg = still ? 150 : ((a * 180) / Math.PI + 90) % 360;
+  view.player.at = [base[0] + (Math.sin(a) * 40 - 45) / 75000, base[1] + (Math.cos(a) * 40 - 75) / 111000];
+  view.player.headingDeg = q.has('cap') ? Number(q.get('cap')) : still ? 150 : ((a * 180) / Math.PI + 90) % 360;
   view.player.speedMps = still ? 0 : q.has('course') ? 3.4 : 1.3;
   view.player.moving = !still;
   const meteo = q.get('meteo') as WeatherKind | null;

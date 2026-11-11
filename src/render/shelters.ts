@@ -11,9 +11,9 @@ import type { Env } from './sky';
 const BUILDING: Record<NpcId, string> = { mara: 'abri_mara', tomas: 'atelier_tomas', agathe: 'dispensaire_agathe', kenji: 'tour_kenji' };
 /** Hauteur visée et emprise maximale des abris, en mètres à l'échelle de la carte. */
 const SHELTER_HEIGHT = 28;
-const SHELTER_WIDTH = 32;
+const SHELTER_WIDTH = 30;
 const NPC_HEIGHT = 10.5;
-const RING_RADIUS = 22;
+const RING_RADIUS = 24;
 
 interface Item {
   id: string;
@@ -31,6 +31,8 @@ interface Item {
   chevron: THREE.Mesh;
   pulse: THREE.Mesh;
   glow: THREE.Mesh;
+  /** Point lumineux face caméra, visible la nuit sur les abris allumés. */
+  halo: THREE.Group;
   /** Hauteur réelle du bâtiment affiché (pour le test de toucher et les effets). */
   height: number;
   stars: number;
@@ -46,25 +48,21 @@ export class Shelters {
   private readonly items = new Map<string, Item>();
   private readonly seen = new Set<string>();
   private env: Env | null = null;
-  /** Clé de la liste des abris : change quand un abri apparaît ou disparaît. */
-  listKey = '';
 
   constructor(private readonly scene: THREE.Scene, private readonly kit: FxKit, private readonly layer: Layer3D) {}
 
   get all(): IterableIterator<Item> { return this.items.values(); }
   get(id: string): Item | undefined { return this.items.get(id); }
-  positions(): LngLat[] { return [...this.items.values()].map(i => i.at); }
 
   sync(list: ShelterView[]): void {
     this.seen.clear();
-    let changed = false;
     for (const s of list) {
       this.seen.add(s.id);
       let it = this.items.get(s.id);
       if (it && it.npcId !== s.npc) { this.remove(it); it = undefined; }
-      if (!it) { it = this.create(s); changed = true; }
+      if (!it) it = this.create(s);
       if (it.at[0] !== s.at[0] || it.at[1] !== s.at[1]) {
-        it.at = [s.at[0], s.at[1]]; this.layer.toLocal(it.at, it.group.position); changed = true;
+        it.at = [s.at[0], s.at[1]]; this.layer.toLocal(it.at, it.group.position);
       }
       const stars = Math.max(0, Math.min(5, Math.floor(s.stars))), deliverable = s.deliverable.length > 0;
       if (stars !== it.stars || deliverable !== it.deliverable || s.inRange !== it.inRange) {
@@ -72,8 +70,7 @@ export class Shelters {
         this.restyle(it);
       }
     }
-    for (const it of [...this.items.values()]) if (!this.seen.has(it.id)) { this.remove(it); changed = true; }
-    if (changed) this.listKey = [...this.items.keys()].sort().join(',');
+    for (const it of [...this.items.values()]) if (!this.seen.has(it.id)) this.remove(it);
   }
 
   private create(s: ShelterView): Item {
@@ -83,10 +80,10 @@ export class Shelters {
 
     // Socle sombre et anneau d'étoiles en cinq segments.
     const shadow = new THREE.Mesh(kit.quad, kit.shadow);
-    shadow.scale.set(RING_RADIUS * 2.5, 1, RING_RADIUS * 2.5); shadow.position.y = 0.1; shadow.renderOrder = 2;
+    shadow.scale.set(RING_RADIUS * 2.1, 1, RING_RADIUS * 2.1); shadow.position.y = 0.1; shadow.renderOrder = 2;
     group.add(shadow);
     const glow = new THREE.Mesh(kit.quad, kit.glowAmber);
-    glow.scale.set(RING_RADIUS * 4.4, 1, RING_RADIUS * 4.4); glow.position.y = 0.14; glow.renderOrder = 3;
+    glow.scale.set(RING_RADIUS * 3.2, 1, RING_RADIUS * 3.2); glow.position.y = 0.14; glow.renderOrder = 3;
     group.add(glow);
     const arcs: THREE.Mesh[] = [];
     for (let i = 0; i < 5; i++) {
@@ -99,7 +96,7 @@ export class Shelters {
     const pips: THREE.Mesh[] = [];
     for (let i = 0; i < 5; i++) {
       const pip = new THREE.Mesh(kit.diamond, kit.pipOff);
-      pip.scale.setScalar(1.7); pip.position.x = (i - 2) * 3.4;
+      pip.scale.setScalar(1.4); pip.position.x = (i - 2) * 2.9;
       pips.push(pip); pipRow.add(pip);
     }
     pipRow.position.y = SHELTER_HEIGHT + 5;
@@ -107,24 +104,34 @@ export class Shelters {
     // Balise de livraison : faisceau bleu, anneau au sol et chevron qui flotte.
     const beacon = new THREE.Group();
     const beam = new THREE.Mesh(kit.beam, kit.beamBlue);
-    beam.scale.set(1.3, 150, 1.3);
-    const base = new THREE.Mesh(kit.ring, kit.ringBlue);
+    beam.scale.set(1.0, 150, 1.0);
+    const base = new THREE.Mesh(kit.thinRing, kit.ringBlue);
     base.scale.set(RING_RADIUS + 4.5, 1, RING_RADIUS + 4.5); base.position.y = 0.34;
     const pulse = new THREE.Mesh(kit.thinRing, kit.pulseBlue);
     pulse.position.y = 0.36;
     const chevron = new THREE.Mesh(kit.diamond, kit.solidBlue);
-    chevron.scale.set(3.4, 4.4, 3.4);
+    chevron.scale.set(2.6, 3.2, 2.6);
     beacon.add(beam, base, pulse, chevron);
     beacon.visible = false;
     group.add(beacon);
 
+    const halo = new THREE.Group();
+    const card = new THREE.Mesh(kit.quad, kit.glowLamp);
+    card.scale.set(46, 1, 46);
+    halo.add(card);
+    halo.rotation.order = 'YXZ';
+    halo.position.y = SHELTER_HEIGHT * 0.6;
+    halo.visible = false;
+    group.add(halo);
+
     group.traverse(o => o.layers.set(WORLD));
+    setLayer(halo, TOP);
     setLayer(pipRow, TOP); setLayer(beam, TOP); setLayer(chevron, TOP);
     this.scene.add(group);
 
     const it: Item = {
       id: s.id, at: [s.at[0], s.at[1]], group, npcId: s.npc, building: null, npc: null, npcLoading: false, mixer: null,
-      arcs, pips, pipRow, beacon, chevron, pulse, glow, height: SHELTER_HEIGHT, stars: -1, deliverable: false, inRange: false, alive: true,
+      arcs, pips, pipRow, beacon, chevron, pulse, glow, halo, height: SHELTER_HEIGHT, stars: -1, deliverable: false, inRange: false, alive: true,
     };
     this.items.set(s.id, it);
     void spawn(BUILDING[s.npc], 'batiment', { height: SHELTER_HEIGHT, maxWidth: SHELTER_WIDTH, ownMaterials: true }).then(inst => {
@@ -132,7 +139,8 @@ export class Shelters {
       it.building = inst; it.height = inst.size.y;
       setLayer(inst.root, WORLD);
       group.add(inst.root);
-      it.pipRow.position.y = it.height + 5;
+      it.pipRow.position.y = it.height + 3.5;
+      it.halo.position.y = it.height * 0.6;
       if (it.npc) it.npc.root.position.set(inst.size.x * 0.2, 0, Math.min(RING_RADIUS - 5, inst.size.z / 2 + 4));
       this.restyle(it);
     });
@@ -145,9 +153,10 @@ export class Shelters {
     for (let i = 0; i < 5; i++) {
       it.arcs[i].material = i < it.stars ? kit.ringAmber : kit.ringOff;
       it.pips[i].material = i < it.stars ? kit.solidAmber : kit.pipOff;
-      it.pips[i].scale.setScalar(i < it.stars ? 1.9 : 1.2);
+      it.pips[i].scale.setScalar(i < it.stars ? 1.5 : 1);
     }
     it.glow.visible = lit;
+    it.halo.visible = lit && night > 0.3;
     it.beacon.visible = it.deliverable;
     if (it.building) {
       for (const m of it.building.materials) {
@@ -193,10 +202,11 @@ export class Shelters {
   reposition(): void { for (const it of this.items.values()) this.layer.toLocal(it.at, it.group.position); }
 
   /** À chaque image : PNJ animés et tournés vers le joueur, balises qui flottent, losanges face caméra. */
-  update(dt: number, timeS: number, player: THREE.Vector3, bearingRad: number): void {
+  update(dt: number, timeS: number, player: THREE.Vector3, bearingRad: number, pitchRad: number): void {
     const phase = this.kit.phase;
     for (const it of this.items.values()) {
       it.pipRow.rotation.y = -bearingRad;
+      if (it.halo.visible) it.halo.rotation.set(pitchRad, -bearingRad, 0);
       if (it.npc && it.npc.root.visible) {
         it.mixer?.update(dt);
         const p = it.npc.root.position;

@@ -3,7 +3,6 @@
 import * as THREE from 'three';
 import type { LayerSpecification, Map as MlMap, StyleSpecification } from 'maplibre-gl';
 import type { Ambiance } from '../game/api';
-import type { LngLat } from '../core/geo';
 
 export const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 export const SOURCE = 'openmaptiles';
@@ -21,7 +20,7 @@ const DAY: Record<Ambiance, Palette> = {
   'crépuscule': {
     land: '#14201f', urban: '#172624', park: '#183227', wood: '#15301f', water: '#0e2c37', sand: '#2a2c21',
     road: '#2f4440', roadMajor: '#3b5650', roadEdge: '#0f1918', path: '#6b5a36', rail: '#5a4a2c',
-    bLow: '#24373a', bHigh: '#35504c', text: '#e6e1d3', halo: '#14201f', veil: '#080d0d',
+    bLow: '#243b3c', bHigh: '#3a5a56', text: '#e6e1d3', halo: '#14201f', veil: '#080d0d',
   },
   clair: {
     land: '#efe8d6', urban: '#e9e1cd', park: '#cbe0a8', wood: '#b4d394', water: '#9fd6e0', sand: '#f3e4b3',
@@ -70,11 +69,9 @@ export interface GameStyle {
   binds: Bind[];
 }
 
-/** Hauteur des bâtiments : un peu tassée, et aplatie autour des abris pour leur laisser la place. */
-function heightExpr(prop: 'render_height' | 'render_min_height', shelters: LngLat[]): unknown {
-  const h = ['*', 0.8, ['coalesce', ['get', prop], prop === 'render_height' ? 6 : 0]];
-  if (!shelters.length) return h;
-  return ['case', ['<', ['distance', { type: 'MultiPoint', coordinates: shelters }], 24], prop === 'render_height' ? 0.3 : 0, h];
+/** Hauteur des bâtiments de la carte : un peu tassée, pour que les abris et le porteur dominent. */
+function heightExpr(prop: 'render_height' | 'render_min_height'): unknown {
+  return ['*', 0.8, ['coalesce', ['get', prop], prop === 'render_height' ? 6 : 0]];
 }
 
 function buildingColor(p: Palette): unknown {
@@ -125,7 +122,7 @@ export function buildGameStyle(src: StyleSpecification): GameStyle {
     filter: ['!', ['has', 'hide_3d']],
     paint: {
       'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true,
-      'fill-extrusion-height': heightExpr('render_height', []), 'fill-extrusion-base': heightExpr('render_min_height', []),
+      'fill-extrusion-height': heightExpr('render_height'), 'fill-extrusion-base': heightExpr('render_min_height'),
     },
   } as unknown as LayerSpecification);
   const sources: StyleSpecification['sources'] = {};
@@ -140,11 +137,4 @@ export function applyPalette(map: MlMap, style: GameStyle | null, p: Palette): v
   if (!style) return;
   for (const [layer, prop, key] of style.binds) if (map.getLayer(layer)) map.setPaintProperty(layer, prop, p[key]);
   if (map.getLayer('building-3d')) map.setPaintProperty('building-3d', 'fill-extrusion-color', buildingColor(p));
-}
-
-/** Aplatit les bâtiments de la carte sous les abris (appelé quand la liste des abris change). */
-export function flattenAround(map: MlMap, shelters: LngLat[]): void {
-  if (!map.getLayer('building-3d')) return;
-  map.setPaintProperty('building-3d', 'fill-extrusion-height', heightExpr('render_height', shelters));
-  map.setPaintProperty('building-3d', 'fill-extrusion-base', heightExpr('render_min_height', shelters));
 }

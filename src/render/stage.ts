@@ -7,7 +7,7 @@ import { cellBounds, type LngLat } from '../core/geo';
 import type { Ambiance, CrateKind, GameView, StageApi, StageEvents } from '../game/api';
 import { Celebration, Dangers, FxKit, ScanPulse } from './fx';
 import { LAYER_ID, Layer3D } from './layer';
-import { applyPalette, buildGameStyle, flattenAround, type GameStyle, paletteFor, STYLE_URL } from './mapstyle';
+import { applyPalette, buildGameStyle, type GameStyle, paletteFor, STYLE_URL } from './mapstyle';
 import { PARCEL_TOP, Parcels } from './parcels';
 import { Porter } from './porter';
 import { Shelters } from './shelters';
@@ -53,7 +53,6 @@ export class Stage implements StageApi {
   private readonly sa = { x: 0, y: 0 };
   private readonly sb = { x: 0, y: 0 };
   private readonly carried: CrateKind[] = [];
-  private flatKey = '';
   private veilKey = '';
   private raf = 0;
   private last = 0;
@@ -174,8 +173,6 @@ export class Stage implements StageApi {
       this.style = style;
       this.envKey = '';
       this.refreshEnv();
-      this.flatKey = '';
-      this.refreshFlatten();
     } catch (err) {
       console.warn('[render] carte indisponible, fond uni', err);
     }
@@ -195,19 +192,13 @@ export class Stage implements StageApi {
     const pal = paletteFor(env.ambiance, env.night, env.dull);
     applyPalette(this.map, this.style, pal);
     this.map.setPaintProperty('veil', 'fill-opacity', env.dark ? 0.34 : 0.22);
-    this.map.setLight({ anchor: 'viewport', position: [1.3, 215, 42], color: env.night > 0.5 ? '#9db4e8' : env.ambiance === 'clair' ? '#fff6e6' : '#ffd9a8', intensity: env.ambiance === 'clair' ? 0.42 - env.night * 0.2 : 0.3 - env.night * 0.12 });
+    this.map.setLight({ anchor: 'viewport', position: [1.3, 215, 42], color: env.night > 0.5 ? '#d5e4e4' : env.ambiance === 'clair' ? '#fff6e6' : '#ece9da', intensity: env.ambiance === 'clair' ? 0.42 - env.night * 0.2 : 0.3 - env.night * 0.12 });
     this.map.setSky({ 'sky-color': pal.land, 'horizon-color': pal.urban, 'fog-color': pal.land, 'sky-horizon-blend': 0.7, 'horizon-fog-blend': 0.8, 'fog-ground-blend': 0.4 });
     this.sky.apply(env, w);
     this.kit.applyEnv(env);
     this.shelters.applyEnv(env);
     this.porter.applyEnv(env);
     this.map.triggerRepaint();
-  }
-
-  private refreshFlatten(): void {
-    if (!this.style || this.shelters.listKey === this.flatKey) return;
-    this.flatKey = this.shelters.listKey;
-    flattenAround(this.map, this.shelters.positions());
   }
 
   /** Brume d'exploration : voile léger sur les cases chargées qui n'ont pas encore été parcourues. */
@@ -258,7 +249,6 @@ export class Stage implements StageApi {
     this.shelters.sync(view.shelters);
     this.parcels.sync(view.orders);
     this.dangers.sync(view.dangers);
-    this.refreshFlatten();
     this.refreshVeil(view);
     this.map.triggerRepaint();
   }
@@ -281,7 +271,7 @@ export class Stage implements StageApi {
     this.party.update(dt);
     this.parcels.update(this.timeS);
     this.dangers.update(this.timeS);
-    this.shelters.update(dt, this.timeS, this.porter.pos, (this.map.getBearing() * Math.PI) / 180);
+    this.shelters.update(dt, this.timeS, this.porter.pos, (this.map.getBearing() * Math.PI) / 180, (this.map.getPitch() * Math.PI) / 180);
 
     // Suivi caméra : le centre glisse vers le porteur, sans à-coup.
     let moved = false;

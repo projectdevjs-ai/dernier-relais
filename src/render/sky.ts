@@ -135,7 +135,7 @@ export class Sky {
     if (clair) {
       this.hemi.color.set(0xeaf4ff).lerp(new THREE.Color(0x3b4f7a), n);
       this.hemi.groundColor.set(0xc9b79a).lerp(new THREE.Color(0x1a2233), n);
-      this.hemi.intensity = THREE.MathUtils.lerp(1.9, 0.9, n);
+      this.hemi.intensity = THREE.MathUtils.lerp(1.9, 1.2, n);
       this.sun.color.set(0xfff4e0).lerp(new THREE.Color(0xffb36b), low * 0.7).lerp(new THREE.Color(0x8fa8ff), n);
       this.sun.intensity = THREE.MathUtils.lerp(2.6 * cover, 0.55, n);
       (u.uColor.value as THREE.Color).set(0xe6eef0).lerp(new THREE.Color(0x0b1220), n);
@@ -145,7 +145,7 @@ export class Sky {
       // Crépuscule : ambiance froide et sombre, lumière principale ambrée.
       this.hemi.color.set(0x9fc4c0).lerp(new THREE.Color(0x35507a), n);
       this.hemi.groundColor.set(0x33423a).lerp(new THREE.Color(0x141c26), n);
-      this.hemi.intensity = THREE.MathUtils.lerp(1.5, 0.85, n);
+      this.hemi.intensity = THREE.MathUtils.lerp(1.9, 1.25, n);
       this.sun.color.set(0xffc98a).lerp(new THREE.Color(0x86a4ff), n);
       this.sun.intensity = THREE.MathUtils.lerp(2.3 * cover, 0.5, n);
       (u.uColor.value as THREE.Color).set(0x0b1413).lerp(new THREE.Color(0x04080a), n);
@@ -153,7 +153,7 @@ export class Sky {
       u.uAll.value = env.fog * 0.14; u.uVignette.value = 0.3 + n * 0.3;
       if (env.fog > 0.6) (u.uColor.value as THREE.Color).set(0x1c2a2a);
     }
-    this.lamp.intensity = n > 0.3 ? 260 * n : 0;
+    this.lamp.intensity = n > 0.3 ? 45 * n : 0;
 
     this.raining = env.rain > 0;
     this.rain.visible = this.raining;

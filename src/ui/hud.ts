@@ -191,7 +191,7 @@ export class Hud implements HudApi {
   setSheetExpanded(on: boolean): void {
     this.sheet.setExpanded(on);
   }
-  showHelp(): void { this.help.start(); }
+  showHelp(): void { this.sheet.setExpanded(false); this.help.start(); }
   setAmbiance(a: Ambiance): void {
     this.ambiance = a;
     this.root.dataset.ambiance = a === 'clair' ? 'clair' : 'crepuscule';

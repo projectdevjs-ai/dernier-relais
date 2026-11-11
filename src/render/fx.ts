@@ -66,9 +66,11 @@ export class FxKit {
   private readonly tinted: Tinted[] = [];
 
   readonly shadow = new THREE.MeshBasicMaterial({ map: this.shadowTex, color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false });
-  readonly glowAmber = this.glow('amber', 0.75, 0.3);
+  readonly glowAmber = this.glow('amber', 0.4, 0.28);
   readonly glowBlue = this.glow('blue', 0.8, 0.35);
   readonly glowWarm = this.glow('white', 0.5, 0);
+  /** Point lumineux des abris allumés, la nuit. */
+  readonly glowLamp = this.glow('amber', 0.85, 0);
   readonly ringAmber = this.flat('amber', 0.95, 0.95);
   readonly ringBlue = this.flat('blue', 0.9, 0.9);
   readonly ringOff = new THREE.MeshBasicMaterial({ color: 0x6f7f7a, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide });
@@ -78,8 +80,8 @@ export class FxKit {
   readonly solidAmber = new THREE.MeshBasicMaterial({ color: 0xe8a24a });
   readonly solidBlue = new THREE.MeshBasicMaterial({ color: 0x7fc7d9 });
   readonly pipOff = new THREE.MeshBasicMaterial({ color: 0x4a5a56, transparent: true, opacity: 0.55, depthWrite: false });
-  readonly beamAmber = this.beamMat('amber', 0.75, 0.6, 1.6);
-  readonly beamBlue = this.beamMat('blue', 0.55, 0.6, 1.3);
+  readonly beamAmber = this.beamMat('amber', 0.75, 0.5, 1.6);
+  readonly beamBlue = this.beamMat('blue', 0.55, 0.42, 1.3);
   readonly wallDanger = this.beamMat('danger', 0.5, 0.42, 1.8);
   readonly discDanger: THREE.ShaderMaterial;
 
@@ -91,7 +93,7 @@ export class FxKit {
     for (let i = 0; i < 5; i++) {
       const gap = 0.09, len = (Math.PI * 2) / 5 - gap;
       // Premier segment en haut de l'écran (nord), puis dans le sens horaire.
-      this.starArcs.push(new THREE.RingGeometry(0.87, 1, 24, 1, Math.PI / 2 - (i + 1) * (len + gap) + gap / 2, len).rotateX(-Math.PI / 2));
+      this.starArcs.push(new THREE.RingGeometry(0.91, 1, 24, 1, Math.PI / 2 - (i + 1) * (len + gap) + gap / 2, len).rotateX(-Math.PI / 2));
     }
     this.discDanger = new THREE.ShaderMaterial({
       vertexShader: beamVert, fragmentShader: dangerFrag, transparent: true, depthWrite: false,
