@@ -13,6 +13,18 @@ export type CrateKind = 'bois' | 'alu' | 'plastique' | 'carton';
 /** Portées de base, en mètres. Les compétences peuvent les augmenter. */
 export const RANGE = { pickup: 30, deliver: 40, scan: 160 } as const;
 
+/** Colis spéciaux : rares, une contrainte propre, une grosse récompense. */
+export type SpecialKind = 'batterie' | 'boitenoire' | 'cryo' | 'ruche';
+export interface SpecialView {
+  kind: SpecialKind;
+  /** « Ruche vivante »… */
+  label: string;
+  /** La contrainte, en une phrase. */
+  rule: string;
+  /** Faux tant que le colis n'a été ni écouté ni ramassé : l'interface montre alors un « signal inhabituel » sans dire lequel. */
+  known: boolean;
+}
+
 export interface OrderView {
   id: string;
   /** Nom court affichable : « Médicaments », « Pièces de pompe »… */
@@ -37,6 +49,72 @@ export interface OrderView {
   distanceM: number;
   /** Vrai si le joueur est assez près pour ramasser (révélé). */
   inRange: boolean;
+  // ── Ajouts (systèmes secondaires). Tous facultatifs : un OrderView sans eux reste valide.
+  /** Colis spécial. Tant que `known` est faux, `name` vaut « Signal inhabituel ». */
+  special?: SpecialView | null;
+  /** Colis perdu par un autre porteur, à ramener à son abri. */
+  lost?: { by: string } | null;
+  /** Fait partie d'un embouteillage de colis (identifiant du JamView). */
+  jamId?: string | null;
+  /** Le contenu est connu (colis écouté ou déjà ramassé). Sinon l'interface ne dit pas s'il est fragile. */
+  inspected?: boolean;
+  /** Vrai si le joueur peut l'écouter maintenant (révélé, pas encore écouté, assez près). */
+  canInspect?: boolean;
+  /** Qualité de l'arrimage, de 0 à 1 ; null si le colis n'a pas été arrimé. */
+  strap?: number | null;
+  /** Secondes restantes pour faire le geste d'arrimage (0 : trop tard, déjà fait ou colis au sol). */
+  strapLeftS?: number;
+}
+
+/** Cache repérée au scanner (à courte portée), à ouvrir sur place. Une fois par jour chacune. */
+export interface CacheView { id: string; at: LngLat; distanceM: number; inRange: boolean }
+/** Voyageur amical qui marche dans le quartier. Même position pour tous les joueurs au même instant. */
+export interface WandererView {
+  id: string; name: string; at: LngLat;
+  /** Cap en degrés, 0 = nord. */
+  headingDeg: number;
+  /** Faux pendant ses haltes. */
+  moving: boolean;
+  /** Le joueur lui a déjà parlé. */
+  met: boolean;
+  distanceM: number;
+  /** Assez près pour lui parler. */
+  inRange: boolean;
+}
+/** Front de mauvais temps : un grand disque qui traverse lentement le secteur. */
+export interface FrontView {
+  id: string; at: LngLat; radiusM: number;
+  /** Direction du déplacement, en degrés (0 = vers le nord). */
+  headingDeg: number;
+  speedMps: number;
+  inside: boolean;
+  /** Distance du joueur au bord du front (0 s'il est dedans). */
+  distanceM: number;
+  /** Secondes avant que le front atteigne le joueur s'il ne bouge pas ; null s'il passe à côté ou s'éloigne. */
+  etaS: number | null;
+}
+/** Embouteillage de colis : un abri débordé confie plusieurs colis d'un coup, avec un bonus si tous arrivent à temps. */
+export interface JamView {
+  id: string; shelterId: string; shelterName: string; at: LngLat;
+  state: 'proposé' | 'en cours';
+  /** Nombre de colis du lot, et nombre déjà livrés. */
+  count: number; delivered: number;
+  /** Temps accordé, en minutes, et temps restant (null tant que le lot n'est pas pris). */
+  minutes: number; minutesLeft: number | null;
+  /** Points de bonus si tout est livré à temps. */
+  bonus: number;
+  distanceM: number;
+  /** Assez près de l'abri pour prendre le lot. */
+  inRange: boolean;
+}
+/** Colis perdu venu d'un autre joueur (réseau). Voir Game.setNetworkLost. */
+export interface LostInput {
+  id: string; at: LngLat; name: string; crate: CrateKind; weightKg: number; fragile: boolean;
+  destId: string; destName: string; destAt: LngLat;
+  /** Nom du porteur qui l'a abandonné. */
+  by: string;
+  /** État du colis, 0 à 1 (1 par défaut). */
+  condition?: number;
 }
 
 export interface ShelterView {
@@ -115,6 +193,12 @@ export interface GameView {
   visited: string[];
   /** Cases actuellement chargées autour du joueur. */
   loadedCells: string[];
+  // ── Ajouts (systèmes secondaires). Facultatifs : une vue sans eux reste valide (listes vides).
+  /** Caches repérées et pas encore ouvertes. */
+  caches?: CacheView[];
+  wanderers?: WandererView[];
+  fronts?: FrontView[];
+  jams?: JamView[];
 }
 
 export interface DeliveryResult {
@@ -128,17 +212,33 @@ export interface DeliveryResult {
   /** Ce que la nouvelle étoile a débloqué, sinon null. */
   unlock: string | null;
   levelUp: boolean;
+  // ── Ajouts
+  /** Sorte du colis spécial livré. */
+  special?: SpecialKind | null;
+  /** Colis perdu ramené : nom du porteur qui l'avait abandonné. */
+  lostBy?: string | null;
+  /** Points offerts pour une photo-preuve (action `proof`), 0 ou absent si rien à gagner. */
+  proofBonus?: number;
 }
 
 export type GameEvent =
-  | { type: 'scan'; found: number }
+  | { type: 'scan'; found: number; /** caches repérées par ce balayage */ caches?: number }
   | { type: 'pickup'; order: OrderView }
   | { type: 'drop'; orderId: string }
   | { type: 'delivery'; result: DeliveryResult }
   | { type: 'levelUp'; level: number }
   | { type: 'contract'; contract: ContractView }
   | { type: 'danger'; entered: boolean }
-  | { type: 'toast'; text: string; tone?: 'info' | 'good' | 'warn' };
+  | { type: 'toast'; text: string; tone?: 'info' | 'good' | 'warn' }
+  // ── Ajouts (systèmes secondaires)
+  | { type: 'special'; order: OrderView }
+  | { type: 'cache'; cacheId: string; points: number; xp: number; skillPoint: boolean }
+  | { type: 'wanderer'; id: string; name: string; /** ce qu'il dit */ line: string; gift: 'cache' | 'colis' | 'endurance' | 'xp' }
+  | { type: 'front'; phase: 'approche' | 'entrée' | 'sortie'; /** secondes avant l'arrivée (phase « approche ») */ etaS?: number }
+  | { type: 'jam'; phase: 'début' | 'réussi' | 'raté'; jam: JamView; /** points gagnés (phase « réussi ») */ bonus?: number }
+  | { type: 'inspect'; order: OrderView; xp: number }
+  | { type: 'strap'; orderId: string; quality: number; xp: number }
+  | { type: 'proof'; orderId: string; points: number };
 
 export type ActionResult = { ok: true } | { ok: false; why: string };
 
@@ -153,6 +253,19 @@ export interface GameActions {
   steady(): void;
   learn(skillId: string): ActionResult;
   claim(contractId: string): ActionResult;
+  // ── Ajouts (systèmes secondaires) : tous facultatifs pour le joueur.
+  /** Ouvre une cache repérée, sur place. */
+  openCache(cacheId: string): ActionResult;
+  /** Parle à un rôdeur tout proche : un petit cadeau ou une information, une fois chacun. */
+  talk(wandererId: string): ActionResult;
+  /** Prend le lot de colis d'un abri débordé (il faut être à l'abri). Le compte à rebours démarre. */
+  startJam(jamId: string): ActionResult;
+  /** Écoute un colis révélé proche : dit s'il est fragile ou spécial. */
+  inspect(orderId: string): ActionResult;
+  /** Geste d'arrimage juste après le ramassage. `quality` de 0 à 1 (voir strapQuality dans gestures.ts). */
+  strap(orderId: string, quality: number): ActionResult;
+  /** Photo-preuve prise pour une livraison qui vient d'avoir lieu : petit bonus de points. */
+  proof(orderId: string): ActionResult;
 }
 
 /** Le moteur de jeu, implémenté dans src/game/game.ts (export class Game implements GameEngine). */
@@ -191,6 +304,9 @@ export interface StageEvents {
   onTapGround(at: LngLat): void;
   onTapShelter(id: string): void;
   onTapOrder(id: string): void;
+  /** Ajouts facultatifs : toucher une cache ou un rôdeur. Sans eux, le toucher compte comme « sol ». */
+  onTapCache?(id: string): void;
+  onTapWanderer?(id: string): void;
 }
 
 /** L'interface, implémentée dans src/ui/hud.ts (export class Hud implements HudApi). */
@@ -200,6 +316,9 @@ export interface HudApi {
   handle(e: GameEvent): void;
   openShelter(id: string): void;
   openOrder(id: string): void;
+  /** Ajouts facultatifs : réaction au toucher d'une cache ou d'un rôdeur dans la scène. */
+  openCache?(id: string): void;
+  openWanderer?(id: string): void;
 }
 export interface HudEvents {
   actions: GameActions;

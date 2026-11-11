@@ -2,8 +2,9 @@
 // Tout est calculé à partir de l'identifiant de l'emplacement : mêmes commandes pour tous les joueurs.
 import { type LngLat, dist, hash, rng } from '../core/geo';
 import type { ParcelSpot, Shelter } from '../world/types';
-import type { CrateKind } from './api';
+import type { CrateKind, SpecialKind } from './api';
 import { SHELTER_PERK } from './rules';
+import { makeSpecial, specialFor } from './specials';
 
 export interface Order {
   id: string;
@@ -26,6 +27,18 @@ export interface Order {
   condition: number;
   /** Instant du premier ramassage (ms) : le délai court à partir de là, même si le colis est reposé. null : jamais ramassé. */
   pickedAt: number | null;
+  // ── Ajouts facultatifs (systèmes secondaires) : absents sur une commande ordinaire.
+  special?: SpecialKind;
+  /** Colis perdu : nom du porteur qui l'a abandonné ; `net` si le colis vient d'un autre joueur. */
+  lost?: { by: string; net?: boolean };
+  /** Identifiant de l'embouteillage dont le colis fait partie. */
+  jam?: string;
+  /** Contenu connu du joueur (écouté ou déjà ramassé). */
+  inspected?: boolean;
+  /** Qualité de l'arrimage, 0 à 1. */
+  strap?: number;
+  /** A traversé un front de mauvais temps au dos du joueur. */
+  front?: boolean;
 }
 
 interface Item { name: string; crate: CrateKind; min: number; max: number; fragile: number }
@@ -85,7 +98,7 @@ export function makeOrder(spot: ParcelSpot, shelters: Shelter[]): Order | null {
   const timed = r() < ORDER.deadlineChance;
   const rare = r() < ORDER.rareChance, rareName = RARE_NAMES[Math.floor(r() * RARE_NAMES.length)];
   const d = dist(spot.at, dest.at);
-  return {
+  const o: Order = {
     id: spot.id, cell: spot.cell, name: item.name, rareName: rare ? rareName : null,
     crate: ownCrate ? item.crate : otherCrate, weightKg, fragile, at: spot.at,
     destId: dest.id, destName: dest.name, destAt: dest.at,
@@ -93,6 +106,8 @@ export function makeOrder(spot: ParcelSpot, shelters: Shelter[]): Order | null {
     baseReward: baseReward(weightKg, d, fragile, timed),
     state: 'caché', condition: 1, pickedAt: null,
   };
+  const special = specialFor(spot.id);
+  return special ? makeSpecial(o, special, d) : o;
 }
 
 /** Vrai si la commande est proposée en version rare (abri destinataire à 5 étoiles). */

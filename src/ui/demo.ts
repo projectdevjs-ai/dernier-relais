@@ -42,8 +42,15 @@ const actions: GameActions = {
   deliver(id) { log('deliver', id); hud.handle({ type: 'delivery', result: result({ shelterId: id }) }); return ok; },
   steady() { log('steady'); },
   learn(id) { log('learn', id); return id === 'souffle' ? { ok: false, why: 'Apprends d’abord une compétence d’endurance de base' } : ok; },
-  claim(id) { log('claim', id); const contract = view().contracts.find((c) => c.id === id); if (contract) hud.handle({ type: 'contract', contract: { ...contract, claimed: true } }); return ok; },
+  claim(id) { log('claim', id); const contract = view().contracts.find((c) => c.id === id); if (contract) hud.handle({ type: 'contract', contract: { ...contract, claimed: true } }); return ok; },  openCache(id) { log('openCache', id); hud.handle({ type: 'cache', cacheId: id, points: 55, xp: 30, skillPoint: true }); return ok; },
+  talk(id) { log('talk', id); hud.handle({ type: 'wanderer', id, name: 'Lina', line: '« Il y a une cache à 120 m au nord-est. Je te la laisse. »', gift: 'cache' }); return ok; },
+  startJam(id) { log('startJam', id); const jam = view().jams?.find((j) => j.id === id); if (jam) hud.handle({ type: 'jam', phase: 'début', jam: { ...jam, state: 'en cours', minutesLeft: jam.minutes } }); return ok; },
+  inspect(id) { log('inspect', id); known.add(id); const order = view().orders.find((o) => o.id === id); if (order) hud.handle({ type: 'inspect', order, xp: 5 }); return ok; },
+  strap(id, quality) { log('strap', id, quality); strapped.add(id); hud.handle({ type: 'strap', orderId: id, quality, xp: quality >= 1 ? 5 : 0 }); return ok; },
+  proof(id) { log('proof', id); hud.handle({ type: 'proof', orderId: id, points: 26 }); return ok; },
 };
+/** Colis écoutés et colis arrimés pendant la démo. */
+const known = new Set<string>(), strapped = new Set<string>();
 const events: HudEvents = {
   actions,
   onUseGps: () => log('GPS'),

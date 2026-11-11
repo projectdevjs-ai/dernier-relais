@@ -1,6 +1,7 @@
 // Outils communs aux tests du jeu : petit monde, horloge, marche simulée.
 import { type LngLat, cellAt, dist } from '../src/core/geo';
 import type { GameEvent } from '../src/game/api';
+import { frontPath, frontSlot, zonesOf } from '../src/game/fronts';
 import { Game } from '../src/game/game';
 import { type Order, makeOrder } from '../src/game/orders';
 import { type GameSave, MemoryGameStore } from '../src/game/save';
@@ -29,9 +30,24 @@ export function world(shelters: Shelter[], spots: ParcelSpot[], extraCells: stri
 export function findSpot(prefix: string, at: LngLat, shelters: Shelter[], want: (o: Order) => boolean, skip = 0): ParcelSpot {
   for (let i = 0; i < 5000; i++) {
     const s = spot(`${prefix}${i}`, at), o = makeOrder(s, shelters);
-    if (o && want(o) && skip-- <= 0) return s;
+    // Les colis spéciaux (rares) ont leurs propres tests : voir findSpecial.
+    if (o && !o.special && want(o) && skip-- <= 0) return s;
   }
   throw new Error('aucun emplacement ne convient');
+}
+/** Emplacement dont la commande est un colis spécial de la sorte voulue. */
+export function findSpecial(kind: NonNullable<Order['special']>, at: LngLat, shelters: Shelter[], want: (o: Order) => boolean = () => true): ParcelSpot {
+  for (let i = 0; i < 200000; i++) {
+    const s = spot(`sp${i}`, at), o = makeOrder(s, shelters);
+    if (o && o.special === kind && want(o)) return s;
+  }
+  throw new Error('aucun colis spécial ne convient');
+}
+/** Vrai si aucun front de mauvais temps ne traverse ces cases dans les heures qui suivent. */
+export function quietSky(cells: CellContent[], t: number, hours = 6): boolean {
+  const zones = zonesOf(cells.map(c => c.id));
+  for (let h = 0; h < hours; h++) if (zones.some(z => frontPath(z, frontSlot(t) + h) !== null)) return false;
+  return true;
 }
 
 export interface Rig { game: Game; store: MemoryGameStore; clock: { t: number }; events: GameEvent[] }

@@ -1,6 +1,6 @@
 // Sauvegarde du jeu : format versionné, stockage du téléphone, et stockage en mémoire pour les tests.
 import type { LngLat } from '../core/geo';
-import type { CrateKind } from './api';
+import type { CrateKind, SpecialKind } from './api';
 import type { Order } from './orders';
 
 export const SAVE_VERSION = 1;
@@ -10,6 +10,16 @@ export const SAVE_KEY = 'dernier-relais/jeu';
 export type OrderSave = Omit<Order, 'state'> & { state: 'révélé' | 'porté' };
 export interface ShelterSave { points: number; deliveries: number }
 export interface ContractSave { id: string; progress: number; claimed: boolean }
+/** Embouteillage de colis pris par le joueur (en cours ou terminé : il n'est pas reproposé). */
+export interface JamSave {
+  id: string; shelterId: string; shelterName: string; at: LngLat;
+  count: number; delivered: number; minutes: number; bonus: number;
+  /** Instant où le lot a été pris (ms). */
+  startedAt: number;
+  state: 'en cours' | 'réussi' | 'raté';
+}
+/** Révision du format à l'intérieur de la version 1 : les champs ajoutés sont facultatifs, une sauvegarde plus ancienne se charge telle quelle. */
+export const SAVE_REV = 2;
 
 export interface GameSave {
   version: 1;
@@ -39,6 +49,14 @@ export interface GameSave {
   /** Contrats en cours ; l'identifiant contient le jour ou la semaine. */
   contracts: ContractSave[];
   last: LngLat | null;
+  // ── Révision 2 (systèmes secondaires). Absents d'une sauvegarde plus ancienne : valeurs vides.
+  rev?: number;
+  /** Caches repérées et caches ouvertes, du jour `day`. */
+  cachesFound?: string[];
+  cachesOpened?: string[];
+  /** Rôdeurs déjà rencontrés (l'identifiant contient la tranche horaire). */
+  met?: string[];
+  jams?: JamSave[];
 }
 
 export interface GameStore { load(): Promise<GameSave | null>; save(s: GameSave): Promise<void> }
@@ -47,6 +65,7 @@ export function emptyGameSave(day = ''): GameSave {
   return {
     version: 1, savedAt: 0, level: 1, xp: 0, skillPoints: 0, score: 0, deliveries: 0, distanceM: 0, stamina: 1,
     skills: {}, shelters: {}, discovered: [], visited: [], day, orders: [], done: [], contracts: [], last: null,
+    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [],
   };
 }
 
@@ -57,6 +76,17 @@ const pt = (v: unknown): LngLat | null =>
   Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && Number.isFinite(v[0]) && Number.isFinite(v[1]) ? [v[0], v[1]] : null;
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 const CRATES: CrateKind[] = ['bois', 'alu', 'plastique', 'carton'];
+const SPECIALS: SpecialKind[] = ['batterie', 'boitenoire', 'cryo', 'ruche'];
+
+function jam(v: unknown): JamSave | null {
+  const j = obj(v), at = j ? pt(j.at) : null;
+  if (!j || !at || typeof j.id !== 'string' || typeof j.shelterId !== 'string') return null;
+  return {
+    id: j.id, shelterId: j.shelterId, shelterName: typeof j.shelterName === 'string' ? j.shelterName : '', at,
+    count: Math.floor(num(j.count, 1, 1)), delivered: Math.floor(num(j.delivered, 0)), minutes: num(j.minutes, 10, 1), bonus: num(j.bonus, 0),
+    startedAt: num(j.startedAt, 0), state: j.state === 'réussi' || j.state === 'raté' ? j.state : 'en cours',
+  };
+}
 
 function order(v: unknown): OrderSave | null {
   const o = obj(v);
@@ -64,6 +94,15 @@ function order(v: unknown): OrderSave | null {
   const at = pt(o.at), destAt = pt(o.destAt);
   if (typeof o.id !== 'string' || typeof o.name !== 'string' || typeof o.destId !== 'string' || !at || !destAt) return null;
   if (o.state !== 'révélé' && o.state !== 'porté') return null;
+  const lost = obj(o.lost);
+  // Champs de la révision 2 : écrits seulement s'ils sont présents, pour qu'une commande ordinaire garde sa forme d'origine.
+  const extra: Partial<OrderSave> = {};
+  if (SPECIALS.includes(o.special as SpecialKind)) extra.special = o.special as SpecialKind;
+  if (lost && typeof lost.by === 'string') extra.lost = lost.net === true ? { by: lost.by, net: true } : { by: lost.by };
+  if (typeof o.jam === 'string') extra.jam = o.jam;
+  if (o.inspected === true) extra.inspected = true;
+  if (typeof o.strap === 'number' && Number.isFinite(o.strap)) extra.strap = num(o.strap, 0, 0, 1);
+  if (o.front === true) extra.front = true;
   return {
     id: o.id, cell: typeof o.cell === 'string' ? o.cell : '', name: o.name, rareName: typeof o.rareName === 'string' ? o.rareName : null,
     crate: CRATES.includes(o.crate as CrateKind) ? (o.crate as CrateKind) : 'carton',
@@ -72,6 +111,7 @@ function order(v: unknown): OrderSave | null {
     deadlineMin: typeof o.deadlineMin === 'number' && Number.isFinite(o.deadlineMin) ? o.deadlineMin : null,
     baseReward: num(o.baseReward, 5), state: o.state, condition: num(o.condition, 1, 0, 1),
     pickedAt: typeof o.pickedAt === 'number' && Number.isFinite(o.pickedAt) ? o.pickedAt : o.state === 'porté' ? 0 : null,
+    ...extra,
   };
 }
 
@@ -98,6 +138,8 @@ export function parseGameSave(raw: unknown): GameSave | null {
     discovered: strs(o.discovered), visited: strs(o.visited), day: typeof o.day === 'string' ? o.day : '',
     orders: (Array.isArray(o.orders) ? o.orders : []).map(order).filter((x): x is OrderSave => x !== null),
     done: strs(o.done), contracts, last: pt(o.last),
+    rev: SAVE_REV, cachesFound: strs(o.cachesFound), cachesOpened: strs(o.cachesOpened), met: strs(o.met),
+    jams: (Array.isArray(o.jams) ? o.jams : []).map(jam).filter((x): x is JamSave => x !== null),
   };
 }
 

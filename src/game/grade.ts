@@ -11,6 +11,8 @@ export interface GradeInput {
   elapsedMin: number;
   weather: WeatherKind;
   night: boolean;
+  /** Le colis a traversé un front de mauvais temps : même bonus que sous l'orage (non cumulé avec la pluie). */
+  front?: boolean;
 }
 export interface GradeOutput { grade: Grade; score: number; onTime: boolean; mult: number; notes: string[] }
 
@@ -37,6 +39,7 @@ export function gradeDelivery(i: GradeInput): GradeOutput {
   }
   const wet = WET[i.weather];
   if (wet) { score += GRADE_BONUS.wet; notes.push(wet); }
+  else if (i.front) { score += GRADE_BONUS.wet; notes.push('À travers le front'); }
   if (i.night) { score += GRADE_BONUS.night; notes.push('De nuit'); }
   const grade = gradeFromScore(score);
   return { grade, score, onTime, mult: GRADE_MULT[grade], notes };

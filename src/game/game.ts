@@ -4,21 +4,28 @@ import { type LngLat, cellAt, dist } from '../core/geo';
 import type { Fix } from '../player/gps';
 import type { CellContent, Shelter } from '../world/types';
 import {
-  type ActionResult, type ContractView, type DangerView, type DeliveryResult, type GameEngine, type GameEvent, type GameView,
-  type OrderView, RANGE, type ShelterView, type SkillView, type Weather,
+  type ActionResult, type CacheView, type ContractView, type DangerView, type DeliveryResult, type FrontView, type GameEngine, type GameEvent,
+  type GameView, type JamView, type LostInput, type OrderView, RANGE, type ShelterView, type SkillView, type WandererView, type Weather,
 } from './api';
+import { type Cache, cachesFor } from './caches';
 import { driftBalance, isUnbalanced, nextStamina, wearPerSecond } from './carry';
 import { type ContractState, type ProgressEvent, advance, contractView, drawContracts, isDone } from './contracts';
 import { type Danger, dangersFor, insideDanger } from './dangers';
+import { type Front, type FrontPath, frontAt, frontEta, frontPath, frontSlot, insideFront, zonesOf } from './fronts';
+import { proofBonus, strapBalanceMult, strapXp } from './gestures';
+import { type Jam, jamMinutesLeft, jamSlot, jamsFor } from './jams';
+import { lostFor, lostFromNetwork } from './lost';
 import { gradeDelivery, isWet } from './grade';
 import { HIDDEN_LINE, type Situation, npcLine } from './npc';
 import { type Order, elapsedMin, makeOrder, minutesLeft, orderName, orderReward } from './orders';
 import { addXp } from './progress';
-import { BALANCE, DAMAGED, SAVE_EVERY_MS, SHELTER_PERK, SPEED, XP, xpNeeded } from './rules';
-import { type GameSave, type GameStore, type OrderSave, type ShelterSave, emptyGameSave } from './save';
+import { BALANCE, CACHE, DAMAGED, FRONT, GESTURE, PROOF, SAVE_EVERY_MS, SHELTER_PERK, SPEED, WANDER, XP, xpNeeded } from './rules';
+import { type GameSave, type GameStore, type JamSave, type OrderSave, SAVE_REV, type ShelterSave, emptyGameSave } from './save';
 import { nextStarAt, nextUnlock, npcFor, starsFor, unlockText } from './shelters';
 import { type Mods, learnBlock, modsFor, skillDef, skillViews } from './skills';
+import { SPECIALS, UNKNOWN_SPECIAL, specialDrainMult, specialWearPerSecond } from './specials';
 import { dayKey, nextDayMs, weekKey } from './time';
+import { type Wanderer, wanderGift, wanderLine, wanderSlot, wandererAt, wanderersFor, whereText } from './wanderers';
 
 const no = (why: string): ActionResult => ({ ok: false, why });
 const OK: ActionResult = { ok: true };
@@ -78,6 +85,29 @@ export class Game implements GameEngine {
   private weather: Weather = CLEAR;
   private cooldownLeft = 0;
 
+  // Systèmes secondaires
+  private caches: Cache[] = [];
+  private cachesFound = new Set<string>();
+  private cachesOpened = new Set<string>();
+  private wanderers: Wanderer[] = [];
+  private wanderSlotN = -1;
+  private met = new Set<string>();
+  private frontPaths: FrontPath[] = [];
+  private frontSlotN = -1;
+  private frontZones: string[] = [];
+  private fronts: { path: FrontPath; front: Front }[] = [];
+  private inFront = false;
+  private frontWarned = new Set<string>();
+  /** Secondes passées dans un front, par colis porté. */
+  private frontS = new Map<string, number>();
+  private jamOffers: Jam[] = [];
+  private jamSlotN = -1;
+  private jams = new Map<string, JamSave>();
+  /** Fin de la fenêtre d'arrimage de chaque colis qui vient d'être ramassé (ms). */
+  private strapUntil = new Map<string, number>();
+  /** Photos-preuves encore possibles, par colis livré. Jamais sauvegardé. */
+  private proofs = new Map<string, { bonus: number; shelterId: string; until: number }>();
+
   // Temps, contrats, sauvegarde
   private day: string;
   private nextDay: number;
@@ -119,6 +149,11 @@ export class Game implements GameEngine {
     // Un colis porté reste dans le sac d'un jour à l'autre ; les colis seulement révélés ne valent que pour leur jour.
     for (const o of save.orders) if (sameDay || o.state === 'porté') this.orders.set(o.id, { ...o });
     this.done = new Set(sameDay ? save.done : []);
+    this.cachesFound = new Set(sameDay ? save.cachesFound : []);
+    this.cachesOpened = new Set(sameDay ? save.cachesOpened : []);
+    this.met = new Set(sameDay ? save.met : []);
+    this.jams = new Map((save.jams ?? []).filter(j => sameDay || j.state === 'en cours').map(j => [j.id, { ...j }]));
+    this.strapUntil.clear(); this.proofs.clear(); this.frontS.clear();
     this.contracts = this.drawAll(t, save.contracts);
     this.skillsCache = this.contractsCache = null;
     this.lastSaveT = t;
@@ -137,6 +172,8 @@ export class Game implements GameEngine {
       day: this.day, orders, done: [...this.done],
       contracts: this.contracts.map(c => ({ id: c.id, progress: c.progress, claimed: c.claimed })),
       last: this.pos,
+      rev: SAVE_REV, cachesFound: [...this.cachesFound], cachesOpened: [...this.cachesOpened], met: [...this.met],
+      jams: [...this.jams.values()].map(j => ({ ...j })),
     };
   }
 
@@ -175,7 +212,25 @@ export class Game implements GameEngine {
       if (o) this.orders.set(o.id, o);
     }
     this.dangers = dangersFor(cells, this.day);
+    // Colis perdus du jour : cachés comme les autres tant qu'ils n'ont pas été scannés.
+    for (const o of lostFor(cells, this.day)) if (!this.orders.has(o.id) && !this.done.has(o.id)) this.orders.set(o.id, o);
+    this.caches = cachesFor(cells, this.day);
+    this.wanderSlotN = this.jamSlotN = this.frontSlotN = -1;
+    this.refreshTimed(this.now());
     this.refreshPlace();
+  }
+
+  /**
+   * Colis perdus venus d'autres joueurs (réseau). À rappeler avec la liste complète à chaque mise à jour :
+   * ceux qui n'y sont plus et que le joueur n'a pas ramassés disparaissent.
+   */
+  setNetworkLost(list: LostInput[]): void {
+    const ids = new Set(list.map(i => `réseau|${i.id}`));
+    for (const [id, o] of this.orders) if (o.lost?.net && o.state !== 'porté' && !ids.has(id)) this.orders.delete(id);
+    for (const i of list) {
+      const o = lostFromNetwork(i);
+      if (!this.orders.has(o.id) && !this.done.has(o.id)) this.orders.set(o.id, o);
+    }
   }
 
   setWeather(w: Weather): void { this.weather = w; }
@@ -219,33 +274,43 @@ export class Game implements GameEngine {
     const moving = this.speed > SPEED.moving, running = this.speed > SPEED.run;
     const carried = this.carried();
     const loadFrac = this.carriedKg(carried) / this.mods.capacityKg;
+    this.refreshTimed(t);
+    this.stepFronts(t, dt, carried);
+    this.stepJams(t);
 
     const before = this.stamina;
     const near = this.nearShelter;
     this.stamina = nextStamina(this.stamina, dt, {
       moving, running, loadFrac, inShelter: near !== null,
       shelterPerk: near !== null && this.starsOf(near) >= 3 ? SHELTER_PERK.restMult : 1,
-      drainMult: this.mods.drainMult, restMult: this.mods.restMult,
+      drainMult: this.mods.drainMult * specialDrainMult(carried), restMult: this.mods.restMult,
     });
     if (this.stamina !== before) this.dirty = true;
 
     if (moving && carried.length) this.walkS += dt;
-    this.balance = driftBalance(this.balance, dt, this.walkS, { moving, loadFrac, windKmh: this.weather.windKmh, mult: this.mods.balanceMult });
+    this.balance = driftBalance(this.balance, dt, this.walkS, { moving, loadFrac, windKmh: this.weather.windKmh, mult: this.mods.balanceMult * strapBalanceMult(carried) });
     this.unbalancedS = isUnbalanced(this.balance) ? this.unbalancedS + dt : 0;
 
     if (carried.length) {
       const ctx = {
-        weather: this.weather.kind, inDanger: this.inDanger, unbalanced: this.unbalancedS > BALANCE.graceS,
+        // Dans un front, les colis s'usent comme sous l'orage.
+        weather: this.inFront ? 'orage' as const : this.weather.kind, inDanger: this.inDanger, unbalanced: this.unbalancedS > BALANCE.graceS,
         running, exhausted: this.stamina <= 0, wearMult: this.mods.wearMult, dangerMult: this.mods.dangerMult,
       };
       for (const o of carried) {
-        const w = wearPerSecond(o, ctx) * dt;
+        const w = (wearPerSecond(o, ctx) + specialWearPerSecond(o.special, { everPicked: true, carried: true, running })) * dt;
         if (w > 0) { o.condition = Math.max(0, o.condition - w); this.dirty = true; }
         if (o.deadlineMin !== null && !this.lateWarned.has(o.id) && elapsedMin(o, t) > o.deadlineMin) {
           this.lateWarned.add(o.id);
           this.emit({ type: 'toast', text: `Délai dépassé : ${orderName(o, this.starsOf(o.destId))}`, tone: 'warn' });
         }
       }
+    }
+    // Un caisson cryogénique posé au sol continue de se réchauffer.
+    for (const o of this.orders.values()) {
+      if (o.special !== 'cryo' || o.state !== 'révélé' || o.pickedAt === null) continue;
+      o.condition = Math.max(0, o.condition - specialWearPerSecond(o.special, { everPicked: true, carried: false, running: false }) * dt);
+      this.dirty = true;
     }
     this.autosave();
   }
@@ -265,9 +330,15 @@ export class Game implements GameEngine {
     for (const o of this.orders.values()) {
       if (o.state === 'caché' && dist(o.at, this.pos) <= range) { o.state = 'révélé'; found++; }
     }
+    // Les caches ne répondent qu'à courte portée.
+    let caches = 0;
+    for (const c of this.caches) {
+      if (this.cachesFound.has(c.id) || this.cachesOpened.has(c.id) || dist(c.at, this.pos) > CACHE.scanM) continue;
+      this.cachesFound.add(c.id); caches++;
+    }
     this.cooldownLeft = this.mods.scanCooldownS;
-    this.emit({ type: 'scan', found });
-    if (found) this.saveNow();
+    this.emit(caches ? { type: 'scan', found, caches } : { type: 'scan', found });
+    if (found || caches) this.saveNow();
     return OK;
   }
 
@@ -279,8 +350,14 @@ export class Game implements GameEngine {
     if (dist(o.at, this.pos) > this.pickupRange()) return no('Trop loin du colis.');
     if (this.carriedKg(this.carried()) + o.weightKg > this.mods.capacityKg) return no('Sac trop lourd : pose d’abord un colis.');
     o.state = 'porté';
-    if (o.pickedAt === null) o.pickedAt = this.now();
-    this.emit({ type: 'pickup', order: this.orderView(o, this.now()) });
+    const t = this.now(), wasKnown = o.inspected === true;
+    if (o.pickedAt === null) o.pickedAt = t;
+    o.inspected = true;
+    this.strapUntil.set(o.id, t + GESTURE.strapWindowS * 1000);
+    const v = this.orderView(o, t);
+    this.emit({ type: 'pickup', order: v });
+    // Un colis spécial pris sans l'avoir écouté : on annonce sa contrainte.
+    if (o.special && !wasKnown) this.emit({ type: 'special', order: v });
     this.saveNow();
     return OK;
   }
@@ -291,6 +368,8 @@ export class Game implements GameEngine {
     if (!this.pos) return no('Position inconnue.');
     o.state = 'révélé';
     o.at = [this.pos[0], this.pos[1]];
+    delete o.strap;
+    this.strapUntil.delete(o.id); this.frontS.delete(o.id);
     this.emit({ type: 'drop', orderId });
     this.saveNow();
     return OK;
@@ -309,7 +388,9 @@ export class Game implements GameEngine {
     let situation: Situation = 'merci';
     for (const o of mine) {
       const starsBefore = starsFor(st.points, st.deliveries);
-      const g = gradeDelivery({ condition: o.condition, deadlineMin: o.deadlineMin, elapsedMin: elapsedMin(o, t), weather: this.weather.kind, night: this.weather.night });
+      const g = gradeDelivery({ condition: o.condition, deadlineMin: o.deadlineMin, elapsedMin: elapsedMin(o, t), weather: this.weather.kind, night: this.weather.night, front: o.front === true || this.inFront });
+      if (o.special) g.notes.push('Colis spécial');
+      if (o.lost) g.notes.push(`Colis de ${o.lost.by} retrouvé`);
       const points = Math.round(orderReward(o, starsBefore) * g.mult * this.mods.pointsMult);
       const xp = Math.round((XP.perDelivery + points * XP.perPoint) * this.mods.xpMult);
       st.points += points; st.deliveries++;
@@ -321,13 +402,18 @@ export class Game implements GameEngine {
       this.orders.delete(o.id);
       this.done.add(o.id);
       this.lateWarned.delete(o.id);
+      this.strapUntil.delete(o.id); this.frontS.delete(o.id);
+      const bonus = proofBonus(points);
+      this.proofs.set(o.id, { bonus, shelterId, until: t + PROOF.windowMs });
       const result: DeliveryResult = {
         orderId: o.id, orderName: orderName(o, starsBefore), shelterId, shelterName: sh.name, npc,
         grade: g.grade, condition: o.condition, onTime: g.onTime, points, xp, notes: g.notes,
         starsBefore, starsAfter, unlock: unlocks.length ? unlocks.join(' · ') : null, levelUp: levels.length > 0,
+        special: o.special ?? null, lostBy: o.lost?.by ?? null, proofBonus: bonus,
       };
       this.emit({ type: 'delivery', result });
       for (const level of levels) this.emit({ type: 'levelUp', level });
+      if (o.jam) this.jamDelivered(o.jam, t);
       this.progress({ type: 'livraison', grade: g.grade, fragile: o.fragile, condition: o.condition, timed: o.deadlineMin !== null, onTime: g.onTime, night: this.weather.night, wet: isWet(this.weather.kind) });
       // Le PNJ réagit au fait le plus marquant de la livraison.
       const s: Situation = starsBefore === 0 ? 'première' : starsAfter > starsBefore ? (starsAfter >= 5 ? 'cinq' : 'étoile')
@@ -370,6 +456,104 @@ export class Game implements GameEngine {
     return OK;
   }
 
+  // ───────────────────────── actions des systèmes secondaires
+
+  openCache(cacheId: string): ActionResult {
+    const c = this.caches.find(x => x.id === cacheId);
+    if (!c || !this.cachesFound.has(c.id) || this.cachesOpened.has(c.id)) return no('Cache introuvable.');
+    if (!this.pos) return no('Position inconnue.');
+    if (dist(c.at, this.pos) > CACHE.openM) return no('Trop loin de la cache.');
+    this.cachesOpened.add(c.id);
+    this.cachesFound.delete(c.id);
+    this.score += c.points;
+    if (c.skillPoint) { this.skillPoints++; this.skillsCache = null; }
+    const levels = this.gainXp(c.xp);
+    this.emit({ type: 'cache', cacheId, points: c.points, xp: c.xp, skillPoint: c.skillPoint });
+    for (const level of levels) this.emit({ type: 'levelUp', level });
+    this.saveNow();
+    return OK;
+  }
+
+  talk(wandererId: string): ActionResult {
+    const w = this.wanderers.find(x => x.id === wandererId);
+    if (!w) return no('Il est déjà reparti.');
+    if (this.met.has(w.id)) return no(`${w.name} t’a déjà donné ce qu’il avait.`);
+    const p = this.pos;
+    if (!p) return no('Position inconnue.');
+    if (dist(wandererAt(w, this.now()).at, p) > WANDER.talkM) return no(`Trop loin de ${w.name}.`);
+    const near = <T extends { at: LngLat }>(list: T[]): T | undefined => list.sort((a, b) => dist(a.at, p) - dist(b.at, p))[0];
+    const cache = near(this.caches.filter(c => !this.cachesFound.has(c.id) && !this.cachesOpened.has(c.id)));
+    const special = near([...this.orders.values()].filter(o => o.special && o.state !== 'porté' && !o.inspected));
+    const gift = wanderGift(w.roll, { cache: !!cache, special: !!special });
+    let line: string, levels: number[] = [];
+    if (gift === 'cache' && cache) { this.cachesFound.add(cache.id); line = wanderLine(gift, whereText(p, cache.at)); }
+    else if (gift === 'colis' && special) { special.state = 'révélé'; special.inspected = true; line = wanderLine(gift, whereText(p, special.at)); }
+    else if (gift === 'endurance') { this.stamina = Math.min(1, this.stamina + WANDER.staminaGift); line = wanderLine(gift); }
+    else { levels = this.gainXp(WANDER.xpGift); line = wanderLine('xp'); }
+    this.met.add(w.id);
+    this.emit({ type: 'wanderer', id: w.id, name: w.name, line, gift });
+    for (const level of levels) this.emit({ type: 'levelUp', level });
+    this.saveNow();
+    return OK;
+  }
+
+  startJam(jamId: string): ActionResult {
+    const j = this.jamOffers.find(x => x.id === jamId);
+    if (!j || this.jams.has(jamId)) return no('Ce lot n’est plus proposé.');
+    if (!this.pos) return no('Position inconnue.');
+    if (dist(j.at, this.pos) > RANGE.deliver) return no('Trop loin de l’abri.');
+    for (const o of j.orders) this.orders.set(o.id, { ...o });
+    const rec: JamSave = {
+      id: j.id, shelterId: j.shelterId, shelterName: j.shelterName, at: j.at, count: j.orders.length, delivered: 0,
+      minutes: j.minutes, bonus: j.bonus, startedAt: this.now(), state: 'en cours',
+    };
+    this.jams.set(j.id, rec);
+    this.emit({ type: 'jam', phase: 'début', jam: this.jamView(rec, this.now()) });
+    this.saveNow();
+    return OK;
+  }
+
+  inspect(orderId: string): ActionResult {
+    const o = this.orders.get(orderId);
+    if (!o || o.state !== 'révélé') return no('Colis introuvable.');
+    if (o.inspected) return no('Tu sais déjà ce qu’il contient.');
+    if (!this.pos) return no('Position inconnue.');
+    if (dist(o.at, this.pos) > GESTURE.inspectM) return no('Trop loin pour l’écouter.');
+    o.inspected = true;
+    const levels = this.gainXp(GESTURE.inspectXp);
+    this.emit({ type: 'inspect', order: this.orderView(o, this.now()), xp: GESTURE.inspectXp });
+    for (const level of levels) this.emit({ type: 'levelUp', level });
+    this.saveNow();
+    return OK;
+  }
+
+  strap(orderId: string, quality: number): ActionResult {
+    const o = this.orders.get(orderId);
+    if (!o || o.state !== 'porté') return no('Ce colis n’est pas dans le sac.');
+    if (o.strap !== undefined) return no('Ce colis est déjà arrimé.');
+    if ((this.strapUntil.get(o.id) ?? 0) < this.now()) return no('Trop tard pour l’arrimer.');
+    const q = Math.min(1, Math.max(0, Number.isFinite(quality) ? quality : 0));
+    o.strap = q;
+    this.strapUntil.delete(o.id);
+    const xp = strapXp(q), levels = xp ? this.gainXp(xp) : [];
+    this.emit({ type: 'strap', orderId, quality: q, xp });
+    for (const level of levels) this.emit({ type: 'levelUp', level });
+    this.saveNow();
+    return OK;
+  }
+
+  proof(orderId: string): ActionResult {
+    const p = this.proofs.get(orderId);
+    if (!p || this.now() > p.until) { this.proofs.delete(orderId); return no('Trop tard pour la photo.'); }
+    this.proofs.delete(orderId);
+    this.score += p.bonus;
+    const st = this.shelterSave.get(p.shelterId);
+    if (st) st.points += p.bonus;
+    this.emit({ type: 'proof', orderId, points: p.bonus });
+    this.saveNow();
+    return OK;
+  }
+
   // ───────────────────────── vue
 
   view(): GameView {
@@ -402,6 +586,34 @@ export class Game implements GameEngine {
     const dangers: DangerView[] = this.dangers.map(z => ({ id: z.id, at: z.at, radiusM: z.radiusM, inside: p !== null && insideDanger(z, p) }));
     this.skillsCache ??= skillViews(this.ranks, this.skillPoints);
     this.contractsCache ??= this.contracts.map(c => contractView(c, this.mods.contractMult));
+
+    const caches: CacheView[] = [];
+    for (const c of this.caches) {
+      if (!this.cachesFound.has(c.id)) continue;
+      const d = p ? dist(c.at, p) : 0;
+      caches.push({ id: c.id, at: c.at, distanceM: d, inRange: p !== null && d <= CACHE.openM });
+    }
+    const wanderers: WandererView[] = this.wanderers.map(w => {
+      const pose = wandererAt(w, t), d = p ? dist(pose.at, p) : 0;
+      return { id: w.id, name: w.name, at: pose.at, headingDeg: pose.headingDeg, moving: pose.moving, met: this.met.has(w.id), distanceM: d, inRange: p !== null && d <= WANDER.talkM };
+    });
+    const fronts: FrontView[] = this.fronts.map(({ path, front }) => {
+      const d = p ? Math.max(0, dist(front.at, p) - front.radiusM) : 0;
+      return {
+        id: front.id, at: front.at, radiusM: front.radiusM, headingDeg: front.headingDeg, speedMps: front.speedMps,
+        inside: p !== null && insideFront(front, p), distanceM: d, etaS: p ? frontEta(path, t, p) : null,
+      };
+    });
+    const jams: JamView[] = [];
+    for (const j of this.jams.values()) if (j.state === 'en cours') jams.push(this.jamView(j, t));
+    for (const j of this.jamOffers) {
+      if (this.jams.has(j.id)) continue;
+      const d = p ? dist(j.at, p) : 0;
+      jams.push({
+        id: j.id, shelterId: j.shelterId, shelterName: j.shelterName, at: j.at, state: 'proposé', count: j.orders.length, delivered: 0,
+        minutes: j.minutes, minutesLeft: null, bonus: j.bonus, distanceM: d, inRange: p !== null && d <= RANGE.deliver,
+      });
+    }
     return {
       player: {
         at: p, headingDeg: this.heading, speedMps: this.speed, moving: this.speed > SPEED.moving, mode: this.mode,
@@ -415,6 +627,7 @@ export class Game implements GameEngine {
       shelters, dangers,
       skills: this.skillsCache, contracts: this.contractsCache,
       visited: this.visitedList, loadedCells: this.loadedCells,
+      caches, wanderers, fronts, jams,
     };
   }
 
@@ -445,11 +658,17 @@ export class Game implements GameEngine {
   private orderView(o: Order, t: number): OrderView {
     const stars = this.starsOf(o.destId), carried = o.state === 'porté';
     const d = this.pos ? dist(carried ? o.destAt : o.at, this.pos) : 0;
+    const known = o.inspected === true, sp = o.special ? SPECIALS[o.special] : null;
     return {
-      id: o.id, name: orderName(o, stars), crate: o.crate, weightKg: o.weightKg, fragile: o.fragile, at: o.at,
+      id: o.id, name: sp && !known ? UNKNOWN_SPECIAL : orderName(o, stars), crate: o.crate, weightKg: o.weightKg, fragile: o.fragile, at: o.at,
       destId: o.destId, destName: o.destName, destAt: o.destAt, state: carried ? 'porté' : 'révélé', condition: o.condition,
       minutesLeft: minutesLeft(o, t), reward: orderReward(o, stars), distanceM: d,
       inRange: !carried && this.pos !== null && d <= this.pickupRange(),
+      special: sp ? { kind: sp.kind, label: sp.label, rule: sp.rule, known } : null,
+      lost: o.lost ? { by: o.lost.by } : null, jamId: o.jam ?? null,
+      inspected: known, canInspect: !carried && !known && this.pos !== null && d <= GESTURE.inspectM,
+      strap: o.strap ?? null,
+      strapLeftS: carried && o.strap === undefined ? Math.max(0, ((this.strapUntil.get(o.id) ?? 0) - t) / 1000) : 0,
     };
   }
 
@@ -502,12 +721,92 @@ export class Game implements GameEngine {
     }
   }
 
+  /** Ce qui dépend de l'heure : rôdeurs, lots d'abri et trajets des fronts sont retirés quand leur tranche horaire change. */
+  private refreshTimed(t: number): void {
+    const ws = wanderSlot(t);
+    if (ws !== this.wanderSlotN) { this.wanderSlotN = ws; this.wanderers = wanderersFor(this.cells, t); }
+    const js = jamSlot(t);
+    if (js !== this.jamSlotN) {
+      this.jamSlotN = js;
+      this.jamOffers = jamsFor(this.shelters, t);
+      // Les lots terminés des tranches passées n'ont plus besoin d'être retenus.
+      for (const [id, j] of this.jams) if (j.state !== 'en cours' && Number(id.slice(id.lastIndexOf('|') + 1)) < js) this.jams.delete(id);
+    }
+    const fs = frontSlot(t);
+    if (fs !== this.frontSlotN) {
+      this.frontSlotN = fs;
+      this.frontZones = zonesOf(this.loadedCells);
+      this.frontPaths = [];
+      for (const z of this.frontZones) { const path = frontPath(z, fs); if (path) this.frontPaths.push(path); }
+    }
+  }
+
+  /** Fronts : position du moment, entrée et sortie du joueur, alerte à l'approche, bonus pour les colis qui le traversent. */
+  private stepFronts(t: number, dt: number, carried: Order[]): void {
+    this.fronts.length = 0;
+    const p = this.pos;
+    let inside = false;
+    for (const path of this.frontPaths) {
+      const front = frontAt(path, t);
+      if (!front) continue;
+      this.fronts.push({ path, front });
+      if (!p) continue;
+      if (insideFront(front, p)) { inside = true; this.frontWarned.add(path.id); continue; }
+      if (this.frontWarned.has(path.id)) continue;
+      const eta = frontEta(path, t, p);
+      if (eta !== null && eta <= FRONT.warnS) { this.frontWarned.add(path.id); this.emit({ type: 'front', phase: 'approche', etaS: eta }); }
+    }
+    if (inside !== this.inFront) { this.inFront = inside; this.emit({ type: 'front', phase: inside ? 'entrée' : 'sortie' }); }
+    if (!inside) return;
+    for (const o of carried) {
+      if (o.front) continue;
+      const s = (this.frontS.get(o.id) ?? 0) + dt;
+      if (s >= FRONT.creditS) { o.front = true; this.frontS.delete(o.id); this.dirty = true; } else this.frontS.set(o.id, s);
+    }
+  }
+
+  private jamView(j: JamSave, t: number): JamView {
+    const d = this.pos ? dist(j.at, this.pos) : 0;
+    return {
+      id: j.id, shelterId: j.shelterId, shelterName: j.shelterName, at: j.at, state: 'en cours', count: j.count, delivered: j.delivered,
+      minutes: j.minutes, minutesLeft: jamMinutesLeft(j.minutes, j.startedAt, t), bonus: j.bonus, distanceM: d, inRange: false,
+    };
+  }
+  /** Temps écoulé : le lot est perdu, les colis restent à livrer comme des commandes ordinaires. */
+  private stepJams(t: number): void {
+    for (const j of this.jams.values()) {
+      if (j.state !== 'en cours' || t <= j.startedAt + j.minutes * 60000) continue;
+      const v = this.jamView(j, t);
+      j.state = 'raté';
+      this.emit({ type: 'jam', phase: 'raté', jam: v });
+      this.saveNow();
+    }
+  }
+  /** Un colis du lot est livré ; le dernier, s'il arrive à temps, déclenche le bonus (points pour le joueur et pour l'abri débordé). */
+  private jamDelivered(jamId: string, t: number): void {
+    const j = this.jams.get(jamId);
+    if (!j || j.state !== 'en cours') return;
+    j.delivered = Math.min(j.count, j.delivered + 1);
+    if (j.delivered < j.count) return;
+    const v = this.jamView(j, t);
+    j.state = 'réussi';
+    this.score += j.bonus;
+    const st = this.shelterSave.get(j.shelterId) ?? { points: 0, deliveries: 0 };
+    st.points += j.bonus;
+    this.shelterSave.set(j.shelterId, st);
+    const levels = this.gainXp(Math.round(j.bonus * XP.perPoint));
+    this.emit({ type: 'jam', phase: 'réussi', jam: v, bonus: j.bonus });
+    for (const level of levels) this.emit({ type: 'levelUp', level });
+  }
+
   /** Changement de jour : les colis non ramassés disparaissent, les contrats sont renouvelés. */
   private newDay(t: number): void {
     this.day = dayKey(t);
     this.nextDay = nextDayMs(t);
     for (const [id, o] of this.orders) if (o.state !== 'porté') this.orders.delete(id);
     this.done.clear();
+    this.cachesFound.clear(); this.cachesOpened.clear(); this.met.clear(); this.frontWarned.clear();
+    for (const [id, j] of this.jams) if (j.state !== 'en cours') this.jams.delete(id);
     this.contracts = this.drawAll(t, this.contracts);
     this.contractsCache = null;
     this.setWorld(this.cells);

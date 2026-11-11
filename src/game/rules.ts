@@ -68,3 +68,57 @@ export const INTACT = 0.95;
 export const DAMAGED = 0.6;
 /** Écart minimal entre deux sauvegardes automatiques. */
 export const SAVE_EVERY_MS = 2000;
+
+// ───────────────────────── Systèmes secondaires (rares par construction : 1 élément de chaque sorte, au plus, par secteur de 2 km)
+
+/** Colis spéciaux : part des emplacements de colis concernée, et réglages de chaque sorte. */
+export const SPECIAL = {
+  chance: 0.015,
+  /** caisson cryogénique : part d'état perdue par minute dès le premier ramassage */ cryoPerMin: 0.03,
+  /** ruche : part d'état perdue par minute de course */ hiveRunPerMin: 0.3,
+  /** boîte noire : part du délai normal */ blackboxDelay: 0.6, blackboxMinMin: 5,
+  /** cellule instable : fatigue en plus */ batteryDrain: 1.4,
+  /** multiplicateur de récompense */ pay: { batterie: 2.4, boitenoire: 3, cryo: 2.5, ruche: 2.2 },
+  /** poids en kg [min, max] */ kg: { batterie: [15, 18], boitenoire: [5, 8], cryo: [6, 10], ruche: [9, 13] },
+} as const;
+
+/** Caches : chance par case et par jour, portées, récompenses. */
+export const CACHE = {
+  chance: 0.07, scanM: 70, openM: 25, clearM: 50,
+  points: [30, 80], xp: [20, 40], skillChance: 0.1,
+} as const;
+
+/** Rôdeurs : chance par case et par tranche horaire, marche, cadeaux. */
+export const WANDER = {
+  chance: 0.05, slotMs: 2 * 3600_000, speed: 1.1, pauseS: 25, talkM: 25,
+  staminaGift: 0.3, xpGift: 25,
+} as const;
+
+/** Fronts de mauvais temps : chance par zone (4 x 4 cases) et par heure, taille, trajet. */
+export const FRONT = {
+  chance: 0.2, slotMs: 3600_000, minR: 140, maxR: 200, travelM: 2400, offsetM: 300,
+  /** apparition et disparition progressives, en secondes */ fadeS: 180,
+  /** prévenir quand le front arrive dans moins de… secondes */ warnS: 180,
+  /** secondes passées dedans, colis au dos, pour mériter le bonus de note */ creditS: 15,
+} as const;
+
+/** Embouteillages de colis : chance par abri et par tranche de 3 h. */
+export const JAM = {
+  chance: 0.08, slotMs: 3 * 3600_000, count: 3, maxKg: 5, ringM: 14,
+  /** part de la somme des récompenses donnée en bonus */ bonusShare: 0.5,
+  /** minutes : marge fixe + minutes par 100 m cumulés */ baseMin: 6, minPer100m: 2.2, minMin: 12,
+} as const;
+
+/** Colis perdus : chance par case et par jour, récompense de solidarité. */
+export const LOST = { chance: 0.05, pay: 1.5, clearM: 60 } as const;
+
+/** Gestes rapides. */
+export const GESTURE = {
+  /** inspection : portée et XP */ inspectM: 60, inspectXp: 5,
+  /** arrimage : secondes pour le faire après le ramassage */ strapWindowS: 10,
+  /** zone « bien serré » sur la course du geste (0 à 1) */ strapGood: [0.7, 0.92],
+  /** un arrimage parfait réduit d'autant la dérive due à ce colis */ strapEffect: 0.5, strapXp: 5,
+} as const;
+
+/** Preuve photo : part des points de la livraison, minimum, et temps laissé pour la prendre. */
+export const PROOF = { share: 0.1, min: 5, windowMs: 180_000 } as const;

@@ -11,7 +11,7 @@ import { type GameSave, MemoryGameStore, emptyGameSave } from '../src/game/save'
 import { npcFor, unlockText } from '../src/game/shelters';
 import { dayKey, weekKey } from '../src/game/time';
 import type { CellContent } from '../src/world/types';
-import { BASE, T0, findSpot, off, ofType, place, rig, shelter, spot, wait, walk, world } from './game.helpers';
+import { BASE, T0, findSpot, off, ofType, place, quietSky, rig, shelter, spot, wait, walk, world } from './game.helpers';
 
 const DAY = 86400000;
 const A = shelter('A', off(0, 0), 'École des Tilleuls'), B = shelter('B', off(300, 0), 'Pharmacie du Port');
@@ -22,6 +22,7 @@ const SMALL = world([A, B], SPOTS);
 function calmT(cells: CellContent[], kind?: string): number {
   for (let t = T0; t < T0 + 400 * DAY; t += DAY) {
     if (dangersFor(cells, dayKey(t)).length) continue;
+    if (!quietSky(cells, t)) continue; // ni front de mauvais temps
     if (kind && !drawContracts('jour', dayKey(t)).some(c => c.kind === kind)) continue;
     return t;
   }
