@@ -1,68 +1,102 @@
-import './ui/style.css';
-import { cellAt, dist, type LngLat } from './core/geo';
-import { LocalStore, type Save, emptySave } from './core/store';
-import { Locator } from './player/gps';
-import { MapView } from './ui/map';
+// Assemblage du jeu : la logique (game), le monde (world), la scène 3D (render) et l'interface (ui).
+import { type LngLat, dist } from './core/geo';
+import type { Ambiance, GameView } from './game/api';
+import { Game } from './game/game';
+import { LocalGameStore } from './game/save';
+import { type Fix, Locator } from './player/gps';
+import { Stage } from './render/stage';
+import { fetchWeather } from './services/weather';
+import { Hud } from './ui/hud';
 import { World } from './world/world';
 
-// Lieux de test pour vérifier que le monde se génère partout : ville, village, campagne, forêt, littoral.
-const TEST_PLACES: [string, number, number][] = [
-  ['Bouguenais', 47.1822, -1.5761], ['Paris, Châtelet', 48.8583, 2.347], ['Lille, Grand-Place', 50.6366, 3.0635],
-  ['Marseille, Vieux-Port', 43.2951, 5.3744], ['Les Essarts-le-Roi', 48.7167, 1.893], ['Village : Saint-Véran', 44.7003, 6.869],
-  ['Village : Locronan', 48.099, -4.208], ['Campagne : Beauce', 48.24, 1.6], ['Forêt : Landes', 44.13, -0.7], ['Littoral : Pornic', 47.115, -2.103],
-];
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const say = (t: string, warn = false) => { $('msg').textContent = t; $('msg').classList.toggle('warn', warn); };
+const START: LngLat = [-1.5761, 47.1822];
+const SIM_SPEED = 2.4; // m/s : marche rapide, sous le seuil de course
+const pref = {
+  get(k: string): string | null { try { return localStorage.getItem(`dernier-relais/${k}`); } catch { return null; } },
+  set(k: string, v: string): void { try { localStorage.setItem(`dernier-relais/${k}`, v); } catch { /* stockage indisponible */ } },
+};
+const ambiance: Ambiance = pref.get('ambiance') === 'clair' ? 'clair' : 'crépuscule';
 
-const store = new LocalStore();
-let save: Save = emptySave();
+const game = new Game({ store: new LocalGameStore() });
+const world = new World(() => game.setWorld(world.loaded()));
 let me: LngLat | null = null;
+let mode: 'gps' | 'simulé' = 'simulé';
+let simTarget: LngLat | null = null;
+let lastWeather: { at: LngLat; t: number } | null = null;
 
-const world = new World(() => render());
-const view = new MapView('map', [TEST_PLACES[0][2], TEST_PLACES[0][1]], p => locator.simulate(p[0], p[1]));
-const locator = new Locator(
-  f => {
-    me = [f.lng, f.lat];
-    const here = cellAt(f.lng, f.lat);
-    if (!save.visited.includes(here.id)) save.visited.push(here.id);
-    save.last = me;
-    void store.save(save);
-    render();
-    world.moveTo(f.lng, f.lat).then(render, () => say('Carte injoignable. Vérifie ta connexion, puis déplace-toi pour réessayer.', true));
-  },
-  (s, why) => {
-    const el = $('mode');
-    el.textContent = s === 'gps' ? 'GPS réel' : 'Position simulée';
-    el.className = `pill ${s === 'gps' ? 'gps' : 'sim'}`;
-    if (why) say(`${why}. Touche la carte pour te déplacer en mode simulé.`, true);
-  },
-);
-
-function render(): void {
-  const cells = world.loaded(), shelters = cells.flatMap(c => c.shelters);
-  view.update(cells, me ? cellAt(me[0], me[1]) : null, me);
-  $('nShel').textContent = String(shelters.length);
-  $('nParc').textContent = String(cells.reduce((n, c) => n + c.parcels.length, 0));
-  $('nVis').textContent = String(save.visited.length);
-  $('near').textContent = me && shelters.length ? `${Math.round(Math.min(...shelters.map(s => dist(s.at, me!))))} m` : '–';
+function place(fix: Fix): void {
+  me = [fix.lng, fix.lat];
+  game.setPosition(fix);
+  world.moveTo(fix.lng, fix.lat).catch(() => hud.handle({ type: 'toast', text: 'Carte injoignable. Vérifie ta connexion.', tone: 'warn' }));
+  // Météo réelle : au départ, puis toutes les 15 minutes ou après 5 km.
+  const now = Date.now();
+  if (!lastWeather || now - lastWeather.t > 15 * 60_000 || dist(lastWeather.at, me) > 5000) {
+    lastWeather = { at: me, t: now };
+    fetchWeather(fix.lng, fix.lat).then(w => game.setWeather(w)).catch(() => { /* le jeu garde le dernier temps connu */ });
+  }
 }
 
-const goto = $<HTMLSelectElement>('goto');
-TEST_PLACES.forEach(([name], i) => goto.add(new Option(name, String(i))));
-goto.addEventListener('change', () => {
-  const p = TEST_PLACES[Number(goto.value)];
-  if (!goto.value || !p) return;
-  view.follow = true;
-  view.map.jumpTo({ center: [p[2], p[1]] });
-  locator.simulate(p[2], p[1]);
-  say(`Position simulée : ${p[0]}.`);
+const locator = new Locator(place, (s, why) => {
+  mode = s;
+  if (s === 'gps') simTarget = null;
+  if (why) hud.handle({ type: 'toast', text: `${why}. Touche la carte pour te déplacer.`, tone: 'warn' });
 });
-$('gps').addEventListener('click', () => { view.follow = true; say('Recherche du signal GPS…'); locator.startGPS(); });
 
-store.load().then(s => {
-  save = s;
-  const start = s.last ?? [TEST_PLACES[0][2], TEST_PLACES[0][1]];
-  view.map.jumpTo({ center: start });
-  locator.simulate(start[0], start[1]);
-  locator.startGPS();
+const stage = new Stage('stage', {
+  onTapGround: at => { if (mode === 'simulé') simTarget = at; },
+  onTapShelter: id => hud.openShelter(id),
+  onTapOrder: id => hud.openOrder(id),
+}, { center: START, ambiance });
+
+const hud = new Hud(document.getElementById('hud')!, {
+  actions: game,
+  onUseGps: () => { stage.recenter(); locator.startGPS(); },
+  onRecenter: () => stage.recenter(),
+  onAmbiance: a => { pref.set('ambiance', a); stage.setAmbiance(a); },
+  onGoto: (at, label) => {
+    simTarget = null;
+    stage.jumpTo(at);
+    locator.simulate(at[0], at[1]);
+    stage.recenter();
+    hud.handle({ type: 'toast', text: `Position simulée : ${label}.`, tone: 'info' });
+  },
+}, { ambiance });
+
+let view: GameView | null = null;
+game.on(e => {
+  hud.handle(e);
+  if (e.type === 'scan' && view) stage.pulseScan(view.scanner.rangeM);
+  if (e.type === 'delivery') stage.celebrate(e.result.shelterId);
 });
+
+// Marche simulée : le porteur avance vers le point touché, à vitesse de marche.
+function stepSim(dtS: number): void {
+  if (mode !== 'simulé' || !simTarget || !me) return;
+  const d = dist(me, simTarget);
+  if (d < 1.5) { simTarget = null; return; }
+  const k = Math.min(1, (SIM_SPEED * dtS) / d);
+  locator.simulate(me[0] + (simTarget[0] - me[0]) * k, me[1] + (simTarget[1] - me[1]) * k);
+}
+
+let last = performance.now();
+function frame(): void {
+  const now = performance.now(), dtS = Math.min(1, (now - last) / 1000);
+  last = now;
+  stepSim(dtS);
+  game.tick(dtS);
+  view = game.view();
+  stage.sync(view);
+  hud.render(view);
+}
+
+game.load().then(() => {
+  const saved = game.view().player.at ?? game.snapshot().last ?? START;
+  stage.jumpTo(saved);
+  locator.simulate(saved[0], saved[1]);
+  locator.startGPS();
+  setInterval(frame, 200);
+  frame();
+});
+const flush = () => { void game.flush(); };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+addEventListener('pagehide', flush);

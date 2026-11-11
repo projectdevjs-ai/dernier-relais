@@ -8,7 +8,7 @@ import { TOP, WORLD } from './layer';
 import type { Env } from './sky';
 
 /** Taille « jeu » du porteur en mètres à l'échelle de la carte (plus grand que nature pour se lire à l'écran). */
-export const PORTER_HEIGHT = 9;
+export const PORTER_HEIGHT = 12;
 /** Taille réelle du modèle, pour raisonner en mètres « humains » à l'intérieur du groupe. */
 const HUMAN = 1.75;
 const MAX_STACK = 4;

@@ -109,14 +109,14 @@
 .dr-btn-sm { min-width: 96px; padding: 0 12px; font-size: 14px; }
 .dr-btn-wide { width: 100%; min-height: 52px; font-size: 17px; }
 .dr-btn-ic { display: contents; }
-.dr-cost { font: 600 12px/1 var(--f-ui); letter-spacing: 0; text-transform: none; padding: 3px 6px; border-radius: 6px; background: rgba(0, 0, 0, .16); }
+.dr-cost { font: 600 12px/1 var(--f-ui); letter-spacing: 0; text-transform: none; opacity: .85; }
 
 /* ---------- Haut ---------- */
 .dr-top {
   position: absolute; top: calc(var(--sat) + 8px); left: calc(var(--sal) + 8px); right: calc(var(--sar) + 8px);
   display: flex; flex-direction: column; gap: 6px;
 }
-.dr-top-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dr-top-row { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; }
 
 .dr-lvl { height: 48px; padding: 0 12px 0 8px; border-radius: 14px; display: flex; align-items: center; gap: 10px; }
 .dr-lvl-badge {
@@ -187,6 +187,8 @@
   pointer-events: auto; display: flex; flex-direction: column-reverse; max-height: min(66%, 560px); z-index: 2;
 }
 .dr-sheet-bar { display: flex; align-items: center; gap: 6px; min-height: 64px; padding: 6px 8px; flex: none; }
+.dr-sheet.is-open { background: var(--panel-solid); }
+.dr-sheet-open .dr-fabs { visibility: hidden; }
 .dr-sheet.is-open .dr-sheet-bar { border-top: 1px solid var(--line); }
 .dr-sheet-toggle .dr-ic { transition: transform .2s ease-out; }
 .dr-sheet.is-open .dr-sheet-toggle .dr-ic { transform: rotate(180deg); }
@@ -307,7 +309,12 @@
 .dr-npc-line { font-size: 15.5px; line-height: 1.4; padding: 10px 12px; border-radius: 4px 14px 14px 14px; background: var(--raise); }
 
 /* Colis */
-.dr-order-hero { display: flex; align-items: center; gap: 12px; padding: 4px 0 14px; }
+.dr-order-head { grid-template-columns: auto 1fr; column-gap: 12px; align-items: center; }
+.dr-order-head .dr-crate-art { grid-row: 1 / span 2; }
+.dr-order-head .dr-kicker { align-self: end; }
+.dr-order-head .dr-title { align-self: start; }
+.dr-panel-body > .dr-tag { margin: 2px 0 10px; }
+.dr-panel-auto .dr-panel-body { padding-top: 10px; }
 .dr-crate-art { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; background: color-mix(in srgb, var(--amber-fill) 18%, var(--raise)); color: var(--amber); border: 1px solid var(--amber); }
 .dr-crate-art .dr-ic { width: 34px; height: 34px; stroke-width: 1.5; }
 .dr-tag { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border-radius: 15px; font-size: 13px; font-weight: 600; border: 1px solid currentColor; flex: none; }
@@ -337,6 +344,9 @@
 .dr-points { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 14px; border-radius: 14px; background: var(--raise); }
 .dr-points-n { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 8px; background: var(--amber-fill); color: var(--on-amber); font: 700 24px/1 var(--f-title); }
 .dr-points-l { font-weight: 600; }
+.dr-skill, .dr-contract { padding-left: 0; }
+.dr-skill::before, .dr-contract::before { display: none; }
+.dr-hud .dr-skill .dr-btn { flex-direction: column; gap: 5px; min-height: 52px; min-width: 104px; }
 .dr-skill-txt { flex: 1 1 0; min-width: 0; display: grid; gap: 5px; }
 .dr-skill-desc { font-size: 13.5px; color: var(--muted); line-height: 1.35; }
 .dr-pips { display: flex; gap: 5px; padding-top: 1px; }

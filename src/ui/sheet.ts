@@ -91,6 +91,7 @@ export class Sheet {
     this.expanded = on;
     this.more.hidden = !on;
     this.el.classList.toggle('is-open', on);
+    this.el.parentElement?.classList.toggle('dr-sheet-open', on);
     this.toggle.setAttribute('aria-expanded', String(on));
     this.toggle.setAttribute('aria-label', on ? 'Replier le sac' : 'Ouvrir le sac');
     if (on && this.last) this.render(this.last);
@@ -156,11 +157,11 @@ export class Sheet {
     const dest = h('span', 'dr-row-dest');
     const frag = h('span', 'dr-row-frag', icon('fragile'));
     frag.title = 'Fragile';
-    const w = meta('weight'), c = meta('crate'), d = meta('clock'), far = meta('route');
+    const w = meta('weight'), c = meta('shield'), d = meta('clock'), far = meta('route');
     const info = btn('dr-row-info', null,
       h('span', 'dr-row-l1', name, frag),
       h('span', 'dr-row-l2', icon('pin'), dest),
-      h('span', 'dr-row-l3', w.el, c.el, far.el, d.el));
+      h('span', 'dr-row-l3', w.el, c.el, d.el, far.el));
     const actLabel = h('span', '');
     const act = btn('dr-btn dr-btn-sm', null, actLabel);
     const el = h('div', 'dr-row', info, act);
@@ -185,7 +186,8 @@ export class Sheet {
         const carried = o.state === 'porté';
         show(c.el, carried);
         if (carried) { setText(c.val, fmtPct(o.condition)); setTone(c.el, condTone(o.condition)); }
-        setText(far.val, fmtDist(o.distanceM));
+        show(far.el, !carried); // dans le sac, la distance est déjà sur la ligne repliée et la fiche
+        if (!carried) setText(far.val, fmtDist(o.distanceM));
         show(d.el, o.minutesLeft !== null);
         if (o.minutesLeft !== null) { setText(d.val, fmtDelay(o.minutesLeft)); setTone(d.el, delayTone(o.minutesLeft)); }
         setDisabled(act, !carried && !o.inRange);

@@ -16,8 +16,8 @@ import { computeEnv, Sky } from './sky';
 export interface StageOptions { center?: LngLat; ambiance?: Ambiance }
 
 const DEFAULT_CENTER: LngLat = [-1.5761, 47.1822];
-const ZOOM = 18.55;
-const PITCH = 60;
+const ZOOM = 19.4;
+const PITCH = 62;
 /** Part de la hauteur d'écran laissée au-dessus du point suivi : place le porteur dans le tiers bas. */
 const TOP_PADDING = 0.46;
 /** Au-delà de cette distance à l'ancre (mètres), on recale le repère local. */
@@ -69,7 +69,7 @@ export class Stage implements StageApi {
       container,
       // Style minimal au départ : la scène 3D s'affiche même si la carte ne se charge pas.
       style: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': pal.land } }] },
-      center, zoom: ZOOM, pitch: PITCH, bearing: -18,
+      center, zoom: Number(new URLSearchParams(location.search).get('zoom')) || ZOOM, pitch: PITCH, bearing: -18,
       minZoom: 15, maxZoom: 20.5, maxPitch: 70,
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
       canvasContextAttributes: { antialias: true },
@@ -81,6 +81,8 @@ export class Stage implements StageApi {
     this.map.touchZoomRotate.enable({ around: 'center' });
     this.map.scrollZoom.enable({ around: 'center' });
     this.map.touchPitch.enable();
+    // Mention des sources : repliée par défaut (un toucher l'ouvre).
+    this.map.once('load', () => this.map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
 
     const scene = this.layer.scene;
     this.sky = new Sky(scene);

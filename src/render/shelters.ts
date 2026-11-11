@@ -10,10 +10,10 @@ import type { Env } from './sky';
 
 const BUILDING: Record<NpcId, string> = { mara: 'abri_mara', tomas: 'atelier_tomas', agathe: 'dispensaire_agathe', kenji: 'tour_kenji' };
 /** Hauteur visée et emprise maximale des abris, en mètres à l'échelle de la carte. */
-const SHELTER_HEIGHT = 30;
-const SHELTER_WIDTH = 34;
-const NPC_HEIGHT = 8;
-const RING_RADIUS = 23;
+const SHELTER_HEIGHT = 28;
+const SHELTER_WIDTH = 32;
+const NPC_HEIGHT = 10.5;
+const RING_RADIUS = 22;
 
 interface Item {
   id: string;
@@ -39,7 +39,7 @@ interface Item {
   alive: boolean;
 }
 
-const DULL = new THREE.Color(0x56605d);
+const DULL = new THREE.Color(0x7d8884);
 const WHITE = new THREE.Color(0xffffff);
 
 export class Shelters {
@@ -107,7 +107,7 @@ export class Shelters {
     // Balise de livraison : faisceau bleu, anneau au sol et chevron qui flotte.
     const beacon = new THREE.Group();
     const beam = new THREE.Mesh(kit.beam, kit.beamBlue);
-    beam.scale.set(3.2, 150, 3.2);
+    beam.scale.set(1.3, 150, 1.3);
     const base = new THREE.Mesh(kit.ring, kit.ringBlue);
     base.scale.set(RING_RADIUS + 4.5, 1, RING_RADIUS + 4.5); base.position.y = 0.34;
     const pulse = new THREE.Mesh(kit.thinRing, kit.pulseBlue);

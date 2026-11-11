@@ -1,5 +1,6 @@
 // Démo de l'interface seule, sans carte ni logique : faux état de jeu, actions factices.
-// Paramètres d'URL : ?ecran=abri|abri0|colis|note|competences|contrats|carnet|reglages|fiche|marche|vide|aide|toasts  &ambiance=clair
+// Paramètres d'URL : ?ecran=abri|abri0|abri4|abri5|colis|colis2|note|noteB|competences|contrats|carnet|reglages|fiche|marche|vide|aide|toasts
+// puis &ambiance=clair et &t=9 (instant de départ du faux état : à 9, le scanner est prêt).
 import type { ActionResult, Ambiance, DeliveryResult, GameActions, GameView, HudEvents } from '../game/api';
 import type { LngLat } from '../core/geo';
 import { mockView } from '../game/mock';
@@ -19,7 +20,7 @@ try {
 const centre: LngLat = [-1.5761, 47.1822];
 const log = (...a: unknown[]): void => console.info('[démo]', ...a);
 const ok: ActionResult = { ok: true };
-let t = 0;
+let t = Number(q.get('t') ?? 0) || 0; // &t=9 : scanner prêt
 
 const result = (over: Partial<DeliveryResult>): DeliveryResult => ({
   orderId: 'o3', orderName: 'Médicaments', shelterId: 's2', shelterName: 'Pharmacie des Couëts', npc: 'agathe',
@@ -87,8 +88,10 @@ switch (ecran) {
   case 'reglages': hud.openPorter('reglages'); break;
   case 'fiche': hud.setSheetExpanded(true); break;
   case 'toasts':
-    hud.handle({ type: 'scan', found: 3 });
-    hud.handle({ type: 'toast', text: 'Trop loin pour ramasser ce colis', tone: 'warn' });
-    hud.handle({ type: 'levelUp', level: 5 });
+    setTimeout(() => {
+      hud.handle({ type: 'scan', found: 3 });
+      hud.handle({ type: 'toast', text: 'Trop loin pour ramasser ce colis', tone: 'warn' });
+      hud.handle({ type: 'levelUp', level: 5 });
+    }, 1200);
     break;
 }

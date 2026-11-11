@@ -71,7 +71,9 @@ void main() {
 }`;
 const rainFrag = /* glsl */`
 uniform vec3 uColor; uniform float uOpacity; varying float vA;
-void main() { gl_FragColor = vec4(uColor, uOpacity * vA); #include <colorspace_fragment>
+void main() {
+  gl_FragColor = vec4(uColor, uOpacity * vA);
+  #include <colorspace_fragment>
 }`;
 
 const DROPS = 520;

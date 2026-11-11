@@ -79,7 +79,7 @@ export class FxKit {
   readonly solidBlue = new THREE.MeshBasicMaterial({ color: 0x7fc7d9 });
   readonly pipOff = new THREE.MeshBasicMaterial({ color: 0x4a5a56, transparent: true, opacity: 0.55, depthWrite: false });
   readonly beamAmber = this.beamMat('amber', 0.75, 0.6, 1.6);
-  readonly beamBlue = this.beamMat('blue', 0.8, 0.62, 1.3);
+  readonly beamBlue = this.beamMat('blue', 0.55, 0.6, 1.3);
   readonly wallDanger = this.beamMat('danger', 0.5, 0.42, 1.8);
   readonly discDanger: THREE.ShaderMaterial;
 
@@ -162,7 +162,7 @@ export class ScanPulse {
 
   constructor(scene: THREE.Scene, private readonly kit: FxKit) {
     for (let i = 0; i < 3; i++) {
-      const m = new THREE.Mesh(i === 0 ? kit.ring : kit.thinRing, kit.ownFlat('amber'));
+      const m = new THREE.Mesh(kit.thinRing, kit.ownFlat('amber'));
       m.renderOrder = 20; this.rings.push(m); this.group.add(m);
     }
     this.fill = new THREE.Mesh(kit.disc, kit.ownFlat('amber'));

@@ -136,7 +136,7 @@ export class ShelterPanel {
   private row(): Row<OrderView> {
     const name = h('span', 'dr-row-name');
     const frag = h('span', 'dr-row-frag', icon('fragile'));
-    const w = meta('weight'), c = meta('crate'), d = meta('clock');
+    const w = meta('weight'), c = meta('shield'), d = meta('clock');
     const info = btn('dr-row-info', null, h('span', 'dr-row-l1', name, frag), h('span', 'dr-row-l3', w.el, c.el, d.el));
     const el = h('div', 'dr-row', info, h('span', 'dr-row-go', icon('arrow')));
     el.dataset.state = 'porte';

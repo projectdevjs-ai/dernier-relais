@@ -22,7 +22,7 @@ export class OrderPanel {
   private art = h('span', 'dr-crate-art');
   private frag = h('span', 'dr-tag dr-tag-warn', icon('fragile'), 'Fragile');
   private wt = cell('weight', 'Poids');
-  private cond = cell('crate', 'État');
+  private cond = cell('shield', 'État');
   private delay = cell('clock', 'Délai');
   private reward = cell('star', 'Récompense');
   private dest = h('span', 'dr-dest-name');
@@ -36,11 +36,12 @@ export class OrderPanel {
 
   constructor(parent: HTMLElement, ctx: Ctx) {
     this.panel = new Panel(parent, 'dr-panel-auto', 'Colis');
-    this.panel.head.append(this.crate, this.name);
+    this.panel.head.classList.add('dr-order-head');
+    this.panel.head.append(this.art, this.crate, this.name);
     this.destBtn = btn('dr-dest', null, icon('pin'), h('span', 'dr-dest-txt', h('span', 'dr-cell-label', 'Destinataire'), this.dest), this.destDist);
     this.destBtn.addEventListener('click', () => { if (this.destId) ctx.openShelter(this.destId); });
     this.panel.body.append(
-      h('div', 'dr-order-hero', this.art, this.frag),
+      this.frag,
       h('div', 'dr-cells', this.wt.el, this.reward.el, this.delay.el, this.cond.el),
       this.destBtn);
     this.act = btn('dr-btn dr-btn-wide', null, this.actIcon, this.actText);

@@ -46,3 +46,4 @@ setTimeout(() => stage.pulseScan(160), 2500);
 if (q.has('fete')) setInterval(() => stage.celebrate('s1'), 3000);
 if (q.has('ambiance2')) setTimeout(() => stage.setAmbiance('clair'), 6000);
 window.addEventListener('keydown', e => { if (e.key === 'r') stage.recenter(); });
+(window as unknown as { stage: Stage }).stage = stage;

@@ -44,8 +44,8 @@ export const WEAR = {
 export const BALANCE = {
   /** au-delà (en valeur absolue), la charge est déséquilibrée */ limit: 0.6,
   /** secondes de déséquilibre tolérées avant que les colis s'abîment */ graceS: 6,
-  /** dérive par seconde : base, part de la charge, part du vent */ base: 0.01, perLoad: 0.085, perWind: 0.045, windFullKmh: 60,
-  /** le porteur se rattrape un peu tout seul, par seconde */ restore: 0.03,
+  /** dérive par seconde : base, part de la charge, part du vent */ base: 0.01, perLoad: 0.06, perWind: 0.035, windFullKmh: 60,
+  /** le porteur se rattrape un peu tout seul, par seconde */ restore: 0.02,
   /** retour au calme à l'arrêt, par seconde */ settle: 0.15,
 } as const;
 

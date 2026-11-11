@@ -8,10 +8,10 @@ import type { FxKit } from './fx';
 import { type Layer3D, TOP, WORLD } from './layer';
 import { CRATE_MODEL } from './porter';
 
-const CRATE_HEIGHT = 3.2;
-const CRATE_WIDTH = 4.2;
-const RING = 4.6;
-export const PARCEL_TOP = 9;
+const CRATE_HEIGHT = 4;
+const CRATE_WIDTH = 5;
+const RING = 5.4;
+export const PARCEL_TOP = 11;
 
 interface Item {
   id: string;
