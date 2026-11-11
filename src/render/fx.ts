@@ -61,7 +61,7 @@ export class FxKit {
   /** Les cinq segments de l'anneau d'étoiles d'un abri. */
   readonly starArcs: THREE.RingGeometry[] = [];
 
-  private readonly glowTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,0.55)'], [0.6, 'rgba(255,255,255,0.14)'], [1, 'rgba(255,255,255,0)']]);
+  readonly glowTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,0.55)'], [0.6, 'rgba(255,255,255,0.14)'], [1, 'rgba(255,255,255,0)']]);
   private readonly shadowTex = radialTexture([[0, 'rgba(0,0,0,1)'], [0.55, 'rgba(0,0,0,0.75)'], [1, 'rgba(0,0,0,0)']]);
   private readonly tinted: Tinted[] = [];
 
@@ -220,7 +220,7 @@ export class Celebration {
   constructor(scene: THREE.Scene, private readonly kit: FxKit, pixelRatio: number) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
-    this.points = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffc46b, size: 5 * pixelRatio, sizeAttenuation: false, transparent: true, depthWrite: false, depthTest: false }));
+    this.points = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffc46b, map: kit.glowTex, size: 9 * pixelRatio, sizeAttenuation: false, transparent: true, depthWrite: false, depthTest: false }));
     this.points.frustumCulled = false;
     this.column = new THREE.Mesh(kit.beam, kit.beamAmber.clone());
     this.ring = new THREE.Mesh(kit.ring, kit.ownFlat('amber'));
@@ -264,9 +264,9 @@ export class Celebration {
     }
     this.points.geometry.attributes.position.needsUpdate = true;
     this.points.material.opacity = 1 - k * k;
-    const w = 7 * (1 - k) + 1.5;
+    const w = 3.2 * (1 - k) + 0.8;
     this.column.scale.set(w, this.h * 3.2, w);
-    this.column.material.uniforms.uOpacity.value = (1 - k) * 1.1;
+    this.column.material.uniforms.uOpacity.value = (1 - k) * (this.kit.isDark ? 1.1 : 0.55);
     const r = 8 + (1 - (1 - k) ** 3) * this.h * 1.3;
     this.ring.scale.set(r, 1, r);
     this.ring.material.opacity = 0.9 * (1 - k);

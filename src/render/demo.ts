@@ -35,6 +35,7 @@ function push(): void {
   const meteo = q.get('meteo') as WeatherKind | null;
   if (meteo) view.weather.kind = meteo;
   if (q.has('nuit')) { view.weather.night = true; view.weather.sunAltDeg = -20; }
+  if (!near) view.dangers[0].at = [centre[0] - 150 / 75000, centre[1] + 10 / 111000];
   if (q.has('brume')) {
     const here = cellAt(view.player.at[0], view.player.at[1]);
     view.loadedCells = cellsAround(here, 2).map(c => c.id);
