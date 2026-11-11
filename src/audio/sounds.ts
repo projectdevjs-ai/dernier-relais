@@ -189,7 +189,7 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
   // Entrée en zone dangereuse : deux graves voisins qui battent, grondement de souffle, triton sourd par-dessus.
   // Les graves sont riches en harmoniques (dents de scie filtrées) pour rester audibles sur un haut-parleur de téléphone.
   dangerIn: {
-    dur: 1.8, next: 1.0, prio: 2, trim: 1, family: 'jeu',
+    dur: 1.8, next: 1.0, prio: 2, trim: 0.67, family: 'jeu',
     make(k, t) {
       k.tone({ f: 73.42, t, dur: 1.5, gain: 0.3, attack: 0.22, hold: 0.35, type: 'sawtooth', lp: 320, send: 0.15 });
       k.tone({ f: 77.78, t, dur: 1.5, gain: 0.26, attack: 0.25, hold: 0.35, type: 'sawtooth', lp: 280, send: 0.15 });
@@ -209,39 +209,39 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
   },
   // Messages : un tic discret, deux notes montantes pour une bonne nouvelle, deux coups mats pour un avertissement.
   toastInfo: {
-    dur: 0.5, next: 0.15, prio: 1, trim: 1, family: 'jeu',
+    dur: 0.5, next: 0.15, prio: 1, trim: 1.5, family: 'jeu',
     make(k, t) { k.tone({ f: n(8), t, dur: 0.11, gain: 0.16, attack: 0.003, lp: 3000, send: 0.25 }); },
   },
   toastGood: {
-    dur: 0.7, next: 0.25, prio: 1, trim: 1, family: 'jeu',
+    dur: 0.7, next: 0.25, prio: 1, trim: 1.15, family: 'jeu',
     make(k, t) {
       k.tone({ f: n(5), t, dur: 0.09, gain: 0.15, attack: 0.003, send: 0.25 });
       k.tone({ f: n(8), t: t + 0.075, dur: 0.2, gain: 0.17, attack: 0.003, fm: { ratio: 2, index: 0.4, decay: 0.08 }, send: 0.3 });
     },
   },
   toastWarn: {
-    dur: 0.7, next: 0.3, prio: 1, trim: 1, family: 'jeu',
+    dur: 0.7, next: 0.3, prio: 1, trim: 1.1, family: 'jeu',
     make(k, t) {
       for (const dt of [0, 0.13]) k.tone({ f: n(1), t: t + dt, dur: 0.11, gain: 0.22, attack: 0.004, type: 'triangle', lp: 1400, send: 0.2 });
     },
   },
   // Interface : toucher, ouverture (ça monte), fermeture (ça redescend), refus (demi-ton qui frotte), validation (quinte).
   uiTap: {
-    dur: 0.25, next: 0.05, prio: 1, trim: 1, family: 'jeu',
+    dur: 0.25, next: 0.05, prio: 1, trim: 1.3, family: 'jeu',
     make(k, t) {
       k.noise({ t, dur: 0.02, gain: 0.2, f: 2400, q: 4, attack: 0.001 });
       k.tone({ f: n(10), t, dur: 0.045, gain: 0.09, attack: 0.002 });
     },
   },
   uiOpen: {
-    dur: 0.6, next: 0.15, prio: 1, trim: 1, family: 'jeu',
+    dur: 0.6, next: 0.15, prio: 1, trim: 1.45, family: 'jeu',
     make(k, t) {
       k.tone({ f: n(5), to: n(8), glide: 0.09, t, dur: 0.18, gain: 0.16, attack: 0.008, send: 0.3 });
       k.noise({ t, dur: 0.11, gain: 0.04, f: 1500, to: 3200, q: 1.5, attack: 0.03 });
     },
   },
   uiClose: {
-    dur: 0.6, next: 0.15, prio: 1, trim: 1, family: 'jeu',
+    dur: 0.6, next: 0.15, prio: 1, trim: 1.45, family: 'jeu',
     make(k, t) {
       k.tone({ f: n(8), to: n(5), glide: 0.08, t, dur: 0.16, gain: 0.16, attack: 0.006, lp: 2600, send: 0.25 });
       k.noise({ t, dur: 0.09, gain: 0.035, f: 3000, to: 1300, q: 1.5, attack: 0.01 });
@@ -267,7 +267,7 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
     dur: 0.35, next: 0.2, prio: 0, trim: 1, family: 'ambiance',
     make(k, t, v, w) {
       const hum = 0.85 + 0.3 * k.rand();
-      k.noise({ t, dur: 0.07 + 0.05 * v, gain: (0.2 + 0.2 * v) * hum, f: (520 - 260 * v) * (0.9 + 0.2 * k.rand()), type: 'lowpass', q: 0.9, attack: 0.004, prio: 0 });
+      k.noise({ t, dur: 0.07 + 0.05 * v, gain: (0.2 + 0.13 * v) * hum, f: (520 - 260 * v) * (0.9 + 0.2 * k.rand()), type: 'lowpass', q: 0.9, attack: 0.004, prio: 0 });
       k.noise({ t: t + 0.018, dur: 0.05, gain: 0.07 * hum, f: 1400 + 700 * k.rand(), q: 1.2, attack: 0.006, prio: 0 });
       if (v > 0.6 && k.rand() < 0.4) k.noise({ t: t + 0.06, dur: 0.09, gain: 0.05, f: 620 + 200 * k.rand(), q: 9, attack: 0.02, prio: 0 });
       if (w > 0.05) k.noise({ t: t + 0.01, dur: 0.1, gain: 0.07 * w, f: 3400, type: 'highpass', q: 0.6, attack: 0.008, prio: 0 });
@@ -275,7 +275,7 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
   },
   // Battement d'alerte d'équilibre : deux coups feutrés, comme un cœur. v = urgence.
   pulse: {
-    dur: 0.5, next: 0.3, prio: 0, trim: 1, family: 'ambiance',
+    dur: 0.5, next: 0.3, prio: 0, trim: 0.5, family: 'ambiance',
     make(k, t, v) {
       k.tone({ f: 196, to: 165, t, dur: 0.14, gain: 0.2 + 0.1 * v, attack: 0.006, type: 'triangle', lp: 800, prio: 0 });
       k.tone({ f: 185, to: 150, t: t + 0.15, dur: 0.18, gain: 0.13 + 0.08 * v, attack: 0.006, type: 'triangle', lp: 700, prio: 0 });
@@ -283,7 +283,7 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
   },
   // Note éparse de la nuit : une seule note longue, noyée de réverbération. v choisit la note.
   nightNote: {
-    dur: 1.95, next: 1.0, prio: 0, trim: 1, family: 'ambiance',
+    dur: 1.95, next: 1.0, prio: 0, trim: 0.7, family: 'ambiance',
     make(k, t, v) {
       const d = [0, 3, 4, 5, 6, 8][Math.min(5, Math.floor(v * 6))];
       k.tone({ f: n(d), t, dur: 1.3, gain: 0.1, attack: 0.04, fm: { ratio: 2, index: 0.25, decay: 0.4 }, send: 0.8, prio: 0 });

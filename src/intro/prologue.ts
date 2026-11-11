@@ -347,7 +347,7 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
   return { scene, camera, porter, sun, ember, smoke, sparks, dust, beam, sky, pal, env };
 }
 
-const _p = new THREE.Vector3(), _l = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+const _p = new THREE.Vector3(), _l = new THREE.Vector3();
 
 /** Met toute la scène dans l'état de l'instant t (secondes). */
 function applyTime(w: World, t: number, aspect: number, still: boolean): void {
@@ -452,8 +452,6 @@ function applyTime(w: World, t: number, aspect: number, still: boolean): void {
   // --- Faisceau de la station : respiration lente ---
   for (const b of w.beam) (b.material as THREE.MeshBasicMaterial).opacity = (b.userData.op as number) * (0.8 + Math.sin(t * 1.7) * 0.12 + Math.sin(t * 5.3) * 0.05);
   w.sky.uniforms.uTime.value = t;
-  // Pour le compilateur : vecteurs de travail partagés
-  _a.set(0, 0, 0); _b.set(0, 0, 0);
 }
 
 /**
@@ -525,7 +523,10 @@ export function playPrologue(root: HTMLElement, opts: PrologueOpts = {}): Promis
       resolve();
     };
     // Passer : court fondu au noir, puis fin.
-    const onSkip = (): void => { if (leaving < 0) { leaving = performance.now(); skip.disabled = true; } };
+    const onSkip = (): void => {
+      if (frozen) { finish(); return; }
+      if (leaving < 0) { leaving = performance.now(); skip.disabled = true; }
+    };
     const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape' && !skip.hidden) onSkip(); };
     skip.addEventListener('click', onSkip);
     document.addEventListener('keydown', onKey);
@@ -569,7 +570,8 @@ export function playPrologue(root: HTMLElement, opts: PrologueOpts = {}): Promis
       vp.render(w.scene, w.camera, t);
       veil.loader(false);
       veil.lift();
-      if (frozen) { skip.hidden = t < T.skipAt; host.dataset.pret = '1'; }
+      // Figé (démo, captures) : une seule image, pas de boucle de rendu.
+      if (frozen) { skip.hidden = t < T.skipAt; host.dataset.pret = '1'; console.info('[prologue] image figée prête'); return; }
       raf = requestAnimationFrame(frame);
     }).catch(e => { console.warn('[prologue] échec, prologue ignoré', e); finish(); });
   });

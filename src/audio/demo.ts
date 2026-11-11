@@ -6,7 +6,7 @@
 import type { ContractView, DeliveryResult, GameEvent, GameView, Grade, OrderView, WeatherKind } from '../game/api';
 import { type AmbientInput, Ambience } from './ambience';
 import { MAX_VOICES, Sound, type UiKind } from './audio';
-import { CEILING, Rig, seeded } from './rig';
+import { CEILING, OUTPUT_BOOST, Rig, seeded } from './rig';
 import { SOUNDS, SOUND_NAMES, type SoundName, play } from './sounds';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -111,6 +111,9 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 // ---------- Mesures ----------
 
 const SR = 48000;
+// Le compresseur du navigateur écrase les 150 premières millisecondes d'un contexte tout neuf :
+// les sons sont donc lancés un quart de seconde après le début du rendu, comme dans un contexte déjà en route.
+const WARMUP = 0.25;
 const db = (x: number): number => (x > 0 ? 20 * Math.log10(x) : -Infinity);
 const r1 = (x: number): number => (Number.isFinite(x) ? Math.round(x * 10) / 10 : -999);
 
@@ -125,6 +128,8 @@ export interface Mesure {
   debut: number; fin: number;
   /** Plus grand saut entre deux échantillons voisins, rapporté à la crête. */
   saut: number;
+  /** Niveau atteint 0,25 ms après le tout début du son, et 0,25 ms avant sa toute fin, rapportés à la crête (un clic donnerait près de 1). */
+  attaque: number; extinction: number;
   nan: number; voix: number;
 }
 
@@ -148,7 +153,19 @@ function measure(nom: string, famille: string, buf: AudioBuffer, voix: number): 
   const win = Math.min(len, Math.floor(SR * 0.5), Math.max(1, last - first + 1));
   let acc = 0, best = 0;
   for (let i = 0; i < len; i++) { acc += pow[i]; if (i >= win) acc -= pow[i - win]; if (i >= win - 1) best = Math.max(best, acc); }
+  // Bords du son : on cherche le premier et le dernier échantillon au-dessus d'un millième de la crête,
+  // puis on regarde le quart de milliseconde qui suit (ou précède). Une enveloppe propre y est encore très basse.
+  let attaque = 0, extinction = 0;
+  for (const d of chans) {
+    let a = 0, b = len - 1;
+    while (a < len && Math.abs(d[a]) <= peak * 0.001) a++;
+    while (b > 0 && Math.abs(d[b]) <= peak * 0.001) b--;
+    for (let i = a; i < Math.min(len, a + 12); i++) attaque = Math.max(attaque, Math.abs(d[i]));
+    for (let i = Math.max(0, b - 12); i <= b; i++) extinction = Math.max(extinction, Math.abs(d[i]));
+  }
+  const r2 = (x: number): number => (peak > 0 ? Math.round((x / peak) * 1000) / 1000 : 0);
   return {
+    attaque: r2(attaque), extinction: r2(extinction),
     nom, famille, duree: first < 0 ? 0 : Math.round(((last - first + 1) / SR) * 100) / 100,
     crete: r1(db(peak)), rms: r1(db(rms)), rmsFort: r1(db(Math.sqrt(Math.max(0, best) / win))),
     debut: Math.max(...chans.map(d => Math.abs(d[0]))), fin: Math.max(...chans.map(d => Math.abs(d[len - 1]))),
@@ -159,9 +176,9 @@ function measure(nom: string, famille: string, buf: AudioBuffer, voix: number): 
 /** Rend un son seul, hors ligne, à travers la chaîne complète. */
 async function renderSound(name: SoundName, v: number, w: number): Promise<Mesure> {
   const def = SOUNDS[name];
-  const ctx = new OfflineAudioContext(2, Math.ceil(SR * (def.dur + 0.5)), SR);
+  const ctx = new OfflineAudioContext(2, Math.ceil(SR * (WARMUP + def.dur + 0.4)), SR);
   const rig = new Rig(ctx, { rand: seeded(11) });
-  play(rig, name, 0, v, w);
+  play(rig, name, WARMUP, v, w);
   const voix = rig.peakVoices;
   return measure(name, def.family, await ctx.startRendering(), voix);
 }
@@ -192,8 +209,8 @@ const SCENES: Scene[] = [
 ];
 
 export interface MesureNappe extends Mesure {
-  /** Plus grand écart de niveau entre deux tranches voisines de 100 ms, en dB (un fondu propre reste petit). */
-  marche: number;
+  /** Niveau RMS par tranche d'une demi-seconde, en dBFS : montre les fondus et l'évolution de la nappe. */
+  profil: number[];
 }
 
 /** Rend une scène d'ambiance en appelant update() toutes les 200 ms de temps audio, comme le fait le jeu. */
@@ -210,18 +227,15 @@ async function renderScene(s: Scene): Promise<MesureNappe> {
   step(0);
   const buf = await ctx.startRendering();
   const m = measure(s.nom, 'nappe', buf, voix);
-  // Niveau par tranches de 100 ms : sert à vérifier les fondus (pas de marche brutale) et à compter les pas.
-  const d = buf.getChannelData(0), w = SR / 10, levels: number[] = [];
-  for (let i = 0; i + w <= d.length; i += w) { let a = 0; for (let j = i; j < i + w; j++) a += d[j] * d[j]; levels.push(Math.sqrt(a / w)); }
-  let marche = 0;
-  for (let i = 1; i < levels.length; i++) if (levels[i] > 0.0005 && levels[i - 1] > 0.0005) marche = Math.max(marche, Math.abs(db(levels[i] / levels[i - 1])));
-  return { ...m, marche: r1(marche) };
+  const d = buf.getChannelData(0), w = SR / 2, profil: number[] = [];
+  for (let i = 0; i + w <= d.length; i += w) { let a = 0; for (let j = i; j < i + w; j++) a += d[j] * d[j]; profil.push(Math.round(Math.max(-99, db(Math.sqrt(a / w))))); }
+  return { ...m, profil };
 }
 
 /** Tous les sons du jeu lancés au même instant : le pire cas pour le plafond et la limite de voix. */
 async function renderStress(): Promise<Mesure> {
   const ctx = new OfflineAudioContext(2, SR * 3, SR), rig = new Rig(ctx, { rand: seeded(5) });
-  for (let k = 0; k < 3; k++) for (const name of SOUND_NAMES) play(rig, name, 0.01 * k, 1, 1);
+  for (let k = 0; k < 3; k++) for (const name of SOUND_NAMES) play(rig, name, WARMUP + 0.01 * k, 1, 1);
   const voix = rig.peakVoices;
   return measure('TOUS LES SONS × 3 en même temps', 'essai', await ctx.startRendering(), voix);
 }
@@ -236,7 +250,7 @@ async function chainGain(): Promise<number> {
   const d = (await ctx.startRendering()).getChannelData(0);
   let peak = 0;
   for (let i = SR / 2; i < SR; i++) peak = Math.max(peak, Math.abs(d[i]));
-  return r1(db(peak / 0.05) * 10) / 10;
+  return Math.round(db(peak / 0.05 / OUTPUT_BOOST) * 100) / 100;
 }
 
 export interface Rapport {
@@ -260,7 +274,10 @@ async function mesurerTout(): Promise<Rapport> {
   for (const m of [...sons, ...nappes, essai]) {
     if (m.crete >= -1) echecs.push(`${m.nom} : crête ${m.crete} dBFS`);
     if (m.nan) echecs.push(`${m.nom} : ${m.nan} valeurs invalides`);
-    if (m.debut > 0.002 || m.fin > 0.002) echecs.push(`${m.nom} : début ${m.debut} / fin ${m.fin}`);
+    // Une nappe est coupée par la fin du rendu : seule la scène des fondus, qui s'éteint d'elle-même, doit finir à zéro.
+    const cut = m.famille === 'nappe' && !m.nom.startsWith('fondus');
+    if (m.debut > 0.002 || (!cut && m.fin > 0.002)) echecs.push(`${m.nom} : début ${m.debut} / fin ${m.fin}`);
+    if (m.famille !== 'nappe' && (m.attaque > 0.35 || m.extinction > 0.05)) echecs.push(`${m.nom} : attaque ${m.attaque} / extinction ${m.extinction}`);
     if (m.voix > MAX_VOICES) echecs.push(`${m.nom} : ${m.voix} voix`);
   }
   for (const m of sons) if (m.duree > 2 && !m.nom.startsWith('thunder')) echecs.push(`${m.nom} : ${m.duree} s`);
@@ -275,14 +292,14 @@ function row(cells: Array<string | number>, flags: boolean[] = []): string {
   return `<tr>${cells.map((c, i) => `<td${flags[i] === undefined ? '' : flags[i] ? ' class="ok"' : ' class="ko"'}>${c}</td>`).join('')}</tr>`;
 }
 function show(r: Rapport): void {
-  const head = '<tr><th>Son</th><th>Famille</th><th>Durée (s)</th><th>Crête (dBFS)</th><th>RMS (dBFS)</th><th>RMS 0,5 s fort</th><th>Écart médiane</th><th>|début|</th><th>|fin|</th><th>Saut / crête</th><th>NaN</th><th>Voix</th></tr>';
+  const head = '<tr><th>Son</th><th>Famille</th><th>Durée (s)</th><th>Crête (dBFS)</th><th>RMS (dBFS)</th><th>RMS 0,5 s fort</th><th>Écart médiane</th><th>|début|</th><th>|fin|</th><th>Attaque</th><th>Extinction</th><th>Saut / crête</th><th>NaN</th><th>Voix</th></tr>';
   const line = (m: Mesure): string => row(
-    [m.nom, m.famille, m.duree, m.crete, m.rms, m.rmsFort, m.famille === 'jeu' ? r1(m.rms - r.mediane) : '', m.debut.toExponential(1), m.fin.toExponential(1), m.saut, m.nan, m.voix],
-    [true, true, m.duree <= 2 || m.nom.startsWith('thunder'), m.crete < -1, true, true, m.famille !== 'jeu' || Math.abs(m.rms - r.mediane) <= 6, m.debut <= 0.002, m.fin <= 0.002, true, m.nan === 0, m.voix <= MAX_VOICES],
+    [m.nom, m.famille, m.duree, m.crete, m.rms, m.rmsFort, m.famille === 'jeu' ? r1(m.rms - r.mediane) : '', m.debut.toExponential(1), m.fin.toExponential(1), m.attaque, m.extinction, m.saut, m.nan, m.voix],
+    [true, true, m.duree <= 2 || m.nom.startsWith('thunder'), m.crete < -1, true, true, m.famille !== 'jeu' || Math.abs(m.rms - r.mediane) <= 6, m.debut <= 0.002, m.fin <= 0.002, m.attaque <= 0.35, m.extinction <= 0.05, true, m.nan === 0, m.voix <= MAX_VOICES],
   );
   $('mesures').innerHTML = head + r.sons.map(line).join('') + line(r.essai);
-  $('nappes').innerHTML = '<tr><th>Scène</th><th>Crête (dBFS)</th><th>RMS (dBFS)</th><th>RMS 0,5 s fort</th><th>Marche max entre tranches de 100 ms (dB)</th><th>|début|</th><th>|fin|</th><th>NaN</th><th>Voix</th></tr>'
-    + r.nappes.map(m => row([m.nom, m.crete, m.rms, m.rmsFort, m.marche, m.debut.toExponential(1), m.fin.toExponential(1), m.nan, m.voix], [true, m.crete < -1, true, true, true, m.debut <= 0.002, m.fin <= 0.002, m.nan === 0, m.voix <= MAX_VOICES])).join('');
+  $('nappes').innerHTML = '<tr><th>Scène</th><th>Crête (dBFS)</th><th>RMS (dBFS)</th><th>RMS 0,5 s fort</th><th>|début|</th><th>|fin|</th><th>NaN</th><th>Voix</th><th>Niveau par demi-seconde (dBFS)</th></tr>'
+    + r.nappes.map(m => row([m.nom, m.crete, m.rms, m.rmsFort, m.debut.toExponential(1), m.fin.toExponential(1), m.nan, m.voix, m.profil.join(' ')], [true, m.crete < -1, true, true, m.debut <= 0.002])).join('');
   $('resume').innerHTML = `${r.ok ? '<b style="color:var(--ok)">Tous les critères sont tenus.</b>' : `<b style="color:var(--ko)">${r.echecs.length} écart(s) :</b> ${r.echecs.join(' ; ')}`}
     <br>Plafond de sortie : ${r.plafond} dBFS. Gain de la chaîne à bas niveau : ${r.gainChaine} dB. Médiane RMS des sons du jeu : ${r.mediane} dBFS (écarts de ${r.ecartMin} à +${r.ecartMax} dB).`;
 }

@@ -15,6 +15,8 @@ export const CEILING = 0.84;
 // mesuré dans Chrome). On le retire juste après pour que les niveaux réglés à la main restent vrais.
 const COMP = { threshold: -12, knee: 6, ratio: 12, attack: 0.003, release: 0.18 };
 const COMP_MAKEUP = 1.9;
+/** Gain de sortie : un son seul culmine vers −7 dBFS, un passage dense est tenu par le compresseur puis arrondi par le plafond. */
+export const OUTPUT_BOOST = 1.4;
 const REVERB_S = 0.85;
 const NOISE_S = 3.7;
 
@@ -105,7 +107,7 @@ export class Rig {
     comp.threshold.value = COMP.threshold; comp.knee.value = COMP.knee; comp.ratio.value = COMP.ratio;
     comp.attack.value = COMP.attack; comp.release.value = COMP.release;
     const pre = ctx.createGain();
-    pre.gain.value = 0.5 / COMP_MAKEUP;
+    pre.gain.value = (0.5 * OUTPUT_BOOST) / COMP_MAKEUP;
     const ceil = ctx.createWaveShaper();
     ceil.curve = makeCeilingCurve();
     this.out = ctx.createGain();
@@ -162,6 +164,8 @@ export class Rig {
 
 /** Enveloppe sans clic : part de 0, monte en `attack`, tient `hold`, s'éteint à −60 dB en `dur`, finit à 0. */
 function shape(g: AudioParam, t: number, attack: number, hold: number, dur: number, peak: number): void {
+  // Valeur de repos à 0 : sans elle, le gain vaut 1 jusqu'à l'instant t et laisse passer un échantillon de trop (clic).
+  g.value = 0;
   g.setValueAtTime(0, t);
   g.linearRampToValueAtTime(peak, t + attack);
   if (hold > 0) g.setValueAtTime(peak, t + attack + hold);

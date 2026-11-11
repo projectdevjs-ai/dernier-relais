@@ -1,0 +1,58 @@
+/* Prologue : texte sobre en surimpression, bouton « Passer ». Les opacités sont pilotées par le code. */
+.s3-prologue { z-index: 60; background: #000; color: #efe9da; }
+.pl-fade { position: absolute; inset: 0; background: var(--veil); pointer-events: none; opacity: 1; }
+.s3-prologue[data-ambiance="clair"] .pl-fade { background: #0a1110; }
+.pl-layer { position: absolute; inset: 0; pointer-events: none; }
+
+/* Lignes de récit : tiers inférieur, graisse légère, longueur de ligne courte. */
+.pl-line {
+  position: absolute; left: calc(var(--sal) + 28px); right: calc(var(--sar) + 28px);
+  bottom: calc(var(--sab) + 19vh); display: flex; justify-content: center; will-change: opacity, transform;
+}
+.pl-line p {
+  max-width: 21em; text-align: center; text-wrap: balance;
+  font: 300 clamp(18px, 4.9vw, 24px)/1.5 var(--f-ui); letter-spacing: .015em; color: #f3eee0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .65), 0 0 22px rgba(0, 0, 0, .55);
+}
+
+/* Cartons de lieu : petit surtitre ambre, nom en capitales très espacées, filet. */
+.pl-place {
+  position: absolute; left: var(--sal); right: var(--sar); top: calc(var(--sat) + 15vh);
+  display: grid; justify-items: center; gap: 12px; text-align: center; padding: 0 24px; will-change: opacity, transform;
+}
+.pl-kicker {
+  font: 600 clamp(10px, 2.7vw, 12px)/1.4 var(--f-title); font-stretch: condensed; letter-spacing: .3em; margin-right: -.3em;
+  text-transform: uppercase; color: #f0b266; text-shadow: 0 1px 8px rgba(0, 0, 0, .7); max-width: 26em;
+}
+.pl-name {
+  font: 700 clamp(30px, 9.6vw, 46px)/1 var(--f-title); font-stretch: condensed; letter-spacing: .3em; margin-right: -.3em;
+  text-transform: uppercase; color: #f6f1e4; text-shadow: 0 2px 18px rgba(0, 0, 0, .55);
+}
+.pl-place::after { content: ""; width: 44px; height: 1px; background: #f0b266; opacity: .9; margin-top: 4px; }
+
+/* Titre du jeu, sur le fondu final. */
+.pl-title { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 20px; will-change: opacity, transform; }
+.pl-title .pl-name { font-size: clamp(32px, 10.4vw, 54px); letter-spacing: .34em; margin-right: -.34em; text-align: center; line-height: 1.25; color: #f6f1e4; }
+
+.pl-skip {
+  position: absolute; right: calc(var(--sar) + 14px); bottom: calc(var(--sab) + 18px); z-index: 4;
+  min-height: 44px; min-width: 44px; padding: 0 14px 0 18px; border-radius: 22px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 600 13px/1 var(--f-title); font-stretch: condensed; letter-spacing: .2em; text-transform: uppercase; color: #efe9da;
+  background: rgba(10, 17, 16, .46); border: 1px solid rgba(239, 233, 218, .3);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  animation: pl-in .8s ease both;
+}
+.s3 .pl-skip { color: #efe9da; }
+.pl-skip .s3-ic { width: 16px; height: 16px; }
+.pl-skip:active { transform: scale(.95); }
+.pl-skip:disabled { opacity: .4; }
+@keyframes pl-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (orientation: landscape) {
+  .pl-line { bottom: calc(var(--sab) + 13vh); }
+  .pl-place { top: calc(var(--sat) + 12vh); }
+  .pl-line p { font-size: clamp(17px, 2.6vw, 22px); max-width: 30em; }
+  .pl-name { font-size: clamp(28px, 5vw, 44px); }
+}
+@media (prefers-reduced-motion: reduce) { .pl-skip { animation: none; } }

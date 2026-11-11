@@ -39,7 +39,7 @@ const MOODS: Record<WeatherKind, { rain: number; wind: number; pad: number; cut:
 };
 const MOOD_DEFAULT = MOODS.nuages;
 /** Niveau général de la nappe : volontairement bas, bien en dessous des sons du jeu. */
-const BED = 0.5;
+const BED = 0.4;
 const FIFTHS = [220.4, 196.2, 261.9, 174.8]; // la, sol, do, fa : la voix mobile du fond tonal
 const PATTER_S = 6.1;
 
@@ -96,7 +96,7 @@ export class Ambience {
     const wind = clamp01(w.windKmh / 60), T = now, ph = this.phase;
     // Vent : niveau proportionnel au vent, avec des rafales lentes ; le filtre s'ouvre quand il forcit.
     const gust = drift(T, 0.13, 0.31, ph);
-    const windLevel = (0.015 + 0.5 * wind ** 1.4) * mood.wind * (0.55 + 0.9 * gust);
+    const windLevel = (0.015 + 0.3 * wind ** 1.4) * mood.wind * (0.55 + 0.9 * gust);
     if (this.layer('wind', windLevel > 0.004, now)) {
       const l = this.wind!;
       this.set(l.g.gain, windLevel, 0.9);
@@ -190,6 +190,7 @@ export class Ambience {
     this.veil = ctx.createBiquadFilter();
     this.veil.type = 'lowpass'; this.veil.frequency.value = 3000; this.veil.Q.value = 0.4;
     this.bus = ctx.createGain();
+    this.bus.gain.value = 0;
     this.bus.gain.setValueAtTime(0, now);
     this.veil.connect(this.bus); this.bus.connect(this.rig.amb);
   }
@@ -230,6 +231,7 @@ export class Ambience {
   }
   private silentGain(now: number): GainNode {
     const g = this.rig.ctx.createGain();
+    g.gain.value = 0;
     g.gain.setValueAtTime(0, now);
     return g;
   }
