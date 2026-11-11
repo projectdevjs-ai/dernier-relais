@@ -1,0 +1,213 @@
+// Les abris : bâtiment du PNJ à l'échelle « jeu », anneau d'étoiles au sol, PNJ devant
+// à partir d'une étoile, faisceau bleu quand des colis portés lui sont destinés.
+import * as THREE from 'three';
+import type { NpcId, ShelterView } from '../game/api';
+import type { LngLat } from '../core/geo';
+import { disposeInstance, type Instance, setLayer, spawn } from './assets';
+import type { FxKit } from './fx';
+import { type Layer3D, TOP, WORLD } from './layer';
+import type { Env } from './sky';
+
+const BUILDING: Record<NpcId, string> = { mara: 'abri_mara', tomas: 'atelier_tomas', agathe: 'dispensaire_agathe', kenji: 'tour_kenji' };
+/** Hauteur visée et emprise maximale des abris, en mètres à l'échelle de la carte. */
+const SHELTER_HEIGHT = 30;
+const SHELTER_WIDTH = 34;
+const NPC_HEIGHT = 8;
+const RING_RADIUS = 23;
+
+interface Item {
+  id: string;
+  at: LngLat;
+  group: THREE.Group;
+  npcId: NpcId;
+  building: Instance | null;
+  npc: Instance | null;
+  npcLoading: boolean;
+  mixer: THREE.AnimationMixer | null;
+  arcs: THREE.Mesh[];
+  pips: THREE.Mesh[];
+  pipRow: THREE.Group;
+  beacon: THREE.Group;
+  chevron: THREE.Mesh;
+  pulse: THREE.Mesh;
+  glow: THREE.Mesh;
+  /** Hauteur réelle du bâtiment affiché (pour le test de toucher et les effets). */
+  height: number;
+  stars: number;
+  deliverable: boolean;
+  inRange: boolean;
+  alive: boolean;
+}
+
+const DULL = new THREE.Color(0x56605d);
+const WHITE = new THREE.Color(0xffffff);
+
+export class Shelters {
+  private readonly items = new Map<string, Item>();
+  private readonly seen = new Set<string>();
+  private env: Env | null = null;
+  /** Clé de la liste des abris : change quand un abri apparaît ou disparaît. */
+  listKey = '';
+
+  constructor(private readonly scene: THREE.Scene, private readonly kit: FxKit, private readonly layer: Layer3D) {}
+
+  get all(): IterableIterator<Item> { return this.items.values(); }
+  get(id: string): Item | undefined { return this.items.get(id); }
+  positions(): LngLat[] { return [...this.items.values()].map(i => i.at); }
+
+  sync(list: ShelterView[]): void {
+    this.seen.clear();
+    let changed = false;
+    for (const s of list) {
+      this.seen.add(s.id);
+      let it = this.items.get(s.id);
+      if (it && it.npcId !== s.npc) { this.remove(it); it = undefined; }
+      if (!it) { it = this.create(s); changed = true; }
+      if (it.at[0] !== s.at[0] || it.at[1] !== s.at[1]) {
+        it.at = [s.at[0], s.at[1]]; this.layer.toLocal(it.at, it.group.position); changed = true;
+      }
+      const stars = Math.max(0, Math.min(5, Math.floor(s.stars))), deliverable = s.deliverable.length > 0;
+      if (stars !== it.stars || deliverable !== it.deliverable || s.inRange !== it.inRange) {
+        it.stars = stars; it.deliverable = deliverable; it.inRange = s.inRange;
+        this.restyle(it);
+      }
+    }
+    for (const it of [...this.items.values()]) if (!this.seen.has(it.id)) { this.remove(it); changed = true; }
+    if (changed) this.listKey = [...this.items.keys()].sort().join(',');
+  }
+
+  private create(s: ShelterView): Item {
+    const kit = this.kit;
+    const group = new THREE.Group();
+    this.layer.toLocal(s.at, group.position);
+
+    // Socle sombre et anneau d'étoiles en cinq segments.
+    const shadow = new THREE.Mesh(kit.quad, kit.shadow);
+    shadow.scale.set(RING_RADIUS * 2.5, 1, RING_RADIUS * 2.5); shadow.position.y = 0.1; shadow.renderOrder = 2;
+    group.add(shadow);
+    const glow = new THREE.Mesh(kit.quad, kit.glowAmber);
+    glow.scale.set(RING_RADIUS * 4.4, 1, RING_RADIUS * 4.4); glow.position.y = 0.14; glow.renderOrder = 3;
+    group.add(glow);
+    const arcs: THREE.Mesh[] = [];
+    for (let i = 0; i < 5; i++) {
+      const arc = new THREE.Mesh(kit.starArcs[i], kit.ringOff);
+      arc.scale.set(RING_RADIUS, 1, RING_RADIUS); arc.position.y = 0.3; arc.renderOrder = 4;
+      arcs.push(arc); group.add(arc);
+    }
+    // Rangée de cinq losanges au-dessus du toit : les étoiles, lisibles de loin.
+    const pipRow = new THREE.Group();
+    const pips: THREE.Mesh[] = [];
+    for (let i = 0; i < 5; i++) {
+      const pip = new THREE.Mesh(kit.diamond, kit.pipOff);
+      pip.scale.setScalar(1.7); pip.position.x = (i - 2) * 3.4;
+      pips.push(pip); pipRow.add(pip);
+    }
+    pipRow.position.y = SHELTER_HEIGHT + 5;
+    group.add(pipRow);
+    // Balise de livraison : faisceau bleu, anneau au sol et chevron qui flotte.
+    const beacon = new THREE.Group();
+    const beam = new THREE.Mesh(kit.beam, kit.beamBlue);
+    beam.scale.set(3.2, 150, 3.2);
+    const base = new THREE.Mesh(kit.ring, kit.ringBlue);
+    base.scale.set(RING_RADIUS + 4.5, 1, RING_RADIUS + 4.5); base.position.y = 0.34;
+    const pulse = new THREE.Mesh(kit.thinRing, kit.pulseBlue);
+    pulse.position.y = 0.36;
+    const chevron = new THREE.Mesh(kit.diamond, kit.solidBlue);
+    chevron.scale.set(3.4, 4.4, 3.4);
+    beacon.add(beam, base, pulse, chevron);
+    beacon.visible = false;
+    group.add(beacon);
+
+    group.traverse(o => o.layers.set(WORLD));
+    setLayer(pipRow, TOP); setLayer(beam, TOP); setLayer(chevron, TOP);
+    this.scene.add(group);
+
+    const it: Item = {
+      id: s.id, at: [s.at[0], s.at[1]], group, npcId: s.npc, building: null, npc: null, npcLoading: false, mixer: null,
+      arcs, pips, pipRow, beacon, chevron, pulse, glow, height: SHELTER_HEIGHT, stars: -1, deliverable: false, inRange: false, alive: true,
+    };
+    this.items.set(s.id, it);
+    void spawn(BUILDING[s.npc], 'batiment', { height: SHELTER_HEIGHT, maxWidth: SHELTER_WIDTH, ownMaterials: true }).then(inst => {
+      if (!it.alive) { disposeInstance(inst); return; }
+      it.building = inst; it.height = inst.size.y;
+      setLayer(inst.root, WORLD);
+      group.add(inst.root);
+      it.pipRow.position.y = it.height + 5;
+      if (it.npc) it.npc.root.position.set(inst.size.x * 0.2, 0, Math.min(RING_RADIUS - 5, inst.size.z / 2 + 4));
+      this.restyle(it);
+    });
+    return it;
+  }
+
+  /** Met l'aspect de l'abri en accord avec ses étoiles et ses livraisons en attente. */
+  private restyle(it: Item): void {
+    const kit = this.kit, lit = it.stars > 0, night = this.env?.night ?? 0;
+    for (let i = 0; i < 5; i++) {
+      it.arcs[i].material = i < it.stars ? kit.ringAmber : kit.ringOff;
+      it.pips[i].material = i < it.stars ? kit.solidAmber : kit.pipOff;
+      it.pips[i].scale.setScalar(i < it.stars ? 1.9 : 1.2);
+    }
+    it.glow.visible = lit;
+    it.beacon.visible = it.deliverable;
+    if (it.building) {
+      for (const m of it.building.materials) {
+        // À zéro étoile : éteint et terne. Sinon la texture s'auto-éclaire un peu, davantage la nuit.
+        m.color.copy(lit ? WHITE : DULL);
+        m.emissive.set(lit ? 0xffd9a0 : 0x000000);
+        m.emissiveMap = lit ? m.map : null;
+        m.emissiveIntensity = lit ? 0.12 + night * 0.5 : 0;
+        m.needsUpdate = true;
+      }
+    }
+    if (lit && !it.npc && !it.npcLoading) {
+      it.npcLoading = true;
+      void spawn(it.npcId, 'perso', { height: NPC_HEIGHT }).then(inst => {
+        it.npcLoading = false;
+        if (!it.alive || it.npc) { disposeInstance(inst); return; }
+        it.npc = inst;
+        setLayer(inst.root, WORLD);
+        const b = it.building;
+        inst.root.position.set(b ? b.size.x * 0.2 : 4, 0, b ? Math.min(RING_RADIUS - 5, b.size.z / 2 + 4) : RING_RADIUS - 6);
+        inst.root.visible = it.stars > 0;
+        it.group.add(inst.root);
+        const idle = inst.clips.find(c => c.name.toLowerCase() === 'idle') ?? inst.clips[0];
+        if (idle) { it.mixer = new THREE.AnimationMixer(inst.root); it.mixer.clipAction(idle).play(); }
+      });
+    }
+    if (it.npc) it.npc.root.visible = lit;
+  }
+
+  private remove(it: Item): void {
+    it.alive = false;
+    it.mixer?.stopAllAction();
+    disposeInstance(it.building); disposeInstance(it.npc);
+    it.group.removeFromParent();
+    this.items.delete(it.id);
+  }
+
+  applyEnv(env: Env): void {
+    this.env = env;
+    for (const it of this.items.values()) this.restyle(it);
+  }
+
+  reposition(): void { for (const it of this.items.values()) this.layer.toLocal(it.at, it.group.position); }
+
+  /** À chaque image : PNJ animés et tournés vers le joueur, balises qui flottent, losanges face caméra. */
+  update(dt: number, timeS: number, player: THREE.Vector3, bearingRad: number): void {
+    const phase = this.kit.phase;
+    for (const it of this.items.values()) {
+      it.pipRow.rotation.y = -bearingRad;
+      if (it.npc && it.npc.root.visible) {
+        it.mixer?.update(dt);
+        const p = it.npc.root.position;
+        it.npc.root.rotation.y = Math.atan2(player.x - (it.group.position.x + p.x), player.z - (it.group.position.z + p.z));
+      }
+      if (it.deliverable) {
+        it.chevron.position.y = it.height + 13 + Math.sin(timeS * 2.2) * 1.4;
+        it.chevron.rotation.y = timeS * 1.4;
+        const r = RING_RADIUS + 4.5 + phase * (it.inRange ? 16 : 9);
+        it.pulse.scale.set(r, 1, r);
+      }
+    }
+  }
+}
