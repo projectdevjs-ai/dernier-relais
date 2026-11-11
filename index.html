@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101a1c">
+<title>Dernier Relais</title>
+</head>
+<body>
+<div id="map"></div>
+<header id="top">
+  <strong>Dernier Relais</strong><span class="tag">socle · étape 2</span>
+  <span id="mode" class="pill">démarrage…</span>
+</header>
+<section id="panel">
+  <dl id="stats">
+    <div><dt>Abris</dt><dd id="nShel">–</dd></div>
+    <div><dt>Abri le plus proche</dt><dd id="near">–</dd></div>
+    <div><dt>Colis du jour</dt><dd id="nParc">–</dd></div>
+    <div><dt>Cases visitées</dt><dd id="nVis">–</dd></div>
+  </dl>
+  <p id="msg" role="status">Touche la carte pour te déplacer en mode simulé.</p>
+  <div class="row">
+    <button id="gps" type="button">Ma position GPS</button>
+    <label class="sr" for="goto">Aller à un lieu de test</label>
+    <select id="goto"><option value="">Aller à un lieu de test…</option></select>
+  </div>
+</section>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "dernier-relais",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "probe": "tsx scripts/probe.ts"
+  },
+  "dependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
+    "maplibre-gl": "^5.24.1",
+    "pbf": "^5.1.2"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}
