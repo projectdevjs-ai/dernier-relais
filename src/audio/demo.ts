@@ -188,13 +188,12 @@ const SCENES: Scene[] = [
   { nom: 'marche 1,2 m/s, charge 95 %', secondes: 12, at: () => still(wx('clair', 8), { speedMps: 1.2, moving: true, load: 0.95 }) },
   { nom: 'course 3 m/s sous la pluie', secondes: 12, at: () => still(wx('pluie', 15), { speedMps: 3, moving: true, load: 0.3 }) },
   { nom: 'alerte équilibre 0,9', secondes: 12, at: () => still(wx('clair', 8), { balance: 0.9 }) },
-  { nom: 'fondus : clair → orage (4 s) → coupure (9 s)', secondes: 12, at: t => (t < 4 ? still(wx('clair', 8)) : t < 9 ? still(wx('pluie', 50)) : null) },
+  { nom: 'fondus : clair → pluie + vent 50 (4 s) → coupure (9 s)', secondes: 12, at: t => (t < 4 ? still(wx('clair', 8)) : t < 9 ? still(wx('pluie', 50)) : null) },
 ];
 
 export interface MesureNappe extends Mesure {
   /** Plus grand écart de niveau entre deux tranches voisines de 100 ms, en dB (un fondu propre reste petit). */
   marche: number;
-  pas: number;
 }
 
 /** Rend une scène d'ambiance en appelant update() toutes les 200 ms de temps audio, comme le fait le jeu. */
@@ -216,7 +215,7 @@ async function renderScene(s: Scene): Promise<MesureNappe> {
   for (let i = 0; i + w <= d.length; i += w) { let a = 0; for (let j = i; j < i + w; j++) a += d[j] * d[j]; levels.push(Math.sqrt(a / w)); }
   let marche = 0;
   for (let i = 1; i < levels.length; i++) if (levels[i] > 0.0005 && levels[i - 1] > 0.0005) marche = Math.max(marche, Math.abs(db(levels[i] / levels[i - 1])));
-  return { ...m, marche: r1(marche), pas: 0 };
+  return { ...m, marche: r1(marche) };
 }
 
 /** Tous les sons du jeu lancés au même instant : le pire cas pour le plafond et la limite de voix. */
