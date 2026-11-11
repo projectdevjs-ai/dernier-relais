@@ -2,9 +2,12 @@
 // Paramètres d'URL : ?ambiance=clair  &nuit=1  &meteo=clair|nuages|pluie|orage|neige|brouillard
 //                    &abri=s1..s4 (se placer près d'un abri)  &cap=0 (cap fixe)  &course=1
 //                    &arret=1 (joueur immobile)  &fete=1 (gerbe sur un abri)  &brume=1 (cases non visitées)
+// Systèmes secondaires : &special=cryo|ruche|batterie|boitenoire|inconnu  &porte=cryo|… (colis spécial au dos)
+//                    &perdu=1  &cache=1|proche  &rodeur=1|proche  &front=1|dedans  &lot=1  &tout=1 (un de chaque)
+//                    &calme=1 (pas d'onde de scanner, pour les captures)
 import { cellAt, cellsAround, type LngLat } from '../core/geo';
-import type { Ambiance, WeatherKind } from '../game/api';
-import { mockView } from '../game/mock';
+import type { Ambiance, SpecialKind, WeatherKind } from '../game/api';
+import { type MockEvents, mockView, withEvents } from '../game/mock';
 import { Stage } from './stage';
 
 const q = new URLSearchParams(location.search);
@@ -17,8 +20,21 @@ const stage = new Stage('stage', {
   onTapGround: at => say(`sol ${at[0].toFixed(5)}, ${at[1].toFixed(5)}`),
   onTapShelter: id => { say(`abri ${id}`); stage.celebrate(id); },
   onTapOrder: id => say(`colis ${id}`),
+  onTapCache: id => say(`cache ${id}`),
+  onTapWanderer: id => say(`rôdeur ${id}`),
 }, { center: centre, ambiance });
 
+const tout = q.has('tout');
+const pick = <T extends string>(name: string): T | true | undefined => (q.has(name) ? (q.get(name) === '1' || q.get(name) === '' ? true : q.get(name) as T) : undefined);
+const extras: MockEvents = {
+  special: (q.get('special') as SpecialKind | 'inconnu' | null) ?? (tout ? 'ruche' : undefined),
+  carriedSpecial: (q.get('porte') as SpecialKind | null) ?? undefined,
+  lost: q.has('perdu') || tout,
+  cache: pick<'proche'>('cache') ?? (tout || undefined),
+  wanderer: pick<'proche'>('rodeur') ?? (tout || undefined),
+  front: pick<'dedans'>('front') ?? (tout || undefined),
+  jam: q.has('lot') || tout,
+};
 const start = performance.now();
 const still = q.has('arret');
 function push(): void {
@@ -37,6 +53,7 @@ function push(): void {
   if (meteo) view.weather.kind = meteo;
   if (q.has('nuit')) { view.weather.night = true; view.weather.sunAltDeg = -20; }
   if (!near) view.dangers[0].at = [centre[0] - 150 / 75000, centre[1] + 10 / 111000];
+  withEvents(view, extras, t);
   if (q.has('brume')) {
     const here = cellAt(view.player.at[0], view.player.at[1]);
     view.loadedCells = cellsAround(here, 2).map(c => c.id);
@@ -46,8 +63,7 @@ function push(): void {
 }
 push();
 setInterval(push, 500);
-setInterval(() => stage.pulseScan(160), 6000);
-setTimeout(() => stage.pulseScan(160), 2500);
+if (!q.has('calme')) { setInterval(() => stage.pulseScan(160), 6000); setTimeout(() => stage.pulseScan(160), 2500); }
 if (q.has('fete')) setInterval(() => stage.celebrate('s1'), 3000);
 if (q.has('ambiance2')) setTimeout(() => stage.setAmbiance('clair'), 6000);
 window.addEventListener('keydown', e => { if (e.key === 'r') stage.recenter(); });

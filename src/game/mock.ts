@@ -1,6 +1,6 @@
 // Faux état de jeu pour développer la scène 3D et l'interface sans attendre la logique.
 import type { LngLat } from '../core/geo';
-import type { GameView, OrderView, ShelterView } from './api';
+import type { GameView, OrderView, ShelterView, SpecialKind } from './api';
 
 export function mockView(c: LngLat = [-1.5761, 47.1822], t = 0): GameView {
   const off = (dx: number, dy: number): LngLat => [c[0] + dx / 75000, c[1] + dy / 111000];
@@ -35,5 +35,71 @@ export function mockView(c: LngLat = [-1.5761, 47.1822], t = 0): GameView {
       { id: 'c3', period: 'semaine', label: 'Obtenir 5 notes A ou S', progress: 1, goal: 5, reward: 600, done: false, claimed: false },
     ],
     visited: [], loadedCells: [],
+    caches: [], wanderers: [], fronts: [], jams: [],
   };
+}
+
+/** Éléments des systèmes secondaires à ajouter au faux état (démos du rendu et de l'interface). */
+export interface MockEvents {
+  /** Le colis o2 devient un colis spécial ; 'inconnu' : pas encore écouté (« signal inhabituel »). */
+  special?: SpecialKind | 'inconnu';
+  /** Le colis porté o3 devient un colis spécial identifié. */
+  carriedSpecial?: SpecialKind;
+  /** Le colis o1 devient un colis perdu. */
+  lost?: boolean;
+  /** 'proche' : à portée d'ouverture. */
+  cache?: boolean | 'proche';
+  wanderer?: boolean | 'proche';
+  /** 'dedans' : le joueur est dans le front. */
+  front?: boolean | 'dedans';
+  /** 'proche' : le joueur est à l'abri débordé. */
+  jam?: boolean | 'proche' | 'en cours';
+  /** Le colis porté o4 vient d'être ramassé : geste d'arrimage encore possible. */
+  strap?: boolean;
+}
+const SPECIAL_TEXT: Record<SpecialKind, [label: string, rule: string, kg: number]> = {
+  cryo: ['Caisson cryogénique', 'Se réchauffe : perd 3 % d’état par minute dès que tu le prends. Livre vite.', 8],
+  ruche: ['Ruche vivante', 'Ne cours pas : chaque foulée de course l’abîme.', 11],
+  boitenoire: ['Boîte noire', 'Très bien payée, mais le délai est très court.', 6],
+  batterie: ['Cellule instable', 'Très lourde : elle remplit presque le sac et te fatigue plus vite.', 16],
+};
+/**
+ * Ajoute au faux état les éléments demandés, placés devant le joueur : `off(droite, devant)` en mètres,
+ * dans le repère de la caméra (`bearingDeg` : cap de la caméra, celui de la scène par défaut).
+ */
+export function withEvents(v: GameView, x: MockEvents, t = 0, bearingDeg = -18): GameView {
+  const c = v.player.at ?? [-1.5761, 47.1822], b = (bearingDeg * Math.PI) / 180;
+  const off = (right: number, ahead: number): LngLat =>
+    [c[0] + (right * Math.cos(b) + ahead * Math.sin(b)) / 75000, c[1] + (ahead * Math.cos(b) - right * Math.sin(b)) / 111000];
+  for (const o of v.orders) Object.assign(o, { special: null, lost: null, jamId: null, inspected: o.state === 'porté', canInspect: o.state === 'révélé' && o.distanceM <= 60, strap: null, strapLeftS: 0 });
+  const o1 = v.orders.find(o => o.id === 'o1'), o2 = v.orders.find(o => o.id === 'o2'), o3 = v.orders.find(o => o.id === 'o3'), o4 = v.orders.find(o => o.id === 'o4');
+  if (x.special && o2) {
+    const kind = x.special === 'inconnu' ? 'ruche' : x.special, known = x.special !== 'inconnu', [label, rule, kg] = SPECIAL_TEXT[kind];
+    Object.assign(o2, { name: known ? label : 'Signal inhabituel', special: { kind, label, rule, known }, inspected: known, canInspect: !known, weightKg: kg, reward: 310, crate: kind === 'ruche' ? 'bois' : 'alu', fragile: kind === 'cryo', minutesLeft: kind === 'boitenoire' ? 7 : null, at: off(-9, 22), distanceM: 24, inRange: true });
+  }
+  if (x.carriedSpecial && o3) {
+    const [label, rule, kg] = SPECIAL_TEXT[x.carriedSpecial];
+    Object.assign(o3, { name: label, special: { kind: x.carriedSpecial, label, rule, known: true }, weightKg: kg, reward: 340, crate: 'alu', fragile: x.carriedSpecial === 'cryo', minutesLeft: x.carriedSpecial === 'boitenoire' ? 4 : null, condition: 0.91 });
+  }
+  if (x.lost && o1) Object.assign(o1, { name: 'Livres', crate: 'carton', lost: { by: 'Lina' }, minutesLeft: null, reward: 105, inspected: true, canInspect: false, at: off(15, 46), distanceM: 48 });
+  if (x.strap && o4) Object.assign(o4, { strapLeftS: 8 });
+  if (x.cache) v.caches = [x.cache === 'proche'
+    ? { id: 'k1', at: off(9, 10), distanceM: 13, inRange: true }
+    : { id: 'k1', at: off(8, 30), distanceM: 31, inRange: false }];
+  if (x.wanderer) {
+    // Aller-retour le long d'une rue, 1,1 m/s, avec une halte à chaque bout.
+    const span = 36, lap = 2 * (span / 1.1 + 10), s = t % lap, half = lap / 2, back = s >= half, u = Math.min(1, Math.max(0, ((back ? s - half : s) - 10) / (span / 1.1)));
+    const k = back ? 1 - u : u, near = x.wanderer === 'proche';
+    v.wanderers = [{ id: 'w1', name: 'Lina', at: near ? off(-13, 7) : off(-20 + span * k, 44), headingDeg: near ? bearingDeg + 130 : bearingDeg + (back ? 270 : 90), moving: !near && u > 0 && u < 1, met: false, distanceM: near ? 15 : 48, inRange: near }];
+  }
+  if (x.front) {
+    const inside = x.front === 'dedans';
+    v.fronts = [{ id: 'f1', at: inside ? off(10, 60 - t * 0.67) : off(40, 240 - t * 0.67), radiusM: 160, headingDeg: bearingDeg + 180, speedMps: 0.67, inside, distanceM: inside ? 0 : 140, etaS: inside ? 0 : 150 }];
+  }
+  if (x.jam) {
+    const s = v.shelters.find(sh => sh.id === 's2') ?? v.shelters[0], going = x.jam === 'en cours';
+    if (s) { s.at = off(20, 58); s.distanceM = 61; s.inRange = !going && x.jam !== true; }
+    if (s) v.jams = [{ id: 'j1', shelterId: s.id, shelterName: s.name, at: s.at, state: going ? 'en cours' : 'proposé', count: 3, delivered: going ? 1 : 0, minutes: 22, minutesLeft: going ? 14 : null, bonus: 85, distanceM: s.distanceM, inRange: !going && s.inRange }];
+  }
+  return v;
 }

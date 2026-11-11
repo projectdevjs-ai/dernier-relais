@@ -63,23 +63,26 @@ interface Pal {
 const PALS: Record<Ambiance, Pal> = {
   // Crépuscule : vert nuit en haut, braise à l'horizon.
   'crépuscule': {
-    top: 0x0a1719, mid: 0x1f3a3a, hor: 0xc9793a, sun: 0xffb060, fog: 0x4a4638, fogDensity: 0.0016,
+    top: 0x0a1719, mid: 0x1f3a3a, hor: 0xc9793a, sun: 0xffb060, fog: 0x5a4130, fogDensity: 0.0016,
     sunLight: 0xffa860, sunPower: 4.2, sunElev: 0.105, hemiSky: 0x3d5e63, hemiGround: 0x16100c, hemiPower: 0.85,
-    sand: 0x15161a, rock: 0x6f7480, stars: 1, exposure: 1.05, bloom: 0.62, cloud: 0.55,
+    sand: 0x15161a, rock: 0x23272c, stars: 1, exposure: 1.05, bloom: 0.62, cloud: 0.55,
   },
   // Clair : matin pâle, soleil blanc chaud, sable gris sombre.
   'clair': {
-    top: 0x5f7f96, mid: 0xa9bcc4, hor: 0xf1d9b4, sun: 0xfff0d4, fog: 0xb9bcb6, fogDensity: 0.0015,
+    top: 0x5f7f96, mid: 0xa9bcc4, hor: 0xf1d9b4, sun: 0xfff0d4, fog: 0xb9bcb6, fogDensity: 0.0014,
     sunLight: 0xffe2bd, sunPower: 4.6, sunElev: 0.2, hemiSky: 0xb9cfdc, hemiGround: 0x3b3833, hemiPower: 1.7,
-    sand: 0x2b2c30, rock: 0xa0a4ac, stars: 0, exposure: 1.0, bloom: 0.42, cloud: 0.9,
+    sand: 0x2b2c30, rock: 0x70767c, stars: 0, exposure: 1.0, bloom: 0.42, cloud: 0.9,
   },
 };
 
 // ---------- Terrain ----------
-const LAB_AT = new THREE.Vector3(-26, 0, -300);
-const CAPSULE_AT = new THREE.Vector3(3.4, 0, -7.6);
+const LAB_AT = new THREE.Vector3(-170, 0, -420);
+const CAPSULE_AT = new THREE.Vector3(3.3, 0, -9.5);
 const WALK_DIR = new THREE.Vector3(LAB_AT.x, 0, LAB_AT.z).normalize();
 const PORTER_YAW = Math.atan2(WALK_DIR.x, WALK_DIR.z);
+const SUN_AZ = 0.2; // le soleil est à droite de la station
+/** Axe du travelling de marche : entre la direction de marche et le soleil, pour garder un liseré de lumière. */
+const TRACK = new THREE.Vector3(WALK_DIR.x * 0.62 + Math.sin(SUN_AZ) * 0.38, 0, WALK_DIR.z * 0.62 - Math.cos(SUN_AZ) * 0.38).normalize();
 
 /** Hauteur du sable : plat autour de la capsule, dunes douces plus loin. */
 function groundH(x: number, z: number): number {
@@ -99,7 +102,7 @@ function sandNormalMap(size = 512): THREE.CanvasTexture {
     const warp = Math.sin(Math.PI * 2 * (3 * u + v)) * 0.9 + Math.sin(Math.PI * 2 * (u - 2 * v) + 1.7) * 0.6;
     let h = 0;
     for (const [kx, ky, a, ph] of waves) h += a * Math.sin(Math.PI * 2 * (kx * u + ky * v) + ph + warp);
-    H[y * size + x] = h * 0.5 + (rnd() - 0.5) * 1.5;
+    H[y * size + x] = h * 0.55 + (rnd() - 0.5) * 0.55;
   }
   return canvasTexture(size, size, (g, w) => {
     const id = g.createImageData(w, w);
@@ -129,12 +132,13 @@ const SKY_FRAG = /* glsl */ `
   void main() {
     vec3 d = normalize(vDir);
     float h = max(d.y, 0.0);
-    vec3 c = mix(uHor, uMid, smoothstep(0.0, 0.2, h));
-    c = mix(c, uTop, smoothstep(0.12, 0.75, h));
     float s = max(dot(d, uSun), 0.0);
+    // L'horizon ne rougeoie vraiment que du côté du soleil.
+    vec3 c = mix(uHor * mix(0.42, 1.0, s * s), uMid, smoothstep(0.0, 0.17, h));
+    c = mix(c, uTop, smoothstep(0.12, 0.75, h));
     float band = exp(-h * 7.0);
     // Halo du soleil : large nappe sur l'horizon, couronne, disque.
-    c += uSunCol * (pow(s, 5.0) * 0.55 * band + pow(s, 48.0) * 0.55 + pow(s, 420.0) * 1.6 + smoothstep(0.99955, 0.9998, s) * 14.0);
+    c += uSunCol * (pow(s, 12.0) * 0.5 * band + pow(s, 64.0) * 0.4 + pow(s, 500.0) * 1.5 + smoothstep(0.99955, 0.9998, s) * 8.0);
     // Voiles d'altitude étirés par le vent, éclairés par en dessous.
     vec2 p = d.xz / (d.y + 0.11);
     float cl = smoothstep(0.5, 0.82, fbm(vec2(p.x * 0.55 + uTime * 0.004, p.y * 2.3))) * smoothstep(0.02, 0.2, d.y) * (1.0 - smoothstep(0.45, 0.9, d.y));
@@ -170,7 +174,7 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
   scene.fog = new THREE.FogExp2(pal.fog, pal.fogDensity);
 
   // --- Ciel ---
-  const az = 0.2; // le soleil est un peu à droite de la station
+  const az = SUN_AZ;
   const sunDir = new THREE.Vector3(Math.sin(az) * Math.cos(pal.sunElev), Math.sin(pal.sunElev), -Math.cos(az) * Math.cos(pal.sunElev)).normalize();
   const sky = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG,
@@ -188,7 +192,7 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
   pm.dispose();
   scene.add(dome);
   scene.environment = env.texture;
-  scene.environmentIntensity = 0.55;
+  scene.environmentIntensity = 0.4;
 
   // --- Lumières ---
   scene.add(new THREE.HemisphereLight(pal.hemiSky, pal.hemiGround, pal.hemiPower));
@@ -214,42 +218,48 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
   for (let i = 0; i < pos.count; i++) {
     const x = warp(pos.getX(i)), z = warp(pos.getZ(i));
     pos.setXYZ(i, x, groundH(x, z), z);
-    uv.setXY(i, x / 5.5, z / 5.5);
+    uv.setXY(i, x / 7, z / 7);
   }
   geo.computeVertexNormals();
   const nrm = sandNormalMap();
   nrm.wrapS = nrm.wrapT = THREE.RepeatWrapping;
   nrm.anisotropy = 8;
-  const sand = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: pal.sand, roughness: 0.56, metalness: 0, normalMap: nrm, normalScale: new THREE.Vector2(1.1, 1.1) }));
+  const sand = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: pal.sand, roughness: 0.56, metalness: 0, normalMap: nrm, normalScale: new THREE.Vector2(0.9, 0.9) }));
   sand.receiveShadow = true;
   scene.add(sand);
 
-  // --- Montagnes en couronne, deux plans noyés dans la brume ---
-  const cones: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 70; i++) {
-    const far = i % 2 === 0;
-    const a = (i / 70) * Math.PI * 2 + hash(i) * 0.09, rr = (far ? 1500 : 980) + hash(i * 3) * 320;
-    const h = (far ? 260 : 120) + hash(i * 7) * (far ? 300 : 150);
-    const g = new THREE.ConeGeometry(240 + hash(i * 5) * 320, h, 9, 4);
-    const p = g.attributes.position as THREE.BufferAttribute;
-    for (let k = 0; k < p.count; k++) {
-      if (p.getY(k) > -h / 2 + 1) { p.setX(k, p.getX(k) * (1 + (hash(k + i * 31) - 0.5) * 0.5)); p.setZ(k, p.getZ(k) * (1 + (hash(k * 3 + i) - 0.5) * 0.5)); p.setY(k, p.getY(k) * (1 + (hash(k * 7 + i) - 0.5) * 0.25)); }
+  // --- Montagnes : trois crêtes en couronne, de plus en plus noyées dans la brume ---
+  const ridges: THREE.BufferGeometry[] = [];
+  for (const [rad, base, amp, seed] of [[760, 30, 120, 1], [1120, 70, 230, 2], [1560, 120, 380, 3]] as const) {
+    const SEG = 240, pts: number[] = [];
+    const crest = (i: number): [number, number, number, number, number, number] => {
+      const a = (i / SEG) * Math.PI * 2;
+      let h = 0;
+      for (const [f, w] of [[5, 0.45], [11, 0.3], [23, 0.17], [47, 0.08]] as const) h += w * (1 - Math.abs(Math.sin(a * f * 0.5 + seed * 2.1 + f))) ** 1.6;
+      h = base + amp * h * (0.94 + hash(i * 3.7 + seed * 91) * 0.12);
+      const rr = rad + Math.sin(a * 9 + seed) * 40, foot = rr - h * 1.5 - 60;
+      return [Math.sin(a) * rr, h, Math.cos(a) * rr, Math.sin(a) * foot, -14, Math.cos(a) * foot];
+    };
+    for (let i = 0; i < SEG; i++) {
+      const p = crest(i), q = crest((i + 1) % SEG);
+      pts.push(p[3], p[4], p[5], q[3], q[4], q[5], p[0], p[1], p[2], q[3], q[4], q[5], q[0], q[1], q[2], p[0], p[1], p[2]);
     }
-    g.translate(Math.sin(a) * rr, h / 2 - 14, Math.cos(a) * rr);
-    cones.push(g);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+    ridges.push(g);
   }
-  const range = mergeGeometries(cones);
-  for (const g of cones) g.dispose();
+  const range = mergeGeometries(ridges);
+  for (const g of ridges) g.dispose();
   if (range) {
     range.computeVertexNormals();
-    scene.add(new THREE.Mesh(range, new THREE.MeshStandardMaterial({ color: 0x1c2126, roughness: 1, flatShading: true, envMapIntensity: 0 })));
+    scene.add(new THREE.Mesh(range, new THREE.MeshStandardMaterial({ color: pal.rock, roughness: 1, envMapIntensity: 0, side: THREE.DoubleSide })));
   }
 
   // --- Modèles ---
   const [porterM, capsuleM, labM, r1, r2, r3] = await Promise.all([
     loader.load('porteur_intro', { height: 1.8, fallback: 'perso' }),
-    loader.load('capsule_crash', { width: 5.6 }),
-    loader.load('labo_ext', { width: 96 }),
+    loader.load('capsule_crash', { width: 4.8 }),
+    loader.load('labo_ext', { width: 104 }),
     loader.load('rocher_1', { width: 1 }), loader.load('rocher_2', { height: 1 }), loader.load('rocher_3', { width: 1 }),
   ]);
 
@@ -266,7 +276,7 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
   capsuleM.root.rotation.set(0.1, 0, -0.16);
   capsuleM.root.position.y = -0.42;
   capsule.position.copy(CAPSULE_AT);
-  capsule.rotation.y = 2.25;
+  capsule.rotation.y = 2.75;
   setShadows(capsule, true, true);
   setEnvIntensity(capsule, 0.5);
   scene.add(capsule);
@@ -304,14 +314,14 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
 
   // Rochers semés (aucun sur le chemin du porteur)
   const rocks = [r1, r2, r3];
-  for (let i = 0; i < 46; i++) {
-    const src = rocks[i % 3], big = hash(i * 13) > 0.86;
+  for (let i = 0; i < 54; i++) {
+    const src = rocks[i % 3], big = hash(i * 13) > 0.8 && i > 14;
     const sz = big ? 7 + hash(i) * 12 : 0.5 + hash(i * 5) * 2.6;
-    const a = hash(i * 17) * Math.PI * 2, d = i < 9 ? 6 + i * 3.2 : 26 + hash(i * 29) ** 0.8 * 420;
+    const a = hash(i * 17) * Math.PI * 2, d = i < 12 ? 7 + i * 3 : (big ? 110 : 30) + hash(i * 29) ** 0.8 * 420;
     const x = Math.sin(a) * d, z = Math.cos(a) * d;
     // distance au trajet (droite passant par l'origine, direction WALK_DIR)
     const side = Math.abs(x * WALK_DIR.z - z * WALK_DIR.x);
-    if ((side < 3 + sz && z < 6) || Math.hypot(x - CAPSULE_AT.x, z - CAPSULE_AT.z) < 4 + sz || Math.hypot(x, z) < 3.5) continue;
+    if (Math.hypot(x - 1.5, z - 7) < 8 || (side < 3 + sz && z < 6) || Math.hypot(x - CAPSULE_AT.x, z - CAPSULE_AT.z) < 4 + sz || Math.hypot(x, z) < 3.5) continue;
     const r = src.root.clone(true);
     r.scale.setScalar(sz);
     r.position.set(x, groundH(x, z) - sz * 0.1, z);
@@ -325,7 +335,7 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
   const smoke: THREE.Sprite[] = [];
   const puff = softDiscTexture(128, 0, 1.4);
   for (let i = 0; i < 26; i++) {
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, color: 0x1d1a18, transparent: true, opacity: 0, depthWrite: false }));
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, color: 0x6a5a4c, transparent: true, opacity: 0, depthWrite: false, fog: false }));
     s.userData.seed = hash(i * 9.3);
     smoke.push(s); scene.add(s);
   }
@@ -348,6 +358,7 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
 }
 
 const _p = new THREE.Vector3(), _l = new THREE.Vector3();
+const SMOKE_HOT = new THREE.Color(0xb8551c), SMOKE_WARM = new THREE.Color(0x1c1612), SMOKE_COLD = new THREE.Color(0x232a2e);
 
 /** Met toute la scène dans l'état de l'instant t (secondes). */
 function applyTime(w: World, t: number, aspect: number, still: boolean): void {
@@ -374,32 +385,34 @@ function applyTime(w: World, t: number, aspect: number, still: boolean): void {
   if (t < T.cutB) {
     // A. Réveil : derrière la tête du porteur, la capsule fume à contre-jour.
     const k = easeInOut(span(t, 0, T.cutB));
-    _p.set(lerp(-0.9, -0.55, k), lerp(0.42, 0.62, k), lerp(4.6, 3.9, k));
-    _l.set(lerp(1.3, 1.1, k), lerp(1.75, 1.5, k), -6);
+    _p.set(lerp(0.8, 1.05, k), lerp(0.5, 0.74, k), lerp(5.2, 4.6, k));
+    _l.set(lerp(1.0, 1.2, k), lerp(1.9, 1.7, k), -8);
     fov = portrait ? 58 : 36;
   } else if (t < T.cutC) {
     // B. Il se lève : de trois quarts face, éclairé par le soleil rasant.
     const k = span(t, T.cutB, T.cutC), e = easeInOut(k);
-    _p.set(lerp(-2.7, -2.2, e), lerp(0.7, 1.15, e), lerp(-4.4, -4.9, e));
-    _l.set(0.1, lerp(0.55, 1.05, smooth(span(t, T.stand + 1.2, T.stand + 4.6))), 0.5);
+    _p.set(lerp(-2.3, -1.9, e), lerp(0.5, 0.72, e), lerp(-3.3, -3.7, e));
+    _l.set(-0.1, lerp(0.95, 1.45, smooth(span(t, T.stand + 1.2, T.stand + 4.6))), 0.4);
     fov = portrait ? 52 : 34;
   } else if (t < T.cutD) {
     // C. Découverte : la caméra s'élève derrière lui, la station et son faisceau au bout de la plaine.
     const e = easeInOut(span(t, T.cutC, T.cutD));
-    _p.set(lerp(1.5, 2.3, e), lerp(1.25, 2.9, e), lerp(3.4, 6.4, e));
-    _l.set(lerp(-1.6, -5.5, e), lerp(2.5, 5.2, e), -40);
+    _p.set(lerp(1.3, 2.2, e), lerp(1.5, 3.1, e), lerp(3.7, 6.6, e));
+    _l.set(LAB_AT.x * 0.2, lerp(-9, -4, e), LAB_AT.z * 0.2);
     fov = portrait ? 56 : 36;
   } else if (t < T.cutE) {
     // D. Marche : travelling bas, derrière lui, ombre longue et sable qui brille.
     const e = span(t, T.cutD, T.cutE);
-    _p.set(px + lerp(-1.5, -1.0, e), py + lerp(0.34, 0.5, e), pz + lerp(3.4, 4.2, e));
-    _l.set(px + 0.25, py + lerp(1.15, 1.35, e), pz - 3);
+    const back = lerp(3.5, 4.4, e);
+    _p.set(px - TRACK.x * back, py + lerp(0.34, 0.52, e), pz - TRACK.z * back);
+    _l.set(px + TRACK.x * 3, py + lerp(1.2, 1.4, e), pz + TRACK.z * 3);
     fov = portrait ? 56 : 36;
   } else {
     // E. Plan large : une silhouette minuscule vers la Station Lumen.
     const e = easeInOut(span(t, T.cutE, T.end));
-    const mx = WALK_DIR.x * 17, mz = WALK_DIR.z * 17;
-    _p.set(mx + lerp(5, 7.5, e), lerp(5.5, 12, e), mz + lerp(17, 27, e));
+    // La caméra recule le long du trajet, un peu à droite : le porteur reste en bas du cadre.
+    const along = lerp(-6, -17, e), side = lerp(2.4, 4.2, e);
+    _p.set(WALK_DIR.x * along - WALK_DIR.z * side, lerp(5.5, 12, e), WALK_DIR.z * along + WALK_DIR.x * side);
     _l.set(LAB_AT.x * 0.55, lerp(14, 20, e), LAB_AT.z * 0.55);
     fov = portrait ? 50 : 32;
   }
@@ -429,7 +442,9 @@ function applyTime(w: World, t: number, aspect: number, still: boolean): void {
     sp.position.set(sx + drift * 0.9 + Math.sin(k * 9 + seed * 6) * (0.3 + k * 1.3), y, sz + drift * 0.25 + Math.cos(k * 7 + seed * 9) * (0.3 + k));
     sp.scale.setScalar(1.3 + k * 8.5);
     const m = sp.material;
-    m.opacity = Math.min(1, k * 9) * (1 - k) ** 1.4 * 0.62;
+    m.opacity = Math.min(1, k * 9) * (1 - k) ** 1.2 * 0.8;
+    // Rougie par les braises à la base, puis grise et froide en montant.
+    m.color.copy(SMOKE_HOT).lerp(SMOKE_WARM, smooth(span(k, 0, 0.16))).lerp(SMOKE_COLD, smooth(span(k, 0.2, 0.9)));
     m.rotation = seed * 6.28 + k * 1.4;
   }
   const spos = w.sparks.geometry.attributes.position as THREE.BufferAttribute;
@@ -495,7 +510,7 @@ export function playPrologue(root: HTMLElement, opts: PrologueOpts = {}): Promis
     skip.type = 'button';
     skip.append(el('span', '', 'Passer'), icon('passer'));
     skip.hidden = true;
-    host.append(fade, layer, skip);
+    host.append(el('div', 'pl-shade'), fade, layer, skip);
     const veil = new Veil(host, 'Dernier Relais', 'Prologue');
     veil.loader(true);
 

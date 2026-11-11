@@ -3,11 +3,14 @@
 .pl-fade { position: absolute; inset: 0; background: var(--veil); pointer-events: none; opacity: 1; }
 .s3-prologue[data-ambiance="clair"] .pl-fade { background: #0a1110; }
 .pl-layer { position: absolute; inset: 0; pointer-events: none; }
+/* Léger assombrissement en haut et en bas : le texte reste lisible sur un ciel clair. */
+.pl-shade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to bottom, rgba(6, 10, 10, .28), rgba(6, 10, 10, 0) 34%, rgba(6, 10, 10, 0) 66%, rgba(6, 10, 10, .4)); }
+.s3-prologue[data-ambiance="clair"] .pl-shade { background: linear-gradient(to bottom, rgba(10, 16, 18, .42), rgba(10, 16, 18, 0) 40%, rgba(10, 16, 18, 0) 62%, rgba(10, 16, 18, .5)); }
 
 /* Lignes de récit : tiers inférieur, graisse légère, longueur de ligne courte. */
 .pl-line {
   position: absolute; left: calc(var(--sal) + 28px); right: calc(var(--sar) + 28px);
-  bottom: calc(var(--sab) + 19vh); display: flex; justify-content: center; will-change: opacity, transform;
+  bottom: calc(var(--sab) + 16vh); display: flex; justify-content: center; will-change: opacity, transform;
 }
 .pl-line p {
   max-width: 21em; text-align: center; text-wrap: balance;

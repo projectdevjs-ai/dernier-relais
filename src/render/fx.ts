@@ -29,6 +29,19 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+const frontFrag = /* glsl */`
+uniform vec3 uColor; uniform float uTime; uniform float uBoost;
+varying vec2 vUv;
+void main() {
+  float r = length(vUv - 0.5) * 2.0;
+  // Rideaux de pluie qui défilent en biais, bord doux, liseré plus net.
+  float rain = 0.5 + 0.5 * sin((vUv.x * 0.8 + vUv.y) * 90.0 + uTime * 3.0);
+  float body = (0.26 + 0.10 * rain) * (1.0 - smoothstep(0.90, 1.0, r));
+  float edge = smoothstep(0.90, 0.965, r) * (1.0 - smoothstep(0.965, 1.0, r)) * 0.5;
+  gl_FragColor = vec4(uColor, (body + edge) * uBoost);
+  #include <colorspace_fragment>
+}`;
+
 function radialTexture(stops: [number, string][]): THREE.CanvasTexture {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d')!;
@@ -40,10 +53,11 @@ function radialTexture(stops: [number, string][]): THREE.CanvasTexture {
   return t;
 }
 
-type Tone = 'amber' | 'blue' | 'danger' | 'white';
+type Tone = 'amber' | 'blue' | 'danger' | 'white' | 'gold' | 'front';
 /** Couleurs des effets : vives sur fond sombre (mode additif), plus denses sur fond clair. */
 const TONES: Record<Tone, [dark: number, light: number]> = {
   amber: [0xe8a24a, 0xe07a10], blue: [0x7fc7d9, 0x1596c4], danger: [0xff5a3c, 0xd63a22], white: [0xfff1d6, 0xffffff],
+  /** or : colis spéciaux et caches */ gold: [0xf4cf5d, 0xb98600], /** ardoise : fronts de mauvais temps */ front: [0x6f8fb3, 0x3d5068],
 };
 
 interface Tinted { mat: THREE.Material; tone: Tone; color: THREE.Color; additive: boolean; setOpacity: (o: number) => void; dark: number; light: number }
@@ -84,6 +98,15 @@ export class FxKit {
   readonly beamBlue = this.beamMat('blue', 0.55, 0.42, 1.3);
   readonly wallDanger = this.beamMat('danger', 0.5, 0.42, 1.8);
   readonly discDanger: THREE.ShaderMaterial;
+  // Or : colis spéciaux et caches.
+  readonly glowGold = this.glow('gold', 0.5, 0.3);
+  readonly ringGold = this.flat('gold', 0.95, 0.95);
+  readonly pulseGold = this.flat('gold', 0.9, 0.9);
+  readonly solidGold = new THREE.MeshBasicMaterial({ color: 0xf4cf5d });
+  readonly beamGold = this.beamMat('gold', 0.6, 0.5, 1.6);
+  // Fronts de mauvais temps : disque ardoise (jamais additif : il assombrit) et paroi basse.
+  readonly discFront: THREE.ShaderMaterial;
+  readonly wallFront = this.beamMat('front', 0.55, 0.5, 1.4);
 
   /** Phase commune des pulsations, de 0 à 1. */
   phase = 0;
@@ -99,6 +122,11 @@ export class FxKit {
       vertexShader: beamVert, fragmentShader: dangerFrag, transparent: true, depthWrite: false,
       uniforms: { uColor: { value: new THREE.Color() }, uTime: { value: 0 }, uBoost: { value: 1 } },
     });
+    this.discFront = new THREE.ShaderMaterial({
+      vertexShader: beamVert, fragmentShader: frontFrag, transparent: true, depthWrite: false,
+      uniforms: { uColor: { value: new THREE.Color() }, uTime: { value: 0 }, uBoost: { value: 1 } },
+    });
+    this.tinted.push({ mat: this.discFront, tone: 'front', color: this.discFront.uniforms.uColor.value as THREE.Color, additive: false, setOpacity: o => { this.discFront.uniforms.uBoost.value = o; }, dark: 1.25, light: 1.1 });
     const c = this.discDanger.uniforms.uColor.value as THREE.Color;
     this.tinted.push({ mat: this.discDanger, tone: 'danger', color: c, additive: false, setOpacity: o => { this.discDanger.uniforms.uBoost.value = o; }, dark: 1.15, light: 1.5 });
   }
@@ -132,6 +160,7 @@ export class FxKit {
     }
     this.solidAmber.color.set(env.dark ? 0xffb85c : 0xf08a1a);
     this.solidBlue.color.set(env.dark ? 0x9fe2f2 : 0x19a3d1);
+    this.solidGold.color.set(env.dark ? 0xffe07a : 0xc58a00);
     this.ringOff.color.set(env.dark ? 0x6f7f7a : 0x8a8676);
     this.shadow.opacity = env.dark ? 0.5 : 0.3;
   }
@@ -141,6 +170,8 @@ export class FxKit {
     const fade = (1 - this.phase) * (1 - this.phase) * 0.9;
     this.pulseAmber.opacity = fade;
     this.pulseBlue.opacity = fade;
+    this.pulseGold.opacity = fade;
+    this.discFront.uniforms.uTime.value = timeS % 400;
     this.discDanger.uniforms.uTime.value = timeS % 400;
   }
 

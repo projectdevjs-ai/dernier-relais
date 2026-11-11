@@ -99,14 +99,14 @@ export class Porter {
 
   hide(): void { this.root.visible = false; this.placed = false; }
 
-  /** Colis portés : caisses du bon type empilées dans le dos (4 visibles au plus). */
-  setCarried(kinds: CrateKind[]): void {
+  /** Colis portés : modèles (caisse du bon type ou colis spécial) empilés dans le dos (4 visibles au plus). */
+  setCarried(kinds: string[]): void {
     const shown = kinds.slice(0, MAX_STACK);
     const key = shown.join(',');
     if (key === this.stackKey) return;
     this.stackKey = key;
     const token = ++this.stackToken;
-    void Promise.all(shown.map(k => spawn(CRATE_MODEL[k], 'caisse', { height: 0.46, maxWidth: 0.58 }))).then(list => {
+    void Promise.all(shown.map(k => spawn(k, 'caisse', { height: 0.46, maxWidth: 0.58 }))).then(list => {
       if (token !== this.stackToken) { list.forEach(disposeInstance); return; }
       for (const c of this.crates) disposeInstance(c);
       this.crates.length = 0;

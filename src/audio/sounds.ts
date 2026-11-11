@@ -194,6 +194,7 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
       k.tone({ f: 73.42, t, dur: 1.5, gain: 0.3, attack: 0.22, hold: 0.35, type: 'sawtooth', lp: 320, send: 0.15 });
       k.tone({ f: 77.78, t, dur: 1.5, gain: 0.26, attack: 0.25, hold: 0.35, type: 'sawtooth', lp: 280, send: 0.15 });
       k.noise({ t, dur: 1.45, gain: 0.5, f: 260, to: 110, type: 'lowpass', q: 0.8, attack: 0.3, hold: 0.2 });
+      k.noise({ t: t + 0.05, dur: 1.2, gain: 0.1, f: 420, to: 300, q: 1.2, attack: 0.3, hold: 0.2 });
       k.tone({ f: n(-5), t: t + 0.08, dur: 1.2, gain: 0.07, attack: 0.3, type: 'triangle', lp: 700, send: 0.3 });
       k.tone({ f: 207.65, t: t + 0.08, dur: 1.2, gain: 0.06, attack: 0.3, type: 'triangle', lp: 700, send: 0.3 });
     },
@@ -262,13 +263,13 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
       bell(k, t + 0.01, 8, 0.13, 0.34, 0.5, 0.35);
     },
   },
-  // Pas : appui sourd + frottement de gravier. v = charge (plus grave, plus long, sangle qui grince), w = sol mouillé.
+  // Pas : appui sourd + frottement de gravier (le frottement porte le son sur un petit haut-parleur). v = charge (plus grave, plus long, sangle qui grince), w = sol mouillé.
   step: {
-    dur: 0.35, next: 0.2, prio: 0, trim: 1, family: 'ambiance',
+    dur: 0.35, next: 0.2, prio: 0, trim: 1.3, family: 'ambiance',
     make(k, t, v, w) {
       const hum = 0.85 + 0.3 * k.rand();
-      k.noise({ t, dur: 0.07 + 0.05 * v, gain: (0.2 + 0.13 * v) * hum, f: (520 - 260 * v) * (0.9 + 0.2 * k.rand()), type: 'lowpass', q: 0.9, attack: 0.004, prio: 0 });
-      k.noise({ t: t + 0.018, dur: 0.05, gain: 0.07 * hum, f: 1400 + 700 * k.rand(), q: 1.2, attack: 0.006, prio: 0 });
+      k.noise({ t, dur: 0.07 + 0.05 * v, gain: (0.2 + 0.13 * v) * hum, f: (700 - 300 * v) * (0.9 + 0.2 * k.rand()), type: 'lowpass', q: 0.9, attack: 0.004, prio: 0 });
+      k.noise({ t: t + 0.018, dur: 0.05, gain: 0.1 * hum, f: 1400 + 700 * k.rand(), q: 1.2, attack: 0.006, prio: 0 });
       if (v > 0.6 && k.rand() < 0.4) k.noise({ t: t + 0.06, dur: 0.09, gain: 0.05, f: 620 + 200 * k.rand(), q: 9, attack: 0.02, prio: 0 });
       if (w > 0.05) k.noise({ t: t + 0.01, dur: 0.1, gain: 0.07 * w, f: 3400, type: 'highpass', q: 0.6, attack: 0.008, prio: 0 });
     },
@@ -291,7 +292,7 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
   },
   // Tonnerre lointain (v = proximité) : seul son de plus de 2 s, il fait partie de l'ambiance.
   thunder: {
-    dur: 3.4, next: 3.0, prio: 0, trim: 1, family: 'ambiance',
+    dur: 3.4, next: 3.0, prio: 0, trim: 1.6, family: 'ambiance',
     make(k, t, v) {
       const p = 0.35 + 0.65 * v;
       k.noise({ t, dur: 2.6, gain: 0.5 * p, f: 300 + 500 * v, to: 80, type: 'lowpass', q: 0.6, attack: 0.05 + 0.2 * (1 - v), send: 0.3, prio: 0 });

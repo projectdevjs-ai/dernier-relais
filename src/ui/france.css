@@ -1,0 +1,100 @@
+/* Panneau « Carte du réseau ». Mêmes variables que hud.css ; les trois tons de la carte suivent l'ambiance. */
+.dr-hud {
+  --fr-off: #2b403c;
+  --fr-awake: #4d6b65;
+  --fr-on: var(--amber-fill);
+  --fr-glow: rgba(232, 162, 74, .5);
+  --fr-edge: #6f8a84;
+}
+.dr-hud[data-ambiance="clair"] {
+  --fr-off: #ddd6c3;
+  --fr-awake: #b3ab95;
+  --fr-on: #e8921a;
+  --fr-glow: rgba(232, 146, 26, .45);
+  --fr-edge: #8f8873;
+}
+
+/* Plein écran */
+.dr-hud .dr-france { top: 0; height: 100%; max-height: 100%; border-radius: 0; border-top: 0; padding-top: var(--sat); }
+.dr-france .dr-panel-body { padding-bottom: calc(var(--sab) + 24px); }
+
+.dr-fr-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.dr-fr-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.dr-fr-status.is-on { color: var(--green); }
+.dr-fr-status.is-on .dr-fr-dot { background: var(--green); animation: dr-fr-pulse 2.4s ease-in-out infinite; }
+@keyframes dr-fr-pulse { 50% { opacity: .35; } }
+
+.dr-fr-note { margin: 4px 0 12px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line-strong); color: var(--text); font-size: 14px; line-height: 1.35; }
+
+/* Chiffres clés */
+.dr-fr-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+.dr-fr-stat { display: grid; gap: 5px; padding: 11px 6px 10px; border-radius: 14px; background: var(--raise); text-align: center; min-width: 0; }
+.dr-fr-stat-n { font: 700 27px/1 var(--f-title); font-stretch: condensed; }
+.dr-fr-stat-l { font: 700 11.5px/1.1 var(--f-title); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* Carte */
+.dr-fr-map { position: relative; margin: 10px auto 0; max-width: 460px; }
+.dr-fr-svg { display: block; width: 100%; height: auto; pointer-events: auto; touch-action: manipulation; }
+.dr-fr-reg { cursor: pointer; }
+.dr-fr-hit { fill: transparent; }
+.dr-fr-tile { fill: var(--fr-off); transition: fill .6s ease-out; pointer-events: none; }
+.dr-fr-reg.is-awake .dr-fr-tile { fill: var(--fr-awake); }
+.dr-fr-reg .dr-fr-tile.is-lit { fill: var(--fr-on); }
+.dr-fr-border { fill: none; stroke: var(--panel-solid); stroke-width: 7.5; stroke-linecap: round; pointer-events: none; }
+.dr-fr-border.is-mine { stroke: var(--amber); stroke-width: 4.5; stroke-dasharray: 1 9; }
+.dr-fr-border.is-sel { stroke: var(--text); stroke-width: 5.5; stroke-dasharray: none; }
+.dr-fr-legend { position: absolute; left: 0; bottom: 4px; display: grid; grid-template-columns: auto auto; gap: 5px 7px; align-items: center; font-size: 12.5px; color: var(--muted); pointer-events: none; }
+.dr-fr-key { width: 13px; height: 13px; border-radius: 4px; background: var(--fr-off); }
+.dr-fr-key.is-awake { background: var(--fr-awake); }
+.dr-fr-key.is-lit { background: var(--fr-on); }
+
+/* Région choisie */
+.dr-fr-card { margin-top: 6px; padding: 13px 14px 11px; border-radius: 16px; background: var(--raise); display: grid; gap: 10px; }
+.dr-fr-card-top { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.dr-fr-card-name { flex: 1 1 0; min-width: 0; font: 700 21px/1.1 var(--f-title); font-stretch: condensed; letter-spacing: .02em; text-transform: uppercase; overflow-wrap: anywhere; }
+.dr-fr-card-bar { display: flex; align-items: center; gap: 10px; }
+.dr-fr-card .dr-bar { height: 8px; border-radius: 4px; background: var(--line-strong); }
+.dr-fr-card-pct { font: 700 17px/1 var(--f-title); min-width: 46px; text-align: right; }
+.dr-fr-figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dr-fr-fig { display: grid; gap: 3px; min-width: 0; }
+.dr-fr-num { font: 700 20px/1 var(--f-title); }
+.dr-fr-fig-l { font-size: 12.5px; color: var(--muted); }
+.dr-fr-card .dr-hint { padding: 0; font-size: 13.5px; line-height: 1.3; }
+
+/* Onglets et listes */
+.dr-hud .dr-fr-tabs { grid-template-columns: repeat(2, 1fr); padding: 0; margin-top: 14px; }
+.dr-fr-list, .dr-fr-board { display: grid; margin: 0; padding: 0; list-style: none; }
+.dr-hud .dr-fr-row { width: 100%; min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 9px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.dr-fr-rank { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 700 15px/1 var(--f-title); background: var(--raise); color: var(--muted); }
+.dr-fr-row.is-sel .dr-fr-rank { background: var(--text); color: var(--panel-solid); }
+.dr-fr-row-mid { flex: 1 1 0; min-width: 0; display: grid; gap: 6px; }
+.dr-fr-row-l1 { display: flex; align-items: baseline; gap: 8px; }
+.dr-fr-row-name { flex: 1 1 0; min-width: 0; font-weight: 650; font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-fr-row.is-mine .dr-fr-row-name { color: var(--amber); }
+.dr-fr-row-val { font: 700 16px/1 var(--f-title); flex: none; }
+.dr-fr-row-sub { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.dr-fr-pseudo { display: flex; gap: 8px; align-items: center; }
+.dr-hud .dr-fr-input {
+  flex: 1 1 0; min-width: 0; height: 44px; padding: 0 12px; border-radius: 10px; pointer-events: auto;
+  font: 600 16px/1 var(--f-ui); color: var(--text); background: var(--bg); border: 1px solid var(--line-strong);
+  user-select: text; -webkit-user-select: text;
+}
+.dr-fr-msg { min-height: 22px; }
+.dr-fr-msg.is-bad { color: var(--red); }
+.dr-fr-porter { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.dr-fr-porter .dr-fr-row-mid { gap: 3px; }
+.dr-fr-porter.is-top .dr-fr-rank { background: var(--star); color: var(--on-amber); }
+.dr-fr-porter.is-me { background: var(--raise); border-radius: 10px; border-bottom-color: transparent; padding-left: 8px; padding-right: 10px; }
+.dr-fr-porter.is-me .dr-fr-row-name { color: var(--amber); }
+.dr-fr-porter.is-me .dr-fr-rank { background: var(--amber-fill); color: var(--on-amber); }
+.dr-fr-score { font: 700 19px/1 var(--f-title); flex: none; }
+
+@media (max-width: 379px) {
+  .dr-fr-stat-n { font-size: 23px; }
+  .dr-fr-stat-l { font-size: 10.5px; letter-spacing: .05em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dr-fr-tile { transition: none; }
+  .dr-fr-status.is-on .dr-fr-dot { animation: none; }
+}

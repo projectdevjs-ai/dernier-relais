@@ -95,7 +95,7 @@ export class Ambience {
 
     const wind = clamp01(w.windKmh / 60), T = now, ph = this.phase;
     // Vent : niveau proportionnel au vent, avec des rafales lentes ; le filtre s'ouvre quand il forcit.
-    const gust = drift(T, 0.13, 0.31, ph);
+    const gust = drift(T, 0.29, 0.67, ph);
     const windLevel = (0.015 + 0.3 * wind ** 1.4) * mood.wind * (0.55 + 0.9 * gust);
     if (this.layer('wind', windLevel > 0.004, now)) {
       const l = this.wind!;

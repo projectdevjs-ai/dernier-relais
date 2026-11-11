@@ -1,11 +1,13 @@
 // Les 13 régions métropolitaines, hors ligne et sans gros fichier de contours.
 //
-// regionAt() : attribution par plus proche ville de référence (préfectures et sous-préfectures, environ 220 points).
-// Limite de précision : la frontière obtenue est la médiatrice entre deux villes, pas la vraie limite administrative.
-// Mesuré sur 200 000 points tirés au hasard dans les vrais contours (données ouvertes, utilisées pour le contrôle
-// seulement, non embarquées) : voir le rapport de tests ; l'erreur se concentre dans une bande de quelques
-// kilomètres le long des frontières entre régions. Sans conséquence pour le jeu : un abri garde pour toujours la
-// région que lui donne son premier livreur, et tous les joueurs calculent la même (même liste, mêmes coordonnées).
+// regionAt() : attribution par plus proche point de référence (414 points : les 96 préfectures, des sous-préfectures
+// et des points de calage ajoutés le long des frontières entre régions).
+// Limite de précision : la frontière obtenue est la médiatrice entre deux points, pas la vraie limite administrative.
+// Mesure faite sur 171 000 points tirés au hasard dans les vrais contours des régions (données ouvertes utilisées
+// pour le contrôle seulement, non embarquées) : 97,4 % de bonnes réponses (de 95 % en Île-de-France à 100 % en
+// Corse). Les erreurs sont toutes dans une bande de quelques kilomètres le long des frontières entre régions.
+// Sans gravité pour le jeu : tous les joueurs calculent la même réponse (même liste), et un abri garde pour
+// toujours la région que lui a donnée son premier livreur.
 // Hors de France métropolitaine, la fonction renvoie quand même la région la plus proche.
 //
 // Carte : volontairement stylisée. La France est pavée de tuiles hexagonales (une tuile ≈ 37 km) ; chaque tuile
@@ -36,13 +38,13 @@ export function regionInfo(id: string): RegionInfo | null { return BY_ID.get(id)
 export function regionName(id: string | null | undefined): string { return (id && BY_ID.get(id)?.name) || 'Région inconnue'; }
 export function isRegionId(id: unknown): id is RegionId { return typeof id === 'string' && BY_ID.has(id); }
 
-// Villes de référence : « longitude,latitude » séparées par des espaces, par région.
+// Points de référence : « longitude,latitude » séparés par des espaces, par région.
 const REF: Record<RegionId, string> = {
   // Paris, petite couronne, préfectures et bords de la région
   idf: '2.35,48.86 2.66,48.54 2.13,48.80 2.43,48.63 2.21,48.89 2.44,48.91 2.46,48.79 2.08,49.04 2.70,48.40 3.30,48.56 2.88,48.96 1.83,48.64 1.72,48.99 2.16,48.43 2.70,48.27 3.08,48.82 1.60,48.78 2.25,49.15 3.10,48.38 1.98,48.32 2.55,49.03 3.25,48.90 1.80,49.13 2.02,48.52',
   cvl: '2.40,47.08 1.49,48.45 1.69,46.81 0.69,47.39 1.33,47.59 1.91,47.90 1.37,48.74 2.25,48.17 2.73,48.00 2.07,47.22 2.63,47.69 1.07,47.79 0.24,47.17 1.00,47.13 1.06,46.63 2.51,46.72 0.82,48.32 1.33,48.07 2.84,47.33 1.99,46.58 0.45,47.63 2.94,47.02 1.75,47.36 3.02,47.83 1.60,48.26 1.28,48.20 0.93,48.10 1.45,46.45 2.95,47.60 1.01,48.69 1.98,48.27 0.59,47.01 2.82,47.46 1.82,48.42 1.01,48.44 1.56,48.70',
   bfc: '5.04,47.32 6.02,47.24 5.55,46.67 3.16,46.99 6.16,47.62 4.83,46.31 3.57,47.80 6.86,47.64 3.28,48.20 6.80,47.51 6.35,46.90 5.49,47.09 4.85,46.78 4.30,46.95 3.91,47.49 2.93,47.41 4.57,47.86 5.86,46.39 4.00,46.48 3.47,46.83 5.60,47.45 4.84,47.02 3.40,47.98 5.23,46.63 6.60,47.20 4.28,46.43 3.05,47.25 3.97,47.86 6.38,47.87 5.33,47.58 3.20,47.55 3.73,46.68 3.19,47.84 5.83,47.83 3.62,48.13 3.02,47.72 5.59,46.41 3.01,47.58 6.61,47.85 4.25,47.89 3.83,47.98 3.99,46.26 5.60,47.67',
-  nor: '-0.37,49.18 1.15,49.02 -1.09,49.12 0.09,48.43 1.10,49.44 -1.62,49.64 0.11,49.49 1.08,49.92 -1.36,48.68 -0.57,48.75 0.55,48.52 1.48,49.09 0.23,49.15 1.52,49.73 0.60,48.80 -0.89,48.84 1.40,50.05 -1.55,48.55 0.75,49.62 1.75,49.28 -0.15,48.55 0.93,48.75 1.70,49.60 1.61,49.44 0.74,48.27 1.23,48.83 0.80,48.41 0.24,48.56',
+  nor: '-0.37,49.18 1.15,49.02 -1.09,49.12 0.09,48.43 1.10,49.44 -1.62,49.64 0.11,49.49 1.08,49.92 -1.36,48.68 -0.57,48.75 0.55,48.52 1.48,49.09 0.23,49.15 1.52,49.73 0.60,48.80 -0.89,48.84 1.40,50.05 -1.55,48.55 0.75,49.62 1.75,49.28 -0.15,48.55 0.93,48.75 1.70,49.60 1.61,49.44 0.74,48.27 1.23,48.83 0.80,48.41 0.24,48.56 -1.51,48.64',
   hdf: '3.62,49.56 3.06,50.63 2.08,49.43 2.78,50.29 2.30,49.89 1.86,50.95 2.38,51.03 3.52,50.36 3.29,49.85 1.83,50.11 3.40,49.05 2.59,49.21 2.83,49.42 1.61,50.73 3.97,50.28 3.32,49.38 2.57,49.65 4.08,49.92 1.75,49.50 2.15,49.25 3.55,49.20 1.95,49.72 2.42,49.26 1.82,49.28 2.99,49.14 1.56,50.13 1.79,49.60 3.98,49.44',
   ges: '4.72,49.77 4.07,48.30 4.36,48.96 5.14,48.11 6.18,48.69 5.16,48.77 6.18,49.12 7.75,48.58 7.36,48.08 6.45,48.17 4.03,49.26 5.38,49.16 6.17,49.36 7.34,47.75 7.07,49.11 4.95,48.64 5.33,47.86 3.50,48.49 7.45,48.75 6.95,48.29 5.70,48.36 3.72,48.72 4.58,48.72 4.37,49.51 5.60,49.52 7.95,48.95 7.10,47.80 4.35,48.02 5.75,47.90 6.60,47.95 3.75,48.20 5.45,47.72 3.76,49.14 4.00,47.99 6.36,47.99 4.35,49.87 4.14,49.42',
   pdl: '-1.55,47.22 -0.55,47.47 -0.77,48.07 0.20,48.00 -1.43,46.67 -2.21,47.27 -0.88,47.06 -1.38,47.72 -1.78,46.50 -0.81,46.47 -0.62,48.30 -0.08,47.26 -0.08,47.70 0.65,48.18 -2.00,46.95 -1.18,47.37 0.43,47.75 -1.95,47.50 -1.00,46.85 -1.05,47.85 0.00,48.29 -0.21,48.43 -1.01,48.29 0.42,47.66 -1.22,46.39 0.82,48.12 0.20,48.41',
@@ -119,7 +121,7 @@ export function hexPoints(x: number, y: number, r: number): [number, number][] {
 }
 
 let cached: FranceMap | null = null;
-/** Construit (une seule fois) la carte en tuiles. `unit` = pixels de carte par degré de latitude. */
+/** Construit (une seule fois) la carte en tuiles. */
 export function franceMap(): FranceMap {
   if (cached) return cached;
   const unit = 100; // unités de carte par degré de latitude

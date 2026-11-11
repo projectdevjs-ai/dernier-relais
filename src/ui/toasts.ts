@@ -13,7 +13,8 @@ export class Toasts {
     this.host.setAttribute('aria-live', 'polite');
     parent.append(this.host);
   }
-  push(text: string, tone: Tone = 'info', ic?: IconName): void {
+  /** `ms` : durée d'affichage (les phrases longues restent un peu plus). */
+  push(text: string, tone: Tone = 'info', ic?: IconName, ms = 2800): void {
     // Un message identique encore affiché n'est pas répété.
     for (const c of Array.from(this.host.children)) if (c.textContent === text) return;
     const el = h('div', `dr-toast dr-toast-${tone}`, icon(ic ?? ICON[tone]), h('span', '', text));
@@ -22,6 +23,6 @@ export class Toasts {
     setTimeout(() => {
       el.classList.add('is-out');
       setTimeout(() => el.remove(), 220);
-    }, 2800);
+    }, ms);
   }
 }

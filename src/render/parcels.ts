@@ -1,7 +1,9 @@
 // Les colis révélés par le scanner : caisse du bon type posée au sol, agrandie,
 // avec un repère lumineux ambre. Ceux qui sont à portée de ramassage pulsent.
+// Colis spéciaux : repère doré à double losange, et leur propre modèle une fois identifiés.
+// Colis perdus : repère bleu (la couleur du réseau).
 import * as THREE from 'three';
-import type { CrateKind, OrderView } from '../game/api';
+import type { OrderView } from '../game/api';
 import type { LngLat } from '../core/geo';
 import { disposeInstance, type Instance, setLayer, spawn } from './assets';
 import type { FxKit } from './fx';
@@ -13,14 +15,23 @@ const CRATE_WIDTH = 5;
 const RING = 5.4;
 export const PARCEL_TOP = 11;
 
+/** Modèle d'un colis : celui du colis spécial une fois identifié, sinon sa caisse. */
+export function parcelModel(o: OrderView): string {
+  return o.special?.known ? `spe_${o.special.kind}` : CRATE_MODEL[o.crate];
+}
+/** Apparence d'un colis au sol : change quand il est identifié. */
+const lookOf = (o: OrderView): string => `${parcelModel(o)}|${o.special ? 'or' : o.lost ? 'bleu' : 'ambre'}`;
+
 interface Item {
   id: string;
   at: LngLat;
-  crate: CrateKind;
+  look: string;
   group: THREE.Group;
   model: Instance | null;
   holder: THREE.Group;
   gem: THREE.Mesh;
+  /** Second losange des colis spéciaux. */
+  gem2: THREE.Mesh | null;
   pulse: THREE.Mesh;
   ring: THREE.Mesh;
   inRange: boolean;
@@ -43,7 +54,7 @@ export class Parcels {
       if (o.state !== 'révélé') continue;
       this.seen.add(o.id);
       let it = this.items.get(o.id);
-      if (it && it.crate !== o.crate) { this.remove(it); it = undefined; }
+      if (it && it.look !== lookOf(o)) { this.remove(it); it = undefined; }
       if (!it) it = this.create(o);
       if (it.at[0] !== o.at[0] || it.at[1] !== o.at[1]) { it.at = [o.at[0], o.at[1]]; this.layer.toLocal(it.at, it.group.position); }
       if (it.inRange !== o.inRange) {
@@ -61,29 +72,37 @@ export class Parcels {
     this.layer.toLocal(o.at, group.position);
     const shadow = new THREE.Mesh(kit.quad, kit.shadow);
     shadow.scale.set(CRATE_WIDTH * 1.9, 1, CRATE_WIDTH * 1.9); shadow.position.y = 0.1; shadow.renderOrder = 6;
-    const glow = new THREE.Mesh(kit.quad, kit.glowAmber);
+    const gold = !!o.special, blue = !gold && !!o.lost;
+    const glow = new THREE.Mesh(kit.quad, gold ? kit.glowGold : blue ? kit.glowBlue : kit.glowAmber);
     glow.scale.set(RING * 4.2, 1, RING * 4.2); glow.position.y = 0.14; glow.renderOrder = 7;
-    const ring = new THREE.Mesh(kit.ring, kit.ringAmber);
+    const ring = new THREE.Mesh(kit.ring, gold ? kit.ringGold : blue ? kit.ringBlue : kit.ringAmber);
     ring.scale.set(RING, 1, RING); ring.position.y = 0.3; ring.renderOrder = 8;
-    const pulse = new THREE.Mesh(kit.thinRing, kit.pulseAmber);
+    const pulse = new THREE.Mesh(kit.thinRing, gold ? kit.pulseGold : blue ? kit.pulseBlue : kit.pulseAmber);
     pulse.position.y = 0.32; pulse.renderOrder = 8; pulse.visible = false;
     const holder = new THREE.Group();
     group.add(shadow, glow, ring, pulse, holder);
     group.traverse(c => c.layers.set(WORLD));
     // Repère visible par-dessus les immeubles : fin faisceau et losange flottant.
-    const beam = new THREE.Mesh(kit.beam, kit.beamAmber);
-    beam.scale.set(0.8, 46, 0.8);
-    const gem = new THREE.Mesh(kit.diamond, kit.solidAmber);
+    const beam = new THREE.Mesh(kit.beam, gold ? kit.beamGold : blue ? kit.beamBlue : kit.beamAmber);
+    beam.scale.set(gold ? 0.95 : 0.8, gold ? 54 : 46, gold ? 0.95 : 0.8);
+    const gem = new THREE.Mesh(kit.diamond, gold ? kit.solidGold : blue ? kit.solidBlue : kit.solidAmber);
     gem.scale.setScalar(1.5); gem.position.y = PARCEL_TOP - 1.6;
     setLayer(beam, TOP); setLayer(gem, TOP);
     group.add(beam, gem);
+    let gem2: THREE.Mesh | null = null;
+    if (gold) {
+      gem2 = new THREE.Mesh(kit.diamond, kit.solidGold);
+      gem2.scale.setScalar(0.8); gem2.position.y = PARCEL_TOP + 1.7;
+      setLayer(gem2, TOP);
+      group.add(gem2);
+    }
     this.scene.add(group);
 
     let seed = 0;
     for (let i = 0; i < o.id.length; i++) seed = (seed * 31 + o.id.charCodeAt(i)) % 628;
-    const it: Item = { id: o.id, at: [o.at[0], o.at[1]], crate: o.crate, group, model: null, holder, gem, pulse, ring, inRange: false, alive: true, seed: seed / 100 };
+    const it: Item = { id: o.id, at: [o.at[0], o.at[1]], look: lookOf(o), group, model: null, holder, gem, gem2, pulse, ring, inRange: false, alive: true, seed: seed / 100 };
     this.items.set(o.id, it);
-    void spawn(CRATE_MODEL[o.crate], 'caisse', { height: CRATE_HEIGHT, maxWidth: CRATE_WIDTH }).then(inst => {
+    void spawn(parcelModel(o), 'caisse', { height: o.special?.known ? CRATE_HEIGHT * 1.25 : CRATE_HEIGHT, maxWidth: CRATE_WIDTH * 1.1 }).then(inst => {
       if (!it.alive) { disposeInstance(inst); return; }
       it.model = inst;
       inst.root.rotation.y = it.seed;
@@ -108,6 +127,7 @@ export class Parcels {
     for (const it of this.items.values()) {
       it.gem.position.y = PARCEL_TOP - 1.6 + Math.sin(timeS * 2.4 + it.seed) * 0.6;
       it.gem.rotation.y = timeS * 1.6 + it.seed;
+      if (it.gem2) { it.gem2.position.y = PARCEL_TOP + 1.7 + Math.sin(timeS * 2.4 + it.seed + 1.2) * 0.6; it.gem2.rotation.y = -timeS * 2.2; }
       if (it.inRange) {
         const beat = 1 + 0.07 * Math.sin(timeS * 6);
         it.holder.scale.setScalar(beat);

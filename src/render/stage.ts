@@ -4,14 +4,18 @@ import * as THREE from 'three';
 import maplibregl, { type GeoJSONSource, type Map as MlMap, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { cellBounds, type LngLat } from '../core/geo';
-import type { Ambiance, CrateKind, GameView, StageApi, StageEvents } from '../game/api';
+import type { Ambiance, CacheView, FrontView, GameView, JamView, StageApi, StageEvents, WandererView, Weather } from '../game/api';
+import { CACHE_TOP, Caches } from './caches';
+import { Fronts } from './fronts';
 import { Celebration, Dangers, FxKit, ScanPulse } from './fx';
+import { Jams } from './jams';
 import { LAYER_ID, Layer3D } from './layer';
 import { applyPalette, buildGameStyle, type GameStyle, paletteFor, STYLE_URL } from './mapstyle';
-import { PARCEL_TOP, Parcels } from './parcels';
+import { PARCEL_TOP, Parcels, parcelModel } from './parcels';
 import { Porter } from './porter';
 import { Shelters } from './shelters';
 import { computeEnv, Sky } from './sky';
+import { WANDERER_HEIGHT, Wanderers } from './wanderers';
 
 export interface StageOptions { center?: LngLat; ambiance?: Ambiance }
 
@@ -22,6 +26,8 @@ const PITCH = 62;
 const TOP_PADDING = 0.46;
 /** Au-delà de cette distance à l'ancre (mètres), on recale le repère local. */
 const REANCHOR_M = 4000;
+// Listes vides partagées : une vue sans systèmes secondaires n'alloue rien.
+const NO_CACHES: CacheView[] = [], NO_WANDERERS: WandererView[] = [], NO_FRONTS: FrontView[] = [], NO_JAMS: JamView[] = [];
 
 export class Stage implements StageApi {
   /** La carte MapLibre (lecture seule : pour brancher des contrôles si besoin). */
@@ -34,6 +40,10 @@ export class Stage implements StageApi {
   private readonly shelters: Shelters;
   private readonly parcels: Parcels;
   private readonly dangers: Dangers;
+  private readonly caches: Caches;
+  private readonly wanderers: Wanderers;
+  private readonly fronts: Fronts;
+  private readonly jams: Jams;
   private readonly scan: ScanPulse;
   private readonly party: Celebration;
 
@@ -52,7 +62,9 @@ export class Stage implements StageApi {
   private readonly ll: LngLat = [0, 0];
   private readonly sa = { x: 0, y: 0 };
   private readonly sb = { x: 0, y: 0 };
-  private readonly carried: CrateKind[] = [];
+  private readonly carried: string[] = [];
+  /** Temps affiché quand le joueur est dans un front : le temps réel, forcé en orage. */
+  private readonly frontWx: Weather = { kind: 'orage', windKmh: 45, tempC: 10, night: false, sunAltDeg: 20 };
   private veilKey = '';
   private raf = 0;
   private last = 0;
@@ -89,6 +101,10 @@ export class Stage implements StageApi {
     this.shelters = new Shelters(scene, this.kit, this.layer);
     this.parcels = new Parcels(scene, this.kit, this.layer);
     this.dangers = new Dangers(scene, this.kit, this.layer);
+    this.caches = new Caches(scene, this.kit, this.layer);
+    this.wanderers = new Wanderers(scene, this.kit, this.layer);
+    this.fronts = new Fronts(scene, this.kit, this.layer);
+    this.jams = new Jams(scene, this.kit, this.layer);
     this.scan = new ScanPulse(scene, this.kit);
     this.party = new Celebration(scene, this.kit, Math.min(window.devicePixelRatio || 1, 2));
 
@@ -185,7 +201,13 @@ export class Stage implements StageApi {
 
   /** Recalcule ciel, palette et lumières si l'ambiance ou la météo ont changé. */
   private refreshEnv(): void {
-    const w = this.view?.weather ?? null;
+    let w = this.view?.weather ?? null;
+    if (w && this.fronts.inside) {
+      // Dans un front : pluie et ciel d'orage, quelle que soit la météo réelle.
+      const f = this.frontWx;
+      f.windKmh = Math.max(45, w.windKmh); f.tempC = w.tempC; f.night = w.night; f.sunAltDeg = w.sunAltDeg;
+      w = f;
+    }
     const env = computeEnv(this.ambiance, w);
     if (env.key === this.envKey || !this.ready) return;
     this.envKey = env.key;
@@ -221,6 +243,7 @@ export class Stage implements StageApi {
   // ---------------------------------------------------------------- Synchronisation
 
   private apply(view: GameView): void {
+    this.fronts.sync(view.fronts ?? NO_FRONTS);
     this.refreshEnv();
     const at = view.player.at;
     if (at) {
@@ -229,6 +252,7 @@ export class Stage implements StageApi {
       if (this.v.lengthSq() > REANCHOR_M * REANCHOR_M) {
         this.layer.setAnchor(at);
         this.shelters.reposition(); this.parcels.reposition(); this.dangers.reposition();
+        this.caches.reposition(); this.wanderers.reposition(); this.fronts.reposition(); this.jams.reposition();
         this.layer.toLocal(at, this.v);
         this.snapNext = true;
         this.camPlaced = false;
@@ -244,11 +268,14 @@ export class Stage implements StageApi {
       this.porter.hide();
     }
     this.carried.length = 0;
-    for (const o of view.orders) if (o.state === 'porté') this.carried.push(o.crate);
+    for (const o of view.orders) if (o.state === 'porté') this.carried.push(parcelModel(o));
     this.porter.setCarried(this.carried);
     this.shelters.sync(view.shelters);
     this.parcels.sync(view.orders);
     this.dangers.sync(view.dangers);
+    this.caches.sync(view.caches ?? NO_CACHES);
+    this.wanderers.sync(view.wanderers ?? NO_WANDERERS);
+    this.jams.sync(view.jams ?? NO_JAMS);
     this.refreshVeil(view);
     this.map.triggerRepaint();
   }
@@ -271,6 +298,10 @@ export class Stage implements StageApi {
     this.party.update(dt);
     this.parcels.update(this.timeS);
     this.dangers.update(this.timeS);
+    this.caches.update(this.timeS);
+    this.wanderers.update(dt, this.timeS);
+    this.fronts.update(dt);
+    this.jams.update(this.timeS);
     this.shelters.update(dt, this.timeS, this.porter.pos, (this.map.getBearing() * Math.PI) / 180, (this.map.getPitch() * Math.PI) / 180);
 
     // Suivi caméra : le centre glisse vers le porteur, sans à-coup.
@@ -300,7 +331,7 @@ export class Stage implements StageApi {
 
   /** Test de toucher par distance à l'écran, avec une zone généreuse (doigt). */
   private onTap(px: number, py: number, at: LngLat): void {
-    let best = 1, kind: 'abri' | 'colis' | null = null, id = '';
+    let best = 1, kind: 'abri' | 'colis' | 'cache' | 'rôdeur' | null = null, id = '';
     for (const p of this.parcels.all) {
       const g = p.group.position;
       if (!this.layer.toScreen(g.x, 0, g.z, this.sa) || !this.layer.toScreen(g.x, PARCEL_TOP, g.z, this.sb)) continue;
@@ -315,7 +346,23 @@ export class Stage implements StageApi {
       const d = Stage.segDist(px, py, this.sa, this.sb) / reach;
       if (d < best) { best = d; kind = 'abri'; id = s.id; }
     }
-    if (kind === 'abri') this.events.onTapShelter(id);
+    for (const c of this.caches.all) {
+      const g = c.group.position;
+      if (!this.layer.toScreen(g.x, 0, g.z, this.sa) || !this.layer.toScreen(g.x, CACHE_TOP, g.z, this.sb)) continue;
+      const d = Stage.segDist(px, py, this.sa, this.sb) / 38;
+      if (d < best) { best = d; kind = 'cache'; id = c.id; }
+    }
+    for (const w of this.wanderers.all) {
+      const g = w.group.position;
+      if (!this.layer.toScreen(g.x, 0, g.z, this.sa) || !this.layer.toScreen(g.x, WANDERER_HEIGHT, g.z, this.sb)) continue;
+      const d = Stage.segDist(px, py, this.sa, this.sb) / 38;
+      if (d < best) { best = d; kind = 'rôdeur'; id = w.id; }
+    }
+    // Cache ou rôdeur : si personne n'écoute ce toucher, il compte comme un toucher du sol.
+    if (kind === 'cache' && this.events.onTapCache) this.events.onTapCache(id);
+    else if (kind === 'rôdeur' && this.events.onTapWanderer) this.events.onTapWanderer(id);
+    else if (kind === 'cache' || kind === 'rôdeur') this.events.onTapGround(at);
+    else if (kind === 'abri') this.events.onTapShelter(id);
     else if (kind === 'colis') this.events.onTapOrder(id);
     else this.events.onTapGround(at);
   }

@@ -3,10 +3,13 @@ import { type LngLat, dist } from './core/geo';
 import type { Ambiance, GameView } from './game/api';
 import { Game } from './game/game';
 import { LocalGameStore } from './game/save';
+import { createOnline } from './net/index';
 import { type Fix, Locator } from './player/gps';
 import { Stage } from './render/stage';
 import { fetchWeather } from './services/weather';
+import { FrancePanel } from './ui/france';
 import { Hud } from './ui/hud';
+import { Sound } from './audio/audio';
 import { World } from './world/world';
 
 const START: LngLat = [-1.5761, 47.1822];
@@ -17,7 +20,13 @@ const pref = {
 };
 const ambiance: Ambiance = pref.get('ambiance') === 'clair' ? 'clair' : 'crépuscule';
 
-const game = new Game({ store: new LocalGameStore() });
+// Sons et vibrations : le navigateur n'autorise le son qu'après un premier toucher.
+const sound = new Sound({ muted: pref.get('son') === 'non' });
+addEventListener('pointerdown', () => sound.unlock());
+
+// En ligne : sauvegarde locale d'abord, copie sur le serveur quand il répond. Hors ligne, le jeu reste complet.
+const online = createOnline(new LocalGameStore());
+const game = new Game({ store: online.store });
 const world = new World(() => game.setWorld(world.loaded()));
 let me: LngLat | null = null;
 let mode: 'gps' | 'simulé' = 'simulé';
@@ -62,11 +71,19 @@ const hud = new Hud(document.getElementById('hud')!, {
   },
 }, { ambiance });
 
+const france = new FrancePanel(document.getElementById('hud')!, online.net);
+online.net.start();
+
 let view: GameView | null = null;
 game.on(e => {
   hud.handle(e);
+  sound.handle(e);
   if (e.type === 'scan' && view) stage.pulseScan(view.scanner.rangeM);
-  if (e.type === 'delivery') stage.celebrate(e.result.shelterId);
+  if (e.type === 'delivery') {
+    stage.celebrate(e.result.shelterId);
+    const sh = view?.shelters.find(x => x.id === e.result.shelterId);
+    if (sh) online.net.onDelivery(e.result, { id: sh.id, name: sh.name, at: sh.at });
+  }
 });
 
 // Marche simulée : le porteur avance vers le point touché, à vitesse de marche.
@@ -87,6 +104,7 @@ function frame(): void {
   view = game.view();
   stage.sync(view);
   hud.render(view);
+  sound.ambient(view);
 }
 
 game.load().then(() => {
@@ -97,9 +115,11 @@ game.load().then(() => {
   setInterval(frame, 200);
   frame();
 });
-const flush = () => { void game.flush(); };
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+const flush = () => { void game.flush().then(() => online.store.flush()); };
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { flush(); sound.suspend(); } else sound.resume();
+});
 addEventListener('pagehide', flush);
 
 // Accès pour les essais automatiques (console du navigateur) : sans effet sur le jeu.
-Object.assign(window, { __dr: { game, stage, hud, world, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
+Object.assign(window, { __dr: { game, stage, hud, world, sound, france, net: online.net, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
