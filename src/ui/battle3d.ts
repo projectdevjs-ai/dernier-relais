@@ -173,6 +173,7 @@ export class CinematicBattle {
   private mixers: THREE.AnimationMixer[] = [];
   private ring:THREE.Mesh|null=null;
   private glow:THREE.PointLight|null=null;
+  private searchLight:THREE.Mesh | null = null;
   private frame=0;
   private t=0;
   private prev=0;
@@ -228,6 +229,13 @@ export class CinematicBattle {
     if(this.isDrone){
       const d=drone();this.enemy=d.root;this.rotors=d.propellers;
       this.enemy.position.set(0,4.8,-2);
+      const volumetric = new THREE.Mesh(new THREE.ConeGeometry(2.6,4.7,24,1,true),
+        new THREE.MeshBasicMaterial({color:0xf36c55,transparent:true,opacity:.085,
+          side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));
+      volumetric.position.set(0,2.35,-2);
+      volumetric.frustumCulled=false;
+      this.searchLight=volumetric;
+      this.scene.add(volumetric);
     }else{
       const d=humanoid(encounter.kind);this.enemy=d.root;this.head=d.head;this.armL=d.armL;this.armR=d.armR;
       this.enemy.position.set(0,0,-2);
@@ -273,6 +281,10 @@ export class CinematicBattle {
       const inst=await spawn(name,category,{height,maxWidth,ownMaterials:true});
       if(this.stopped){disposeInstance(inst);return;}
       if(replaceFallback)parent.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=false;});
+      if(parent===this.enemy && category==='perso') {
+        const tint=new THREE.Color(kind==='scavenger'?0xefb29b:0xb0bdc6);
+        for(const m of inst.materials)m.color.multiply(tint);
+      }
       inst.root.position.set(...position);
       inst.root.rotation.y=angle;
       parent.add(inst.root);
@@ -285,9 +297,10 @@ export class CinematicBattle {
       }
     };
     const jobs:Promise<void>[]=[];
-    jobs.push(add('porteur','perso',3.7,this.fighter,[0,0,0],Math.PI,true,2.8));
-    if(kind!=='drone')jobs.push(add(kind==='scavenger'?'porteur_civil':'porteur_intro','perso',
-      3.85,this.enemy,[0,0,0],Math.PI,true,2.7));
+    jobs.push(add('porteur','perso',4.25,this.fighter,[0,0,0],Math.PI,true,3.1));
+    // Personnages hostiles réellement debout et animés : les anciennes poses civiles
+    // (assises/allongées) n'étaient pas adaptées à une confrontation.
+    if(kind!=='drone')jobs.push(add('porteur','perso',5.0,this.enemy,[0,0,0],Math.PI,true,3.4));
     // Ces modèles sont déjà présents dans le dossier public/models, sans appel API.
     const props=[
       {name:'ruine_1',height:15,x:-12,z:-11,angle:.22},
@@ -345,6 +358,7 @@ export class CinematicBattle {
       if(this.armR)this.armR.rotation.x=-Math.sin(t*1.7)*.08;
     }
     this.fighter.position.y=Math.sin(t*1.4)*.035;
+    if(this.searchLight)this.searchLight.rotation.z=Math.sin(t*.75)*.13;
     if(this.ring){
       const v=1+Math.sin(t*2.4)*.065;
       this.ring.scale.setScalar(v);
