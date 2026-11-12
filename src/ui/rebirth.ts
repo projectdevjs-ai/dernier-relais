@@ -41,7 +41,8 @@ export class RebirthConsole {
   private announcedEncounter: string | null = null;
   private tab: 'survie' | 'fabrication' | 'factions' | 'radio' = 'survie';
   private view: GameView | null = null;
-  constructor(root: HTMLElement, private actions: GameActions, private run: (r: ActionResult) => boolean) {
+  constructor(root: HTMLElement, private actions: GameActions, private run: (r: ActionResult) => boolean,
+    private overlay?: (open: boolean) => void) {
     this.trigger.setAttribute('aria-label','Ouvrir la console de survie');
     this.trigger.append(this.status);
     this.veil.hidden = true;
@@ -49,15 +50,17 @@ export class RebirthConsole {
     this.veil.setAttribute('aria-modal','true');
     this.veil.setAttribute('aria-label','PROJECT REBIRTH — console tactique');
     this.veil.addEventListener('click', e => { if (e.target === this.veil) this.close(); });
+    addEventListener('keydown', e => { if (e.key === 'Escape' && this.opened) this.close(); });
     this.panel.append(this.body);
     this.veil.append(this.panel);
     root.append(this.trigger, this.veil);
   }
   get isOpen(): boolean { return this.opened; }
   open(): void {
-    this.opened = true; this.veil.hidden = false; this.last = ''; this.draw();
+    if (this.opened) return;
+    this.opened = true; this.veil.hidden = false; this.last = ''; this.overlay?.(true); this.draw();
   }
-  close(): void { this.opened = false; this.veil.hidden = true; }
+  close(): void { if (!this.opened) return; this.opened = false; this.veil.hidden = true; this.overlay?.(false); }
   render(v: GameView): void {
     this.view = v;
     const s = v.player.rebirth, threat = s?.encounter;
