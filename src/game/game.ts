@@ -71,6 +71,7 @@ export class Game implements GameEngine {
   private xp = 0;
   private skillPoints = 0;
   private score = 0;
+  private reputation = 0;
   private deliveries = 0;
   private distanceM = 0;
   private stamina = 1;
@@ -163,7 +164,7 @@ export class Game implements GameEngine {
       this.nextDay = nextDayMs(Date.parse(save.day));
     }
     this.level = save.level; this.xp = save.xp; this.skillPoints = save.skillPoints;
-    this.score = save.score; this.deliveries = save.deliveries; this.distanceM = save.distanceM; this.stamina = save.stamina;
+    this.score = save.score; this.reputation = save.reputation ?? 0; this.deliveries = save.deliveries; this.distanceM = save.distanceM; this.stamina = save.stamina;
     this.ranks = { ...save.skills };
     this.mods = modsFor(this.ranks);
     this.shelterSave = new Map(Object.entries(save.shelters).map(([k, v]) => [k, { ...v }]));
@@ -193,7 +194,7 @@ export class Game implements GameEngine {
     const orders: OrderSave[] = [];
     for (const o of this.orders.values()) if (o.state !== 'caché') orders.push({ ...o, state: o.state });
     return {
-      version: 1, savedAt: this.now(), level: this.level, xp: this.xp, skillPoints: this.skillPoints, score: this.score,
+      version: 1, savedAt: this.now(), level: this.level, xp: this.xp, skillPoints: this.skillPoints, score: this.score, reputation: this.reputation,
       deliveries: this.deliveries, distanceM: this.distanceM, stamina: this.stamina, skills: { ...this.ranks },
       shelters: Object.fromEntries(this.shelterSave), discovered: [...this.discovered], visited: [...this.visitedList],
       day: this.day, orders, done: [...this.done],
@@ -560,6 +561,27 @@ export class Game implements GameEngine {
     return OK;
   }
 
+  /** Dépôt solidaire : tous les colis peuvent être remis à un autre relais sans points ni XP. */
+  handoff(orderId: string, shelterId: string): ActionResult {
+    const o = this.orders.get(orderId);
+    if (!o || o.state !== 'porté') return no('Ce colis n’est pas dans ton sac.');
+    if (o.destId === shelterId) return no('C’est le bon relais : livre ce colis normalement.');
+    const sh = this.shelterById.get(shelterId);
+    if (!sh || !this.pos || dist(sh.at, this.pos) > RANGE.deliver) return no('Rapproche-toi du relais.');
+    if (this.vehicle && !this.passenger) return no('Confirme le mode passager avant de déposer.');
+    this.orders.delete(orderId);
+    this.done.add(orderId);
+    this.relayIds.delete(orderId);
+    this.lateWarned.delete(orderId);
+    this.strapUntil.delete(orderId);
+    this.frontS.delete(orderId);
+    if (!this.carried().length) { this.balance = 0; this.unbalancedS = 0; }
+    this.reputation += 10;
+    this.emit({ type: 'toast', text: 'Dépôt solidaire : +10 réputation, aucun point ni XP.', tone: 'good' });
+    this.saveNow();
+    return OK;
+  }
+
   /** Repos dans les quartiers de la Station Lumen : l'endurance revient au maximum. */
   rest(): void {
     this.stamina = 1;
@@ -910,7 +932,7 @@ export class Game implements GameEngine {
       player: {
         at: p, headingDeg: this.heading, speedMps: this.speed, moving: !this.vehicle && this.speed > SPEED.moving, mode: this.mode, vehicle: this.vehicle, passenger: this.passenger,
         level: this.level, xp: this.xp, xpNext: xpNeeded(this.level), stamina: this.stamina, skillPoints: this.skillPoints,
-        carriedKg, capacityKg: capacityKg(rig), balance: this.balance, score: this.score, deliveries: this.deliveries,
+        carriedKg, capacityKg: capacityKg(rig), balance: this.balance, score: this.score, reputation: this.reputation, deliveries: this.deliveries,
         distanceKm: Math.round(this.distanceM / 10) / 100,
         slots, exoTier: rig.tier,
         exo: EXO.map((e, i) => ({ tier: i, name: e.name, desc: e.desc, installed: i <= rig.tier, level: e.level })),
