@@ -39,7 +39,7 @@ export class RebirthConsole {
   private opened = false;
   /** Ne montre pas à nouveau une confrontation que le joueur a volontairement réduite. */
   private announcedEncounter: string | null = null;
-  private tab: 'survie' | 'fabrication' | 'factions' = 'survie';
+  private tab: 'survie' | 'fabrication' | 'factions' | 'radio' = 'survie';
   private view: GameView | null = null;
   constructor(root: HTMLElement, private actions: GameActions, private run: (r: ActionResult) => boolean) {
     this.trigger.setAttribute('aria-label','Ouvrir la console de survie');
@@ -61,7 +61,8 @@ export class RebirthConsole {
   render(v: GameView): void {
     this.view = v;
     const s = v.player.rebirth, threat = s?.encounter;
-    this.status.textContent = threat ? ' !' : '';
+    this.status.textContent = threat ? ' !' : s?.radio ? ' ●' : '';
+    this.trigger.classList.toggle('rb-radio-pending',!!s?.radio);
     this.trigger.classList.toggle('rb-in-combat', !!threat);
     // Une confrontation active mérite une ouverture immédiate, sans pop-up durant la marche.
     if (!threat) this.announcedEncounter = null;
@@ -100,14 +101,15 @@ export class RebirthConsole {
     summary.append(summaryText, percentage, bar(state.integrity,100,'rb-integrity'));
     this.body.append(summary);
     const tabs = el('nav','rb-tabs');
-    for (const [id,label] of [['survie','INVENTAIRE'],['fabrication','ATELIER'],['factions','FACTIONS']] as const) {
+    for (const [id,label] of [['survie','SAC'],['fabrication','ATELIER'],['factions','FACTIONS'],['radio','RADIO']] as const) {
       const b = button(label, 'rb-tab'+(this.tab===id?' is-active':''), ()=>{ this.tab=id; this.last=''; this.draw(); });
       tabs.append(b);
     }
     this.body.append(tabs);
     if (this.tab==='survie') this.drawInventory(v,state);
     else if(this.tab==='fabrication') this.drawCraft(state);
-    else this.drawFactions(state);
+    else if(this.tab==='factions') this.drawFactions(state);
+    else this.drawRadio(v,state);
     this.body.append(el('footer','rb-footer','DERNIER RELAIS · PROJECT REBIRTH / 0 € DE SERVEUR'));
   }
   private drawInventory(v: GameView,s: Rebirth): void {
@@ -163,6 +165,34 @@ export class RebirthConsole {
       row.append(head,track);this.body.append(row);
     }
   }
+  private drawRadio(v: GameView, s: Rebirth): void {
+    this.body.append(el('div','rb-section-label','SIGNAL / TRANSMISSIONS DÉCODÉES'));
+    if(s.radio) {
+      const signal=s.radio;
+      const node=el('article','rb-radio-card');
+      node.append(el('div','rb-radio-scan','●  TRANSMISSION ACTIVE  /  '+signal.source),
+        el('h3','rb-radio-title',signal.title),el('p','rb-radio-text',signal.text));
+      const disabled=v.player.moving||v.player.vehicle;
+      const options=el('div','rb-actions');
+      const help=button('SECOURIR  ·  +INFLUENCE','rb-action',()=>this.act(this.actions.answerRadio?.('secourir')??{ok:false,why:'Indisponible'}));
+      const loot=button('EXTRAIRE  ·  +MATÉRIAUX','rb-action',()=>this.act(this.actions.answerRadio?.('extraire')??{ok:false,why:'Indisponible'}));
+      help.disabled=loot.disabled=disabled;
+      options.append(help,loot);node.append(options);
+      if(disabled)node.append(el('p','rb-hint','Réponds à la transmission lorsque tu es à l’arrêt.'));
+      this.body.append(node);
+    } else this.body.append(el('p','rb-hint','Aucun signal en attente. Explore de nouveaux secteurs pour intercepter des transmissions.'));
+    this.body.append(el('div','rb-section-label','ARCHIVES / JOURNAL DES DÉCISIONS'));
+    if(!s.radioLog.length)this.body.append(el('p','rb-hint','Tes premières découvertes apparaîtront ici.'));
+    else {
+      const list=el('div','rb-radio-log');
+      for(const row of [...s.radioLog].reverse().slice(0,12)){
+        const [,text] = row.split('|',2);
+        list.append(el('p','',text??row));
+      }
+      this.body.append(list);
+    }
+  }
+
   private drawBattle(v: GameView,s: Rebirth): void {
     const e=s.encounter!;
     const stopped=!v.player.moving&&!v.player.vehicle;
