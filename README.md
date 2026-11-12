@@ -1,43 +1,50 @@
 # Dernier Relais
 
-Jeu mobile de livraison à pied : on marche dans sa vraie ville pour livrer des colis et rallumer un réseau d'abris,
-reconstruit par tous les joueurs sur la carte de France. Web 3D, emballé en APK Android avec Capacitor.
+Jeu mobile de livraison à pied. Tu marches dans ta vraie ville, tu livres des colis et tu rallumes, abri après abri,
+un réseau que tous les joueurs reconstruisent ensemble sur la carte de France.
 
-## État : étape 2, socle technique
+- **Jouer dans le navigateur** : https://projectdevjs-ai.github.io/dernier-relais/
+- **APK Android de test** : https://github.com/projectdevjs-ai/dernier-relais/releases/download/apk/dernier-relais.apk
+  (reconstruite automatiquement à chaque mise à jour de la branche `main`)
 
-- Monde découpé en cases fixes d'environ 400 m, chargées au fil de la marche. Aucun point de départ fixe.
-- Un abri par bloc de 2 x 2 cases, posé sur un vrai lieu (mairie, école, pharmacie, parc…), sinon sur un hameau ou une rue.
-- Emplacements de colis sur les rues praticables, renouvelés chaque jour.
-- Même monde pour tous les joueurs : tout se calcule à partir de la position de la case.
-- Données : tuiles OpenFreeMap (OpenStreetMap), gratuites et sans clé.
+## Ce que contient le jeu
 
-La page actuelle est un banc d'essai, pas le jeu : elle sert à vérifier le monde partout en France.
+- Monde généré partout en France à partir des vrais lieux (OpenStreetMap) : un abri tous les 800 m environ, colis du jour sur les rues.
+- Boucle de jeu : scanner, ramasser, porter, livrer, note de E à S, étoiles d'abri, compétences, contrats du jour et de la semaine.
+- Événements : colis spéciaux, caches, voyageurs, fronts de mauvais temps, abris débordés, colis perdus, arrimage, inspection, preuve photo.
+- Histoire en 4 chapitres, prologue, Station Lumen en 3D comme menu principal.
+- Météo réelle, vraie nuit, deux ambiances visuelles, sons synthétisés, voix françaises des personnages.
+- En ligne (Supabase) : sauvegarde, abris collectifs, progression par région, classement, chaîne de relais entre joueurs.
 
-## Commandes
+## Mettre le jeu en ligne (à faire une fois dans Supabase)
+
+1. SQL Editor → nouvelle requête → coller tout `supabase/schema.sql` → Run.
+2. Authentication → Sign In / Providers → activer « Allow anonymous sign-ins ».
+
+Tant que ce n'est pas fait, le jeu fonctionne entièrement en local.
+
+## Développement
 
 ```
 npm install
-npm run dev      # page de test en local
-npm test         # tests de la génération du monde
-npm run probe    # contrôle sur données réelles, 10 positions en France
-npm run build    # construction dans dist/
+npm run dev        # jeu en local
+npm test           # tests
+npm run build      # construction dans dist/
 ```
 
-## Organisation
+Pages de démonstration par partie : `demo-render.html`, `demo-ui.html`, `demo-lab.html`, `demo-intro.html`,
+`demo-story.html`, `demo-france.html`, `demo-audio.html`. `?direct` dans l'adresse du jeu saute le prologue et le labo.
 
 ```
-src/core     géométrie des cases, hasard reproductible, sauvegarde
-src/world    lecture des tuiles, génération des cases, chargement autour du joueur
-src/player   position : GPS réel ou simulée
-src/ui       affichage de test
+src/core      géométrie des cases, hasard reproductible
+src/world     lecture des tuiles de carte, génération des cases
+src/game      règles du jeu (aucun accès à l'écran) ; src/game/api.ts est le contrat entre les parties
+src/render    scène 3D sur la carte
+src/ui        interface
+src/story     histoire principale
+src/lab       Station Lumen (menu 3D)      src/intro   prologue
+src/audio     sons, vibrations, voix        src/net     jeu en ligne
+supabase      schéma de la base
 ```
 
-## Étapes
-
-1. Cahier de jeu (validé le 11/11/2026)
-2. Socle technique (en cours)
-3. Carte vivante partout en France
-4. Direction visuelle
-5. Boucle de jeu, puis systèmes rebranchés un par un
-6. En ligne (Supabase)
-7. Finition, APK, puis iOS
+Les voix sont générées par `scripts/voix.ts` (Fish Audio), les modèles 3D viennent de Meshy. Aucune clé privée n'est dans ce dépôt.
