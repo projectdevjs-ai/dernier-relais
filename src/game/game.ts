@@ -848,7 +848,7 @@ export class Game implements GameEngine {
       const st = this.shelterSave.get(s.id), points = st?.points ?? 0, stars = st ? starsFor(st.points, st.deliveries) : 0;
       const d = p ? dist(s.at, p) : 0, mine = deliverable.get(s.id) ?? [];
       return {
-        id: s.id, name: s.name, kind: s.kind, at: s.at, npc: npcFor(s.id), stars, points,
+        id: s.id, name: s.name, kind: s.kind, at: s.at, site: s.site, facing: s.facing, npc: npcFor(s.id), stars, points,
         nextStarAt: nextStarAt(stars), nextUnlock: nextUnlock(stars), distanceM: d, inRange: p !== null && d <= RANGE.deliver,
         deliverable: mine.map(o => o.id), line: this.line(s.id, stars, st?.deliveries ?? 0, mine, t),
       };

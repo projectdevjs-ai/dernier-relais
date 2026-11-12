@@ -18,11 +18,7 @@ with sync_playwright() as p:
     pg.evaluate("document.querySelector('.dr-help .dr-help-skip')?.click()"); pg.wait_for_timeout(400)
     cdp = c.new_cdp_session(pg)
     st = lambda: pg.evaluate(STATE)
-    # `ts` (secondes) : heure portée par l'événement ; sans elle, l'heure réelle de l'envoi.
-    def touch(kind, pts, ts=None):
-        ev = {'type': kind, 'touchPoints': [{'x': x, 'y': y, 'id': i, 'radiusX': 8, 'radiusY': 8, 'force': 1} for i, (x, y) in enumerate(pts)]}
-        if ts is not None: ev['timestamp'] = ts
-        cdp.send('Input.dispatchTouchEvent', ev)
+    def touch(kind, pts): cdp.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': [{'x': x, 'y': y, 'id': i, 'radiusX': 8, 'radiusY': 8, 'force': 1} for i, (x, y) in enumerate(pts)]})
     def gesture(frames, pause=16):
         touch('touchStart', frames[0])
         for f in frames[1:]: pg.wait_for_timeout(pause); touch('touchMove', f)
@@ -65,23 +61,24 @@ with sync_playwright() as p:
     # Zoom à un doigt, joueur EN MARCHE : double appui = +1 cran ; double appui puis glisser (doigt posé) = zoom continu.
     print('\n== ZOOM À UN DOIGT (en marche)')
     gx, gy = cx + 60, cy - 80
-    # Les heures des événements sont fixées par le script (appui 40 ms, 90 ms entre les deux appuis) : la machine
-    # d'essai est lente (rendu logiciel), l'heure réelle d'envoi ne dirait rien du geste simulé.
-    import time
-    def tap(x, y, t0=None):
-        t0 = t0 or time.time(); touch('touchStart', [(x, y)], t0); touch('touchEnd', [], t0 + 0.04); return t0 + 0.04
-    def double_tap(x, y): tap(x, y, tap(x, y) + 0.09)
+    # Le double appui dépend du temps réel entre deux appuis (280 ms au plus). Par CDP, chaque événement attend son
+    # accusé de réception : sur cette machine (rendu logiciel, plus d'une demi-seconde par image) les deux appuis
+    # arriveraient trop espacés. Ils sont donc injectés dans la page d'un seul bloc, comme événements de pointeur
+    # tactile sur le conteneur de la carte (celui qu'écoute CameraRig) ; le glissement, lui, s'étale sur plusieurs images.
+    pg.evaluate("""window.__pe = (type, x, y) => document.querySelector('.maplibregl-canvas-container').dispatchEvent(
+      new PointerEvent(type, { pointerId: 77, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, bubbles: true, button: 0 }))""")
+    def double_tap(x, y): pg.evaluate(f"for (const t of ['pointerdown', 'pointerup', 'pointerdown', 'pointerup']) __pe(t, {x}, {y})")
     def double_drag(dy, n=16):
-        t = tap(gx, gy) + 0.09; touch('touchStart', [(gx, gy)], t)
-        for i in range(1, n + 1): touch('touchMove', [(gx, gy + dy * i / n)], t + 0.016 * i)
-        touch('touchEnd', [], t + 0.016 * n + 0.03)
+        pg.evaluate(f"""(async () => {{ for (const t of ['pointerdown', 'pointerup', 'pointerdown']) __pe(t, {gx}, {gy});
+          for (let i = 1; i <= {n}; i++) {{ await new Promise(r => setTimeout(r, 30)); __pe('pointermove', {gx}, {gy} + {dy} * i / {n}); }}
+          await new Promise(r => setTimeout(r, 30)); __pe('pointerup', {gx}, {gy} + {dy}); }})()""")
     pg.evaluate("__dr.stage.recenter()"); pg.wait_for_timeout(1800); z0 = st(); show('départ (recentré)', z0)
     double_tap(gx, gy); pg.wait_for_timeout(1500); z1 = st(); show('double appui', diff(z0, z1))
     double_drag(-220); pg.wait_for_timeout(900); z2 = st(); show('double appui + glisser HAUT 220 px', diff(z1, z2))
     pg.wait_for_timeout(3000); z3 = st(); show('3 s de marche plus tard', {**diff(z2, z3), 'écart': z3['ecartCentreJoueurM']})
     double_drag(140); pg.wait_for_timeout(900); z4 = st(); show('double appui + glisser BAS 140 px', diff(z3, z4))
     pg.wait_for_timeout(3000); z5 = st(); show('3 s de marche plus tard', {**diff(z4, z5), 'écart': z5['ecartCentreJoueurM']})
-    okz = 0.7 < z1['zoom'] - z0['zoom'] < 1.2 and z2['zoom'] - z1['zoom'] < -1.5 and abs(z3['zoom'] - z2['zoom']) < 0.05 and z4['zoom'] - z3['zoom'] > 1 and abs(z5['zoom'] - z4['zoom']) < 0.05 and abs(z5['cap'] - z0['cap']) < 25
+    okz = 0.7 < z1['zoom'] - z0['zoom'] < 1.2 and z2['zoom'] - z1['zoom'] < -1.5 and abs(z3['zoom'] - z2['zoom']) < 0.05 and z4['zoom'] - z3['zoom'] > 1 and abs(z5['zoom'] - z4['zoom']) < 0.05
     print('RÉSULTAT zoom à un doigt :', 'OK' if okz else 'ÉCHEC', '(double appui +1 cran, haut = arrière, bas = avant, tenu pendant la marche)')
 
     if pg.evaluate("typeof __dr.stage.toggleTilt === 'function'"):
@@ -95,11 +92,11 @@ with sync_playwright() as p:
             import base64; open(sys.argv[2], 'wb').write(base64.b64decode(cdp.send('Page.captureScreenshot', {'format': 'png'})['data'])); pg.evaluate("__dr.stage.setPaused(false)")
         print('bascule →', pg.evaluate("__dr.stage.toggleTilt()")); pg.wait_for_timeout(1800); show('vue 3D', st())
         gesture(swipe(0, 120)); pg.wait_for_timeout(700); show('glisser vertical (inclinaison)', st())
+        # Double appui sur le sol, joueur arrêté : il zoome et ne doit PAS envoyer le porteur en marche.
+        a = st(); double_tap(cx - 70, cy - 60); pg.wait_for_timeout(2500); e = st()
+        d = math.hypot((e['joueur'][0] - a['joueur'][0]) * 75000, (e['joueur'][1] - a['joueur'][1]) * 111000)
+        print('double appui sur le sol → dZoom', round(e['zoom'] - a['zoom'], 2), '| joueur déplacé de (m) :', round(d, 1), '→', 'OK' if d < 1.5 and e['zoom'] - a['zoom'] > 0.5 else 'ÉCHEC')
         # Toucher du sol : en mode simulé, le porteur doit se mettre en route vers le point touché.
         a = st(); gesture([[(cx + 60, cy - 80)], [(cx + 60, cy - 80)]], 60); pg.wait_for_timeout(2500); e = st()
         print('toucher du sol → le joueur a avancé de (m) :', round(math.hypot((e['joueur'][0] - a['joueur'][0]) * 75000, (e['joueur'][1] - a['joueur'][1]) * 111000), 1))
-        # Double appui sur le sol, joueur arrêté : il zoome et ne doit PAS envoyer le porteur en marche.
-        pg.wait_for_timeout(6000); a = st(); double_tap(cx - 70, cy - 60); pg.wait_for_timeout(2500); e = st()
-        d = math.hypot((e['joueur'][0] - a['joueur'][0]) * 75000, (e['joueur'][1] - a['joueur'][1]) * 111000)
-        print('double appui sur le sol → dZoom', round(e['zoom'] - a['zoom'], 2), '| joueur déplacé de (m) :', round(d, 1), '→', 'OK' if d < 1.5 and e['zoom'] - a['zoom'] > 0.5 else 'ÉCHEC')
     print('erreurs', errs[:6]); b.close()

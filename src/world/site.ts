@@ -11,8 +11,12 @@ export interface Site {
 }
 
 export const SITE = {
-  /** Un vrai lieu à plus de 8 m de toute rue garde sa position. */
-  keepM: 8,
+  /**
+   * Un vrai lieu assez loin de toute rue garde sa position. 12 m et non 8 : la carte du jeu dessine des chaussées
+   * larges (jusqu'à 4,6 m de l'axe au bord) et le bâtiment a près de 6 m de demi-largeur ; à 8 m de l'axe il
+   * mordait encore sur la rue (constaté à Paris Châtelet).
+   */
+  keepM: 12,
   /** Reculs essayés depuis l'axe de la rue (mètres) : 15 m de préférence, 12 ou 18 m si c'est mieux dégagé. */
   offsets: [15, 12, 18],
   /** Recul de dernier recours (carrefour serré). */
@@ -36,7 +40,7 @@ function segDist(s: Seg, x: number, y: number, out?: { x: number; y: number }): 
 
 /**
  * Implantation de l'abri dont le point de livraison est `at`, d'après les tracés de rues `roads`.
- * - vrai lieu (`keep`) à plus de 8 m de toute rue : il reste où il est, tourné vers la rue ;
+ * - vrai lieu (`keep`) à plus de 12 m de l'axe de toute rue : il reste où il est, tourné vers la rue ;
  * - sinon : décalé perpendiculairement à la rue la plus proche, de 12 à 18 m, du côté le mieux dégagé
  *   (sans autre rue) ; à un carrefour, les diagonales sont essayées aussi.
  * Renvoie null s'il n'y a aucune rue à proximité (rien à éviter).

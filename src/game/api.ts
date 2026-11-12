@@ -178,6 +178,9 @@ export interface ShelterView {
   name: string;
   kind: ShelterKind;
   at: LngLat;
+  /** Où dessiner le bâtiment (en retrait de la rue) et vers où il fait face, en degrés. Identiques pour tous les joueurs. */
+  site?: LngLat;
+  facing?: number;
   npc: NpcId;
   /** 0 à 5. Le PNJ reste masqué tant que stars vaut 0. */
   stars: number;

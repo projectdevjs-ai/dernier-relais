@@ -97,11 +97,12 @@ describe('cases', () => {
     // Une seconde rue parallèle à 20 m au nord : l'abri part du côté sud, façade au nord.
     const b = shelterSite(mid, [...rue, [[mid[0] - 0.002, mid[1] + 20 / 111320], [mid[0] + 0.002, mid[1] + 20 / 111320]]])!;
     expect(b.site[1]).toBeLessThan(mid[1]); expect(b.facing).toBeCloseTo(0, 0);
-    // Vrai lieu : à 30 m de la rue il ne bouge pas, à 3 m il est reculé.
+    // Vrai lieu : à 30 m de la rue il ne bouge pas, à 3 m (ou 10 m : il mordrait sur la chaussée dessinée) il est reculé.
     const loin: LngLat = [mid[0], mid[1] + 30 / 111320], pres: LngLat = [mid[0], mid[1] + 3 / 111320];
     expect(shelterSite(loin, rue, true)!.site).toEqual(loin);
     expect(shelterSite(loin, rue, true)!.facing).toBeCloseTo(180, 0);
     expect(toRoads(shelterSite(pres, rue, true)!.site, rue)).toBeGreaterThan(11);
+    expect(toRoads(shelterSite([mid[0], mid[1] + 10 / 111320], rue, true)!.site, rue)).toBeGreaterThan(11);
     expect(shelterSite(mid, [])).toBeNull();
   });
 });
