@@ -24,7 +24,7 @@ const SCI_AT: Record<SciId, { at: THREE.Vector3; ry: number; st: number }> = {
   selma: { at: V(SX[2] + 1.15, 0, -1.9), ry: -0.45, st: 2 },
 };
 /** Place du porteur devant chaque poste (comme dans l'ancien : il suit d'un poste à l'autre). */
-export const porterSpot = (i: number): THREE.Vector3 => V(SX[i] - 1.38, 0, -0.1);
+export const porterSpot = (i: number): THREE.Vector3 => V(SX[i] - 1.22, 0, -0.1);
 export const PAD_AT = PAD;
 
 // ---------- Palettes ----------
@@ -642,8 +642,8 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   };
   lamp(1);
 
-  // Chats clandestins (ancien : jusqu'à trois, aux mêmes endroits de la chambre).
-  const catSpots: [number, number, number][] = [[1.0, -0.8, -0.6], [0.4, -0.2, 0.9], [1.45, -1.7, 2.4]];
+  // Chats clandestins (ancien : jusqu'à trois, sur le tapis ; ici resserrés pour tenir dans le cadre vertical).
+  const catSpots: [number, number, number][] = [[0.2, -0.85, -0.6], [-0.75, -0.4, 0.7], [0.3, -0.15, 2.4]];
   const cats: THREE.Object3D[] = [];
   let catModel: Promise<Model> | null = null, catWant = 0, gone = false;
   const setCats = (n: number, onReady?: () => void): void => {

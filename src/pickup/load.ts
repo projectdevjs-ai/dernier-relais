@@ -122,6 +122,7 @@ export class LoadScreen {
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-modal', 'true');
     this.el.setAttribute('aria-label', 'Chargement du porteur');
+    this.el.lang = 'fr';
     this.el.addEventListener('keydown', e => { if (e.key === 'Escape') this.close(); });
     parent.append(this.el);
   }

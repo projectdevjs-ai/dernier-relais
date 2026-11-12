@@ -79,11 +79,11 @@
 .tr .tr-tag {
   position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform;
   display: flex; align-items: center; gap: 5px;
-  min-height: 22px; max-width: 108px; padding: 3px 4px 3px 7px; border-radius: 8px;
+  min-height: 22px; padding: 3px 4px 3px 7px; border-radius: 8px;
   background: rgba(10, 18, 17, .78); border: 1px solid rgba(230, 225, 211, .13);
   color: #e6e1d3; text-align: left;
 }
-.tr-tag-name { font: 600 10.5px/1.12 var(--f-ui); letter-spacing: .01em; text-wrap: balance; min-width: 0; }
+.tr-tag-name { font: 600 10.5px/1.12 var(--f-ui); letter-spacing: .01em; text-wrap: balance; max-width: 72px; }
 .tr-tag-rank {
   flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 16px; padding: 0 4px; border-radius: 6px;
   font: 700 10px/1 var(--f-ui); color: var(--bc); background: color-mix(in srgb, var(--bc) 17%, transparent);
@@ -203,8 +203,9 @@
   .tr-pts-ic { display: none; }
   .tr-pts-l { width: 58px; font-size: 10px; }
   .tr-top { gap: 6px; padding-left: calc(var(--sal) + 10px); }
-  .tr .tr-tag { max-width: 102px; padding: 3px 3px 3px 6px; gap: 4px; }
-  .tr-tag-name { font-size: 10px; }
+  .tr .tr-tag { padding: 3px 3px 3px 5px; gap: 3px; }
+  .tr-tag-rank { min-width: 21px; padding: 0 3px; }
+  .tr-tag-name { font-size: 9.5px; letter-spacing: 0; max-width: 66px; }
   .tr-leg-name { font-size: 10.5px; letter-spacing: 0; }
   .tr .tr-leg { padding: 9px 5px 8px; }
   .tr-legend { gap: 5px; }

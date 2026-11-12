@@ -371,7 +371,7 @@ export class Lab {
     if (immediate || this.still || this.calm || !this.lab) { done(); return; }
     this.busyRoom = true;
     this.dim.style.opacity = '1';
-    this.later(520, () => { done(); this.dim.style.opacity = '0'; this.later(300, () => { this.busyRoom = false; }); });
+    this.later(520, () => { done(); this.dim.style.opacity = '0'; this.busyRoom = false; });
   }
 
   private standPorter(): void {

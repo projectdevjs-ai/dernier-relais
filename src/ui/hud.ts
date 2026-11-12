@@ -1,5 +1,6 @@
 // L'interface du jeu : un calque transparent posé au-dessus de la carte.
 // HUD permanent (haut + scanner), une seule fiche en bas, panneaux, écran de note, toasts, aide.
+// Le ramassage (séquence en caméra) et le rangement du sac vivent dans src/pickup ; le HUD les lance.
 import './hud.css';
 import type { ActionResult, Ambiance, GameEvent, GameView, HudApi, HudEvents, HudOptions, UiKind, WeatherKind } from '../game/api';
 import type { Ctx, Tone } from './ctx';
@@ -9,6 +10,7 @@ import { GradeScreen } from './grade';
 import { Help } from './help';
 import { icon, type IconName } from './icons';
 import { OrderPanel } from './order';
+import { PickupFlow } from '../pickup/flow';
 import { setPanelSound } from './panel';
 import { PorterPanel, type PorterTab } from './porter';
 import { PassengerPrompt } from './passenger';
@@ -17,6 +19,7 @@ import { Sheet } from './sheet';
 import { ShelterPanel } from './shelter';
 import { Toasts } from './toasts';
 
+const SLOT_NAME: Record<string, string> = { dos: 'Dos', brasG: 'Bras gauche', brasD: 'Bras droit', jambeG: 'Jambe gauche', jambeD: 'Jambe droite' };
 const WEATHER: Record<WeatherKind, { ic: IconName; label: string }> = {
   clair: { ic: 'sun', label: 'Ciel clair' }, nuages: { ic: 'cloud', label: 'Nuageux' }, pluie: { ic: 'rain', label: 'Pluie' },
   orage: { ic: 'storm', label: 'Orage' }, neige: { ic: 'snow', label: 'Neige' }, brouillard: { ic: 'fog', label: 'Brouillard' },
@@ -41,6 +44,13 @@ export class Hud implements HudApi {
   private pseudoAsked = false;
   private netDot = h('i', 'dr-menu-dot');
   private netOn: boolean | null = null;
+  /** Ramassage (séquence en caméra) et rangement du sac. */
+  private flow: PickupFlow;
+  /** Réglages suivis par le HUD : vibrations et « Ramassage rapide ». */
+  private haptics = true;
+  private quick = false;
+  /** Vue de la carte : inclinée (3D) ou à plat (2D). */
+  private tilted = true;
 
   // Éléments du HUD permanent
   private lvl = h('span', 'dr-lvl-n');
@@ -62,8 +72,16 @@ export class Hud implements HudApi {
   private scan: HTMLButtonElement;
   private scanSec = h('span', 'dr-scan-sec');
 
+  private events0: HudEvents;
+
   constructor(private root: HTMLElement, events: HudEvents, opts?: HudOptions) {
+    this.events0 = events;
     root.classList.add('dr-hud');
+    this.haptics = opts?.settings?.haptics !== false;
+    this.quick = opts?.settings?.quickPickup === true;
+    this.tilted = opts?.tilted !== false;
+    // Le HUD suit les réglages qui le concernent (vibrations de la séquence de ramassage) avant de prévenir l'appelant.
+    events = { ...events, ...(events.onHaptics ? { onHaptics: (on: boolean) => { this.haptics = on; this.events0.onHaptics?.(on); } } : {}) };
     this.events = events;
     this.setAmbiance(opts?.ambiance ?? 'crépuscule');
     // Tous les panneaux (carte du réseau comprise) annoncent leur ouverture et leur fermeture.
@@ -76,6 +94,8 @@ export class Hud implements HudApi {
       openOrder: (id) => this.openOrder(id),
       openShelter: (id) => this.openShelter(id),
       ui: (kind) => this.ui(kind),
+      pickup: (id) => this.startPickup(id),
+      openBag: () => this.openBag(),
     };
 
     // ----- Haut : niveau, endurance, météo, menu, charge, équilibre, GPS -----
@@ -108,11 +128,18 @@ export class Hud implements HudApi {
     // ----- Bas droite : recentrer et scanner -----
     const recenter = btn('dr-iconbtn dr-surface dr-recenter', 'Recentrer la carte sur moi', icon('locate'));
     recenter.addEventListener('click', () => events.onRecenter());
+    // Vue 2D / 3D : le bouton annonce la vue qu'il donne ; il n'existe que si l'appelant sait basculer la carte.
+    const tiltTxt = h('span', '', this.tilted ? '2D' : '3D');
+    const tilt = btn('dr-iconbtn dr-surface dr-tilt', '', tiltTxt);
+    const tiltLabel = (): void => { setText(tiltTxt, this.tilted ? '2D' : '3D'); setAttr(tilt, 'aria-label', this.tilted ? 'Passer la carte en vue 2D, à plat' : 'Passer la carte en vue 3D, inclinée'); };
+    tiltLabel();
+    tilt.hidden = !events.onTilt;
+    tilt.addEventListener('click', () => { this.tilted = !this.tilted; tiltLabel(); this.ui('tap'); events.onTilt?.(); });
     this.scan = btn('dr-scan', 'Scanner les alentours');
     this.scan.innerHTML = '<svg class="dr-scan-ring" viewBox="0 0 80 80" aria-hidden="true"><circle class="dr-scan-track" cx="40" cy="40" r="36"/><circle class="dr-scan-prog" cx="40" cy="40" r="36" pathLength="100" transform="rotate(-90 40 40)"/></svg>';
     this.scan.append(h('span', 'dr-scan-core', icon('scan'), this.scanSec));
     this.scan.addEventListener('click', () => { if (this.run(events.actions.scan())) this.ui('tap'); });
-    const fabs = h('div', 'dr-fabs', recenter, this.scan);
+    const fabs = h('div', 'dr-fabs', tilt, recenter, this.scan);
 
     root.append(top, fabs);
     this.sheet = new Sheet(root, ctx);
@@ -125,6 +152,14 @@ export class Hud implements HudApi {
       setAmbiance: (a) => this.setAmbiance(a), replayHelp: () => this.showHelp(),
       openNetwork: () => this.openNetwork(), editPseudo: () => this.pseudo.open(),
       settings: opts?.settings ?? {},
+      setQuickPickup: (on) => { this.quick = on; try { events.onQuickPickup?.(on); } catch { /* la mémorisation ne doit pas gêner le jeu */ } },
+    });
+    this.flow = new PickupFlow(root, {
+      actions: events.actions, view: () => this.view,
+      toast: (text, tone) => this.toasts.push(text, tone ?? 'info'), ui: (kind) => this.ui(kind),
+      buzz: (p) => { if (this.haptics) try { navigator.vibrate?.(p); } catch { /* pas de vibreur */ } },
+      quick: () => this.quick,
+      overlay: (open) => { root.classList.toggle('dr-covered', open); events.onOverlay?.(open); },
     });
     this.pseudo = new PseudoPrompt(root, ctx);
     this.passenger = new PassengerPrompt(root, ctx);
@@ -191,15 +226,24 @@ export class Hud implements HudApi {
     if (this.shelter.id) this.shelter.render(view);
     if (this.order.id) this.order.render(view);
     this.porter.render(view);
+    this.flow.render(view);
   }
 
   handle(e: GameEvent): void {
+    // La séquence de ramassage et l'écran de rangement montrent eux-mêmes ce qui s'y passe.
+    if (this.flow.handle(e)) return;
     switch (e.type) {
       case 'scan':
         if (e.found || !e.caches) this.toasts.push(e.found === 0 ? 'Rien dans la zone' : e.found === 1 ? '1 colis repéré' : `${e.found} colis repérés`, e.found ? 'good' : 'info', 'scan');
         if (e.caches) this.toasts.push('Une cache est tout près', 'good', 'cache');
         break;
-      case 'pickup': this.toasts.push(`${e.order.name} : dans le sac`, 'good', 'bag'); break;
+      case 'pickup': {
+        const slot = this.view?.player.slots?.find((s) => s.id === e.order.slot)?.name ?? (e.order.slot ? SLOT_NAME[e.order.slot] : '');
+        this.toasts.push(slot ? `${e.order.name} accroché · ${slot}` : `${e.order.name} : dans le sac`, 'good', 'bag');
+        break;
+      }
+      case 'stow': break;
+      case 'fumble': this.toasts.push(e.points > 0 ? `Sanglage manqué : −${e.points} points, le colis reste au sol` : 'Sanglage manqué : le colis reste au sol', 'warn', 'strap', 4000); break;
       case 'drop': this.toasts.push('Colis posé', 'info', 'drop'); break;
       case 'delivery': this.grade.push(e.result); break;
       case 'levelUp': if (!this.grade.busy) this.toasts.push(`Niveau ${e.level} atteint`, 'good', 'xp'); break;
@@ -232,7 +276,7 @@ export class Hud implements HudApi {
         else this.toasts.push('Trop tard pour le bonus du lot. Les colis restent à livrer', 'info', 'stack', 4000);
         break;
       case 'strap':
-        this.toasts.push(e.quality >= 1 ? `Bien arrimé : charge plus stable (+${e.xp} XP)` : e.quality === 0.5 ? 'Trop serré : arrimage moyen' : 'Sangle un peu lâche : arrimage moyen', e.quality >= 1 ? 'good' : 'info', 'strap');
+        this.toasts.push(e.quality >= 1 ? `Bien arrimé : charge plus stable (+${e.xp} XP)` : `Arrimage moyen (${Math.round(e.quality * 100)} %) : la charge tanguera un peu plus`, e.quality >= 1 ? 'good' : 'info', 'strap');
         break;
       case 'proof': if (!this.grade.proofDone(e.orderId, e.points)) this.toasts.push(`Photo-preuve : +${fmtInt(e.points)} pts`, 'good', 'camera'); break;
     }
@@ -296,7 +340,14 @@ export class Hud implements HudApi {
   }
 
   /** Referme tous les panneaux ouverts (changement d'écran : labo, prologue). */
-  closeAll(): void { this.closePanels(); this.pseudo.panel.close(); }
+  closeAll(): void { this.closePanels(); this.pseudo.panel.close(); this.flow.closeAll(); }
+
+  /** « Ramasser » : séquence en caméra (repérage, inspection, sanglage) puis rangement ; directe avec « Ramassage rapide ». */
+  startPickup(id: string): void { this.closePanels(); this.sheet.setExpanded(false); this.flow.start(id); }
+  /** Écran de rangement du sac. */
+  openBag(): void { this.closePanels(); this.flow.openBag(); }
+  /** Accès à la séquence de ramassage (démos, essais automatiques). */
+  get pickupFlow(): PickupFlow { return this.flow; }
 
   private closePanels(): void {
     this.shelter.panel.close(); this.order.panel.close(); this.porter.panel.close();

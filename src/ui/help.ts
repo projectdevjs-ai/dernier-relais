@@ -1,11 +1,13 @@
-// Aide de première ouverture : quatre bulles très courtes, mémorisées, rejouables depuis les réglages.
+// Aide de première ouverture : cinq bulles très courtes, mémorisées, rejouables depuis les réglages.
 import { btn, h } from './dom';
 import { icon, type IconName } from './icons';
 
-const KEY = 'dernier-relais.aide.v1';
+/** La clé change quand l'aide change sur le fond : elle est alors remontrée une fois. */
+const KEY = 'dernier-relais.aide.v2';
 const STEPS: { ic: IconName; title: string; text: string; point: 'scan' | 'sheet' }[] = [
   { ic: 'scan', title: 'Scanne', text: 'Le bouton rond révèle les colis autour de toi.', point: 'scan' },
-  { ic: 'crate', title: 'Ramasse', text: 'Marche jusqu’à un colis. Écoute-le pour savoir s’il est fragile, puis touche Ramasser et serre la sangle.', point: 'sheet' },
+  { ic: 'crate', title: 'Ramasse', text: 'Marche jusqu’à un colis et touche Ramasser : repère-le dans la caméra, inspecte-le, puis sangle-le boucle après boucle.', point: 'sheet' },
+  { ic: 'bag', title: 'Range', text: 'Dos, bras, jambes : accroche chaque colis au bon endroit et garde le même poids à gauche et à droite. Le bouton Sac rouvre le rangement.', point: 'sheet' },
   { ic: 'pin', title: 'Livre', text: 'Porte-le à son abri. Plus il arrive intact et vite, meilleure est la note.', point: 'sheet' },
   { ic: 'relay', title: 'Relaie', text: 'Trop loin ? Laisse-le en relais dans un abri sur la route : un autre porteur finira le trajet.', point: 'sheet' },
 ];

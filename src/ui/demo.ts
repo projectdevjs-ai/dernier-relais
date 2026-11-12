@@ -21,8 +21,8 @@ document.body.classList.toggle('clair', ambiance === 'clair');
 
 // L'aide de première ouverture ne s'affiche que sur ?ecran=aide, pour ne pas gêner les autres captures.
 try {
-  if (ecran === 'aide') localStorage.removeItem('dernier-relais.aide.v1');
-  else localStorage.setItem('dernier-relais.aide.v1', '1');
+  if (ecran === 'aide') localStorage.removeItem('dernier-relais.aide.v2');
+  else localStorage.setItem('dernier-relais.aide.v2', '1');
 } catch { /* stockage indisponible */ }
 
 const centre: LngLat = [-1.5761, 47.1822];
@@ -181,7 +181,9 @@ if (ecran === 'preuve' || ecran === 'preuve2') {
   } });
 }
 
-const hud = new Hud(document.getElementById('hud')!, events, { ambiance, settings: { sound: true, voices: true, haptics: false, volume: 0.7, canInstall: q.get('installe') !== '1' } });
+// Vue 2D / 3D et ramassage rapide : la démo se contente de noter les demandes.
+Object.assign(events, { onTilt: () => log('vue 2D / 3D'), onQuickPickup: (on: boolean) => log('ramassage rapide', on) });
+const hud = new Hud(document.getElementById('hud')!, events, { ambiance, settings: { sound: true, voices: true, haptics: false, volume: 0.7, canInstall: q.get('installe') !== '1', quickPickup: q.get('rapide') === '1' } });
 france = new FrancePanel(document.getElementById('hud')!, net);
 link.start();
 net.start();

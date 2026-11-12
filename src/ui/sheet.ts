@@ -37,6 +37,7 @@ export class Sheet {
   private next: HTMLButtonElement; private nextIcon: HTMLElement; private nextTitle: HTMLElement; private nextSub: HTMLElement;
   private nextDist: HTMLElement; private nextDelay: HTMLElement;
   private toggle: HTMLButtonElement;
+  private bagBtn: HTMLButtonElement;
   private more: HTMLElement;
   private bagLoad: HTMLElement; private bagEmpty: HTMLElement; private nearEmpty: HTMLElement;
   private bag: KeyedList<OrderView>; private near: KeyedList<OrderView>;
@@ -66,7 +67,11 @@ export class Sheet {
       else this.setExpanded(!this.expanded);
     });
 
-    this.toggle = btn('dr-iconbtn dr-sheet-toggle', 'Ouvrir le sac', icon('up'));
+    // Le sac : écran de rangement (emplacements du dos, des bras et des jambes).
+    this.bagBtn = btn('dr-btn dr-sheet-bag', 'Ouvrir le sac : rangement des colis', icon('bag'), h('span', '', 'Sac'));
+    this.bagBtn.addEventListener('click', () => ctx.openBag());
+
+    this.toggle = btn('dr-iconbtn dr-sheet-toggle', 'Déplier la liste des colis', icon('up'));
     this.toggle.setAttribute('aria-expanded', 'false');
     this.toggle.addEventListener('click', () => this.setExpanded(!this.expanded));
 
@@ -82,7 +87,7 @@ export class Sheet {
       h('div', 'dr-sec', h('h3', 'dr-sec-title', icon('scan'), 'Repérés près de toi')), nearList, this.nearEmpty);
     this.more.hidden = true;
 
-    this.el = h('section', 'dr-sheet', h('div', 'dr-sheet-bar', this.cta, this.next, this.toggle), this.more);
+    this.el = h('section', 'dr-sheet', h('div', 'dr-sheet-bar', this.cta, this.next, this.bagBtn, this.toggle), this.more);
     this.el.setAttribute('aria-label', 'Prochaine étape et sac');
     parent.append(this.el);
   }
@@ -93,7 +98,7 @@ export class Sheet {
     this.el.classList.toggle('is-open', on);
     this.el.parentElement?.classList.toggle('dr-sheet-open', on);
     this.toggle.setAttribute('aria-expanded', String(on));
-    this.toggle.setAttribute('aria-label', on ? 'Replier le sac' : 'Ouvrir le sac');
+    this.toggle.setAttribute('aria-label', on ? 'Replier la liste des colis' : 'Déplier la liste des colis');
     if (on && this.last) this.render(this.last);
   }
 
@@ -174,7 +179,7 @@ export class Sheet {
     let state = '';
     info.addEventListener('click', () => ctx.openOrder(id));
     act.addEventListener('click', () => {
-      ctx.run(state === 'porté' ? ctx.events.actions.drop(id) : ctx.events.actions.pickup(id));
+      if (state === 'porté') ctx.run(ctx.events.actions.drop(id)); else ctx.pickup(id);
     });
     return {
       el,

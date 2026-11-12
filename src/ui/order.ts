@@ -75,9 +75,11 @@ export class OrderPanel {
     this.act = btn('dr-btn dr-btn-wide', null, this.actIcon, this.actText);
     this.act.addEventListener('click', () => {
       if (!this.id) return;
-      const a = ctx.events.actions;
-      // Dans les deux cas la fiche se referme : après un ramassage, elle cacherait le geste d'arrimage.
-      if (ctx.run(this.state === 'porté' ? a.drop(this.id) : a.pickup(this.id))) this.panel.close();
+      const id = this.id;
+      if (this.state === 'porté') { if (ctx.run(ctx.events.actions.drop(id))) this.panel.close(); return; }
+      // Ramasser : la fiche se referme et la séquence de ramassage prend tout l'écran.
+      this.panel.close();
+      ctx.pickup(id);
     });
     this.panel.foot.append(this.act);
     this.panel.onClose = () => { this.id = null; };

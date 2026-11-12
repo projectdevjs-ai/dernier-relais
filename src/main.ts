@@ -125,7 +125,10 @@ const hud = new Hud(hudRoot, {
   },
   onReplayIntro: () => { void runPrologue(); },
   onLab: () => { void enterLab(); },
-}, { ambiance, settings: { ...prefs, canInstall: false } });
+  // Ramassage : réglage « Ramassage rapide » mémorisé ; la carte se met en veille sous la séquence en caméra.
+  onQuickPickup: on => pref.set('ramassage-rapide', on ? 'oui' : 'non'),
+  onOverlay: open => { if (!inLab && !prologueOn) stage.setPaused?.(open); },
+}, { ambiance, settings: { ...prefs, canInstall: false, quickPickup: pref.get('ramassage-rapide') === 'oui' }, tilted: pref.get('vue') !== '2d' });
 
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e as InstallPrompt; hud.setCanInstall(true); });
 addEventListener('appinstalled', () => { installPrompt = null; hud.setCanInstall(false); });

@@ -12,4 +12,8 @@ export interface Ctx {
   openShelter(id: string): void;
   /** Son d'interface (sans effet si l'appelant n'en fournit pas). */
   ui(kind: UiKind): void;
+  /** Le joueur touche « Ramasser » : lance la séquence de ramassage (ou le ramassage rapide). */
+  pickup(id: string): void;
+  /** Ouvre l'écran de rangement du sac. */
+  openBag(): void;
 }

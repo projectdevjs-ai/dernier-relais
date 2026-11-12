@@ -41,6 +41,8 @@ export interface PorterHooks {
   editPseudo(): void;
   /** État initial des réglages. */
   settings: HudSettings;
+  /** Le joueur change le réglage « Ramassage rapide ». */
+  setQuickPickup?(on: boolean): void;
 }
 
 /** Interrupteur : toute la ligne est le bouton. */
@@ -183,6 +185,13 @@ export class PorterPanel {
     if (ev.onHaptics) sound.push(toggle('vibrate', 'Vibrations', st.haptics !== false, (on) => { ev.onHaptics?.(on); ctx.ui(on ? 'confirm' : 'tap'); }));
     if (sound.length) page.append(sec('volume', 'Son et vibrations'), h('div', 'dr-set', ...sound));
 
+    // Ramassage : la séquence en caméra est le cœur du jeu ; qui est pressé peut la sauter.
+    if (hooks.setQuickPickup) {
+      page.append(sec('crate', 'Ramassage'),
+        h('div', 'dr-set', toggle('pickup', 'Ramassage rapide', st.quickPickup === true, (on) => { hooks.setQuickPickup?.(on); ctx.ui('tap'); })),
+        h('p', 'dr-hint', 'Saute le repérage et le sanglage : le colis va droit dans le sac, mais sans le bonus d’un bon arrimage.'));
+    }
+
     page.append(
       sec('sun', 'Ambiance'), seg,
       sec('gps', 'Position'), gps,
@@ -266,7 +275,7 @@ export class PorterPanel {
       el,
       update(s) {
         id = s.id;
-        setText(name, s.name); setText(desc, s.desc);
+        setText(name, s.name); setText(desc, s.needsLevel && s.rank < s.maxRank ? `${s.desc} Niveau ${s.needsLevel} requis.` : s.desc);
         if (nPips !== s.maxRank) { nPips = s.maxRank; pips.replaceChildren(...Array.from({ length: s.maxRank }, () => h('i', 'dr-pip'))); }
         Array.from(pips.children).forEach((c, i) => c.classList.toggle('is-on', i < s.rank));
         setAttr(pips, 'aria-label', `Rang ${s.rank} sur ${s.maxRank}`);

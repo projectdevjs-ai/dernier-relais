@@ -111,6 +111,8 @@ export class GradeScreen {
       gained ? h('p', 'dr-grade-star', r.starsBefore === 0 ? `${npcName} te fait confiance` : 'Nouvelle étoile') : null,
       r.unlock ? h('p', 'dr-grade-unlock', icon('lock'), h('span', '', r.unlock)) : null);
 
+    // Message scellé trouvé dans le colis (surprise révélée à l'écoute ou à la livraison).
+    const lore = r.lore ? h('div', 'dr-lore', h('span', 'dr-lore-kick', `Message scellé · fragment ${r.lore.index + 1} / ${r.lore.total}`), h('p', 'dr-lore-txt', r.lore.text)) : null;
     const level = r.levelUp ? h('p', 'dr-grade-level', icon('xp'), h('span', '', 'Niveau supérieur')) : null;
     const go = btn('dr-btn dr-btn-wide dr-grade-go', null, this.queue.length ? 'Suivant' : 'Continuer');
     go.addEventListener('click', () => this.next());
@@ -133,7 +135,7 @@ export class GradeScreen {
 
     this.el.dataset.grade = r.grade;
     this.el.hidden = false;
-    this.el.replaceChildren(top, h('div', 'dr-grade-mid', seal, word, notes), h('div', 'dr-grade-low', gains, shel, level, proofSlot), go);
+    this.el.replaceChildren(top, h('div', 'dr-grade-mid', seal, word, notes), h('div', 'dr-grade-low', gains, shel, level, lore, proofSlot), go);
     this.el.focus({ preventScroll: true });
   }
 
@@ -141,7 +143,7 @@ export class GradeScreen {
     const slot = this.proofSlot;
     shootBtn.disabled = true;
     let photo: string | null = null;
-    try { photo = await this.camera.open(this.el); }
+    try { photo = await this.camera.open(this.el, r.shelterName, r.orderName); }
     catch { this.cameraOk = false; if (this.current === r && slot) slot.hidden = true; return; } // refusée ou absente : l'option disparaît
     if (this.current !== r || !slot) return;
     if (!photo) { shootBtn.disabled = false; return; } // viseur fermé sans photo
