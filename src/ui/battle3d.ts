@@ -174,12 +174,10 @@ export class CinematicBattle {
   private observed:ResizeObserver|null=null;
   private stopped=false;
   private visible=false;
-  private palette=new THREE.Color();
   private mood:CombatMood='intro';
   private actionAt=0;
   private isDrone=false;
   private mouse=0;
-  private touch=0;
   private readonly reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly onVisibility=():void=>{this.visible=!document.hidden; if(this.visible&&!this.frame) this.frame=requestAnimationFrame(this.tick);};
   constructor(private container:HTMLElement, encounter:Encounter) {
@@ -265,7 +263,7 @@ export class CinematicBattle {
     this.frame=requestAnimationFrame(this.tick);
     const dt=this.prev?Math.min(.05,(time-this.prev)/1000):0;
     this.prev=time;this.t+=dt;
-    const speed=this.reduce?.3:1;
+    const speed=this.reduce ? 0.3 : 1;
     const t=this.t*speed, elapsed=this.t-this.actionAt;
     const intro=this.reduce?1:Math.min(1,this.t/2.4);
     const ease=1-(1-intro)**3;
