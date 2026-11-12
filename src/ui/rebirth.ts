@@ -172,7 +172,7 @@ export class RebirthConsole {
       const node=el('article','rb-radio-card');
       node.append(el('div','rb-radio-scan','●  TRANSMISSION ACTIVE  /  '+signal.source),
         el('h3','rb-radio-title',signal.title),el('p','rb-radio-text',signal.text));
-      const disabled=v.player.moving||v.player.vehicle;
+      const disabled=v.player.moving||!!v.player.vehicle;
       const options=el('div','rb-actions');
       const help=button('SECOURIR  ·  +INFLUENCE','rb-action',()=>this.act(this.actions.answerRadio?.('secourir')??{ok:false,why:'Indisponible'}));
       const loot=button('EXTRAIRE  ·  +MATÉRIAUX','rb-action',()=>this.act(this.actions.answerRadio?.('extraire')??{ok:false,why:'Indisponible'}));
