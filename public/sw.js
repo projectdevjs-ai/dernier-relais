@@ -1,5 +1,5 @@
 // Cache du navigateur pour la version web : les modèles 3D, les voix et les fichiers du jeu ne sont téléchargés qu'une fois.
-const CACHE = 'dernier-relais-rebirth-v3';
+const CACHE = 'dernier-relais-cinematic-v4';
 // Jamais de réponse vide : sans réseau ni cache, le navigateur reçoit une erreur réseau ordinaire.
 const orError = r => r || Response.error();
 const STATIC = /\/(models|voix|pano|icons|assets)\//;
