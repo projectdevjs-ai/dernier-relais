@@ -77,6 +77,9 @@ export class ShelterPanel {
   private collBar = h('span', 'dr-bar-fill');
   private collective: CollectiveView | null = null;
   private relaySec: HTMLElement;
+  private handoffEl = h('div', 'dr-list');
+  private handoffList: KeyedList<OrderView>;
+  private handoffSec: HTMLElement;
   private relaySide = h('span', 'dr-sec-side');
   private relayOff = h('p', 'dr-hint', 'Les relais demandent une connexion. Tout le reste marche hors ligne.');
   private relayHint = h('p', 'dr-hint');
@@ -105,6 +108,8 @@ export class ShelterPanel {
     this.coll = h('div', 'dr-coll', icon('network'), this.collTxt, h('span', 'dr-bar', this.collBar), this.collPts);
     this.coll.hidden = true;
     this.coll.setAttribute('role', 'img');
+    this.handoffList = new KeyedList(this.handoffEl, (o) => o.id, () => this.handoffRow());
+    this.handoffSec = h('div', 'dr-relays', h('div', 'dr-sec', h('h3', 'dr-sec-title', icon('heart'), 'Dépôt solidaire')), h('p', 'dr-hint', 'Tout colis accepté, même hors ligne. +10 réputation, sans points ni XP. Le colis quitte définitivement ton sac.'), this.handoffEl);
     this.giveList = new KeyedList(this.giveEl, (x) => x.o.id, () => this.giveRow());
     this.takeList = new KeyedList(this.takeEl, (x) => x.r.id, () => this.takeRow());
     this.relaySec = h('div', 'dr-relays',
@@ -117,7 +122,7 @@ export class ShelterPanel {
       this.prog,
       h('div', 'dr-npc', this.portrait.el, h('div', 'dr-npc-txt', this.npcName, this.line)),
       h('div', 'dr-sec', h('h3', 'dr-sec-title', icon('crate'), 'À livrer ici'), this.secSide), listEl, this.empty,
-      this.relaySec);
+      this.handoffSec, this.relaySec);
     this.cta = btn('dr-btn dr-btn-go dr-btn-wide', null, icon('pin'), this.ctaText);
     this.cta.addEventListener('click', () => { if (this.id) ctx.run(ctx.events.actions.deliver(this.id)); });
     this.panel.foot.append(this.cta);
@@ -180,6 +185,22 @@ export class ShelterPanel {
     setText(this.relaySide, takes.length ? `${takes.length} en attente` : '');
     const hint = this.loading ? 'Recherche des relais…' : !takes.length ? (gives.length ? 'Aucun colis en attente ici.' : 'Aucun colis en attente ici. Les colis laissés par d’autres porteurs apparaîtront là.') : '';
     setText(this.relayHint, hint); show(this.relayHint, hint !== '');
+  }
+
+  private handoffRow(): Row<OrderView> {
+    const name = h('span', 'dr-row-name');
+    const action = btn('dr-btn dr-btn-sm', null, 'Déposer · +10 réputation');
+    const el = h('div', 'dr-relay', h('div', 'dr-relay-txt', name), action);
+    let id = '';
+    action.addEventListener('click', () => {
+      const sid = this.id;
+      if (!sid || !id) return;
+      if (this.ctx.run(this.ctx.events.actions.handoff?.(id, sid) ?? { ok: false, why: 'Dépôt indisponible' })) {
+        this.ctx.ui('confirm');
+        this.quotes.clear();
+      }
+    });
+    return { el, update: (o) => { id = o.id; setText(name, `${o.name} · destination ${o.destName}`); setDisabled(action, !this.ctx.events.actions.handoff); } };
   }
 
   private giveRow(): Row<{ o: OrderView; s: ShelterView }> {
@@ -284,6 +305,9 @@ export class ShelterPanel {
     setText(this.npcName, known ? NPC[s.npc].name : 'Quelqu’un t’observe');
     setText(this.line, known ? s.line : 'Livre un premier colis ici pour faire connaissance.');
 
+    const wrong = v.orders.filter(o => o.state === 'porté' && o.destId !== s.id);
+    this.handoffList.sync(wrong);
+    show(this.handoffSec, wrong.length > 0);
     const orders = s.deliverable.map((id) => v.orders.find((o) => o.id === id)).filter((o): o is OrderView => !!o);
     this.list.sync(orders);
     show(this.empty, orders.length === 0);
