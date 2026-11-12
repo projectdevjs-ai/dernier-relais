@@ -15,7 +15,30 @@ export interface Encounter {
 export interface Rebirth {
   resources: Resources; factions: Factions; integrity: number;
   encounter: Encounter | null; victories: number;
+  radio: RadioSignal | null; radioLog: string[];
 }
+export interface RadioSignal { id: string; title: string; source: string; text: string; faction: Faction }
+const SIGNALS: { title: string; source: string; text: string; faction: Faction }[] = [
+  { title: 'ÉMISSION 07 · LE PHARE', source: 'Canal des Archives', faction: 'archives',
+    text: 'Un relais autonome répète le même appel depuis dix-sept ans. Une signature humaine existe encore dans les données.' },
+  { title: 'CANAL 13 · LES ERRANTS', source: 'Fréquence nomade', faction: 'nomades',
+    text: 'Un groupe avance sans équipement dans la brume. Les survivants demandent des vivres. Les récupérateurs approchent.' },
+  { title: 'MESSAGE 22 · ORIGINE', source: 'Station Lumen', faction: 'lumen',
+    text: 'Les cartes ne racontent pas tout. Une balise enterrée semble relier les premières stations au réseau perdu.' },
+  { title: 'SIGNAL 31 · NUIT BLANCHE', source: 'Transmission inconnue', faction: 'archives',
+    text: 'Des lumières répondent aux drones au-delà du périphérique. Leur fréquence ressemble à celle d’une voix humaine.' },
+  { title: 'APPEL 09 · PÉNURIE', source: 'Refuge indépendant', faction: 'lumen',
+    text: 'Les stocks sont presque vides. Le dernier convoi a disparu. Une route secondaire existe, mais elle traverse les anciennes zones rouges.' },
+  { title: 'FRÉQUENCE 66 · ACCORD', source: 'Caravane nomade', faction: 'nomades',
+    text: 'Deux bandes rivales proposent un cessez-le-feu. Un messager pourrait faire la différence avant la prochaine nuit.' },
+];
+/** Chaque case possède une chance déterministe de transmettre un signal, indépendamment du serveur. */
+export function signalForCell(cell: string): RadioSignal | null {
+  if(hash('radio:'+cell)%5!==0) return null;
+  const d=SIGNALS[hash('script:'+cell)%SIGNALS.length];
+  return { id:'radio:'+cell, ...d };
+}
+
 export const DEFAULT_RESOURCES: Resources = { scrap: 3, circuits: 1, rations: 2, medkits: 1, charges: 0 };
 export const DEFAULT_FACTIONS: Factions = { lumen: 0, nomades: 0, archives: 0 };
 export const RECIPES: Record<Recipe, { title: string; desc: string; cost: Partial<Resources> }> = {
@@ -37,7 +60,7 @@ export function spawnEncounter(id: string): Encounter {
 }
 export function freshRebirth(): Rebirth {
   return { resources: { ...DEFAULT_RESOURCES }, factions: { ...DEFAULT_FACTIONS },
-    integrity: 100, encounter: null, victories: 0 };
+    integrity: 100, encounter: null, victories: 0, radio: null, radioLog: [] };
 }
 export function cleanRebirth(raw: unknown): Rebirth {
   const x = raw && typeof raw === 'object' ? raw as Partial<Rebirth> : {};
@@ -56,8 +79,15 @@ export function cleanRebirth(raw: unknown): Rebirth {
       turn: finite(e.turn, 0, 100), hp: finite(e.hp, data.hp, data.hp), maxHp: data.hp,
       guard: finite(e.guard, 0, 100), last: typeof e.last === 'string' ? e.last.slice(0, 160) : '' };
   }
+  const rawRadio=x.radio;
+  const radio=rawRadio && typeof rawRadio.id==='string' && rawRadio.id.length<150 &&
+    typeof rawRadio.title==='string' && typeof rawRadio.text==='string' &&
+    ['lumen','nomades','archives'].includes(rawRadio.faction) ?
+    { id:rawRadio.id, title:rawRadio.title.slice(0,100), text:rawRadio.text.slice(0,500),
+      source:String(rawRadio.source ?? 'Inconnu').slice(0,100), faction:rawRadio.faction } : null;
+  const radioLog=Array.isArray(x.radioLog)?x.radioLog.filter((v):v is string=>typeof v==='string').slice(-30).map(v=>v.slice(0,400)):[];
   return { resources, factions, integrity: finite(x.integrity, 100, 100),
-    encounter, victories: finite(x.victories, 0, 1000000) };
+    encounter, victories: finite(x.victories, 0, 1000000), radio, radioLog };
 }
 export function canCraft(s: Rebirth, recipe: Recipe): boolean {
   return Object.entries(RECIPES[recipe].cost).every(([k,v]) => s.resources[k as Resource] >= (v ?? 0))
