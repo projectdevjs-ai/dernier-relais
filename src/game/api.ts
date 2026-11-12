@@ -221,6 +221,8 @@ export interface PlayerView {
   /** Total de points gagnés. */
   score: number;
   deliveries: number;
+  /** Réputation gagnée en aidant les relais, sans points ni XP. */
+  reputation?: number;
   distanceKm: number;
   // ── Ajouts (rangement) : facultatifs, une vue sans eux reste valide.
   /** Les cinq emplacements de chargement, verrouillés ou non. `capacityKg` est la somme des emplacements débloqués. */
@@ -372,6 +374,8 @@ export interface GameActions {
    * Le colis quitte le sac et le joueur touche une avance. `dryRun` : vérifie et calcule sans rien changer.
    */
   giveToRelay?(orderId: string, shelterId?: string, dryRun?: boolean): RelayGiveResult;
+  /** Dépôt solidaire dans n'importe quel abri : réputation seulement, même hors ligne. */
+  handoff?(orderId: string, shelterId: string): ActionResult;
   /** Met dans le sac un colis pris à la chaîne de relais (il faut être à un abri). `dryRun` : vérifie sans rien changer. */
   takeFromRelay?(relay: { id: string; parcel: RelayCrate }, dryRun?: boolean): ActionResult;
 }
