@@ -63,7 +63,7 @@ describe('rôdeurs : règles', () => {
       expect(w.lapS).toBeCloseTo(w.legs.reduce((a, b) => a + b, 0) / WANDER.speed + 3 * WANDER.pauseS);
     }
     expect(n / 4000).toBeGreaterThan(WANDER.chance * 0.7); expect(n / 4000).toBeLessThan(WANDER.chance * 1.3);
-    expect(25 * WANDER.chance).toBeLessThan(1.5); // un secteur de 5 x 5 cases : un rôdeur environ
+    expect(25 * WANDER.chance).toBeLessThan(3); // un secteur de 5 x 5 cases : deux ou trois voyageurs au plus
     for (let s = 0; s < 400; s++) expect(wandererInCell({ ...home(), parcels: SPOTS.slice(0, 1) }, s)).toBeNull();
     expect(wanderersFor(CELLS, 5 * SLOT + 1)).toEqual(wanderersFor(CELLS, 5 * SLOT + 999));
   });

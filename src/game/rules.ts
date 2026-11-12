@@ -111,7 +111,7 @@ export const CACHE = {
 
 /** Rôdeurs : chance par case et par tranche horaire, marche, cadeaux. */
 export const WANDER = {
-  chance: 0.05, slotMs: 2 * 3600_000, speed: 1.1, pauseS: 25, talkM: 25,
+  chance: 0.1, slotMs: 2 * 3600_000, speed: 1.1, pauseS: 25, talkM: 25,
   staminaGift: 0.3, xpGift: 25,
 } as const;
 
