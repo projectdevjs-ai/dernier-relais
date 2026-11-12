@@ -59,6 +59,9 @@ interface PadLayer extends Layer { gains: GainNode[]; mobile: OscillatorNode }
 
 export class Ambience {
   private bus: GainNode | null = null;
+  private level = 0.35;
+  /** Niveau relatif indépendant de la sortie générale : 0 coupe le fond ambiant. */
+  setLevel(value: number): void { this.level = Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0)); }
   private veil: BiquadFilterNode | null = null;
   private wind: WindLayer | null = null;
   private fond: FondLayer | null = null;
@@ -95,7 +98,7 @@ export class Ambience {
     const night = w.night ? 1 : 0;
     this.ensureBus(now);
     this.set(this.veil!.frequency, mood.cut * (night ? 0.55 : 1), 1.5);
-    this.set(this.bus!.gain, BED * (night ? 0.8 : 1), 0.6);
+    this.set(this.bus!.gain, BED * this.level * (night ? 0.8 : 1), 0.6);
 
     const wind = clamp01(w.windKmh / 60), T = now, ph = this.phase;
     // Fond de l'air : le jour, la rumeur d'une ville lointaine (deux bandes médium qui respirent, une de chaque côté) ;
