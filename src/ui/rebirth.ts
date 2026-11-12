@@ -69,7 +69,7 @@ export class RebirthConsole {
     this.trigger.classList.toggle('rb-in-combat', !!threat);
     // Une confrontation active mérite une ouverture immédiate, sans pop-up durant la marche.
     if (!threat) this.announcedEncounter = null;
-    if (threat && this.announcedEncounter !== threat.id && !v.player.moving && !v.player.vehicle) {
+    if (threat && this.announcedEncounter !== threat.id && !v.player.moving && !v.player.vehicle && document.body.classList.contains('dr-map-on')) {
       this.announcedEncounter = threat.id;
       this.open();
     }
