@@ -7,13 +7,13 @@ import { FIRST, POOL } from '../src/lab/texts';
 
 const VOICES: Record<string, string> = {
   narrateur: '081eafb4e2974f68b5b13d20b8f5995f',
-  mara: 'a288bdc744da4ad194921adad6863175',
+  mara: '8d4783aa28c948ea8001b6e865269bf5',
   tomas: 'f315cac8d48d4449ad73ac0f96099acd',
-  agathe: '5567200c7d8341738f0892bbacd3be3c',
+  agathe: '6dafffa3a0e24661b741fa8743e8246d',
   kenji: '588134063cd047ffafc43114f3f26746',
-  iris: '656cde69eff3483b933b8d2ffd388c3c',
+  iris: '3080cf2c2064446a9d8f6eadb1ce5ca3',
   noe: 'cb16719eac614d8bbc9d7913cc410552',
-  selma: 'c100ccdc6297427a90916fd2c63d4966',
+  selma: '690813f2df56491b82ee02a22d1c67fd',
 };
 const jobs: { who: string; text: string }[] = [];
 for (const [npc, sit] of Object.entries(LINES)) for (const list of Object.values(sit)) for (const text of list) jobs.push({ who: npc, text });
@@ -33,7 +33,7 @@ async function one(j: { who: string; text: string }): Promise<void> {
   for (let tryN = 0; tryN < 4; tryN++) {
     const r = await fetch('https://api.fish.audio/v1/tts', {
       method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', model: 's2.1-pro-free' },
-      body: JSON.stringify({ text: j.text, reference_id: VOICES[j.who], format: 'mp3', mp3_bitrate: 64, normalize: true, latency: 'normal' }),
+      body: JSON.stringify({ text: j.text, reference_id: VOICES[j.who], format: 'mp3', mp3_bitrate: 128, normalize: true, latency: 'normal' }),
     });
     if (r.ok) { writeFileSync(file, Buffer.from(await r.arrayBuffer())); console.log('ok', id); return; }
     console.log('échec', r.status, id, (await r.text()).slice(0, 120));
