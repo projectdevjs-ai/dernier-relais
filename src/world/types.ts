@@ -12,6 +12,13 @@ export interface Shelter {
   id: string; cell: string; name: string; kind: ShelterKind; at: LngLat;
   /** vrai lieu de la carte, ou abri de secours placé par les règles */
   source: 'lieu' | 'secours';
+  /**
+   * Implantation du bâtiment, hors chaussée (voir site.ts) : `at` reste le point de livraison, qui peut être sur la rue.
+   * Facultatif : absent s'il n'y a aucune rue autour.
+   */
+  site?: LngLat;
+  /** Cap de la façade en degrés (0 = nord, sens horaire) : elle regarde la rue. */
+  facing?: number;
 }
 export interface ParcelSpot { id: string; cell: string; at: LngLat }
 export interface CellContent {

@@ -8,7 +8,8 @@ import type { CellContent, ShelterKind } from '../world/types';
 
 export type Grade = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
 export type NpcId = 'mara' | 'tomas' | 'agathe' | 'kenji';
-export type CrateKind = 'bois' | 'alu' | 'plastique' | 'carton';
+/** Matière et forme du colis (voir src/game/crates.ts). Les trois dernières sont des ajouts : une table par matière doit prévoir une valeur par défaut. */
+export type CrateKind = 'bois' | 'alu' | 'plastique' | 'carton' | 'sac' | 'fut' | 'coffre';
 /** Emplacements de chargement du porteur (voir src/game/slots.ts). */
 export type SlotId = 'dos' | 'brasG' | 'brasD' | 'jambeG' | 'jambeD';
 /** Surprise cachée dans un colis, révélée à l'écoute (voir src/game/surprises.ts). */

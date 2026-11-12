@@ -61,7 +61,7 @@ export interface WearCtx {
 export function wearPerSecond(o: { fragile: boolean; crate: CrateKind }, c: WearCtx): number {
   let perMin = 0;
   const wet = c.weather === 'pluie' ? WEAR.rain : c.weather === 'orage' ? WEAR.storm : c.weather === 'neige' ? WEAR.snow : 0;
-  if (!c.sheltered) perMin += wet * WEAR.crateWet[o.crate] * (o.fragile ? WEAR.fragile : 1);
+  if (!c.sheltered) perMin += wet * (WEAR.crateWet[o.crate] ?? 1) * (o.fragile ? WEAR.fragile : 1);
   if (c.inDanger) perMin += WEAR.danger * c.dangerMult;
   const held = 1 - GESTURE.strapWear * clamp(c.strap ?? 0, 0, 1);
   if (c.unbalanced) perMin += WEAR.unbalanced * (o.fragile ? WEAR.fragileUnbalanced : 1) * held;

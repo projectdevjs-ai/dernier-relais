@@ -6,6 +6,7 @@ import type { ActionResult, Ambiance, GameEvent, GameView, HudApi, HudEvents, Hu
 import type { Ctx, Tone } from './ctx';
 import { btn, fmtDist, fmtInt, h, setAttr, setDisabled, setText, setVar, show } from './dom';
 import { EventsBar, NearAction } from './events';
+import { longPress } from './gestures';
 import { GradeScreen } from './grade';
 import { Help } from './help';
 import { icon, type IconName } from './icons';
@@ -24,6 +25,12 @@ const WEATHER: Record<WeatherKind, { ic: IconName; label: string }> = {
   clair: { ic: 'sun', label: 'Ciel clair' }, nuages: { ic: 'cloud', label: 'Nuageux' }, pluie: { ic: 'rain', label: 'Pluie' },
   orage: { ic: 'storm', label: 'Orage' }, neige: { ic: 'snow', label: 'Neige' }, brouillard: { ic: 'fog', label: 'Brouillard' },
 };
+
+/** Réglage d'ambiance à trois positions : « auto » suit le soleil (choisi par l'appelant), sinon l'ambiance voulue. */
+export type AmbianceMode = 'auto' | Ambiance;
+/** Compléments facultatifs au contrat du HUD (le contrat de src/game/api.ts ne change pas). */
+export interface HudExtraEvents { onAmbianceMode?(mode: AmbianceMode): void }
+export interface HudExtraOptions { ambianceMode?: AmbianceMode }
 
 export class Hud implements HudApi {
   private view: GameView | null = null;
@@ -74,8 +81,9 @@ export class Hud implements HudApi {
 
   private events0: HudEvents;
 
-  constructor(private root: HTMLElement, events: HudEvents, opts?: HudOptions) {
+  constructor(private root: HTMLElement, events: HudEvents & HudExtraEvents, opts?: HudOptions & HudExtraOptions) {
     this.events0 = events;
+    const events0 = events;
     root.classList.add('dr-hud');
     this.haptics = opts?.settings?.haptics !== false;
     this.quick = opts?.settings?.quickPickup === true;
@@ -116,8 +124,16 @@ export class Hud implements HudApi {
     this.loadBox.setAttribute('role', 'img');
     this.balance = btn('dr-balance', 'Rééquilibrer la charge', h('span', 'dr-bal-track', this.balDot));
     this.balance.hidden = true;
-    this.balance.addEventListener('click', () => events.actions.steady());
+    this.balance.addEventListener('click', () => { this.ui('tap'); events.actions.steady(); });
     this.gps = h('div', 'dr-chip dr-gps', h('i', 'dr-gps-dot'), this.gpsTxt);
+
+    // Appui long sur une pastille du haut : son détail en clair (les mêmes mots que pour le lecteur d'écran).
+    for (const [el, ic] of [[this.lvlBox, 'xp'], [this.wxBox, 'cloud'], [this.loadBox, 'bag']] as [HTMLElement, IconName][]) {
+      el.classList.add('dr-holdable');
+      longPress(el, () => { const t = el.getAttribute('aria-label'); if (t) { this.ui('tap'); this.toasts.push(t, 'info', ic, 3600); } });
+    }
+    longPress(this.gps, () => { this.ui('tap'); this.toasts.push(this.view?.player.mode === 'gps' ? 'GPS réel : tu avances en marchant' : 'Position simulée : touche la carte pour avancer', 'info', 'gps', 3600); });
+    this.gps.classList.add('dr-holdable');
 
     this.eventsBar = new EventsBar(root, ctx);
     const top = h('div', 'dr-top',
@@ -127,7 +143,7 @@ export class Hud implements HudApi {
 
     // ----- Bas droite : recentrer et scanner -----
     const recenter = btn('dr-iconbtn dr-surface dr-recenter', 'Recentrer la carte sur moi', icon('locate'));
-    recenter.addEventListener('click', () => events.onRecenter());
+    recenter.addEventListener('click', () => { this.ui('tap'); events.onRecenter(); });
     // Vue 2D / 3D : le bouton annonce la vue qu'il donne ; il n'existe que si l'appelant sait basculer la carte.
     const tiltTxt = h('span', '', this.tilted ? '2D' : '3D');
     const tilt = btn('dr-iconbtn dr-surface dr-tilt', '', tiltTxt);
@@ -137,8 +153,13 @@ export class Hud implements HudApi {
     tilt.addEventListener('click', () => { this.tilted = !this.tilted; tiltLabel(); this.ui('tap'); events.onTilt?.(); });
     this.scan = btn('dr-scan', 'Scanner les alentours');
     this.scan.innerHTML = '<svg class="dr-scan-ring" viewBox="0 0 80 80" aria-hidden="true"><circle class="dr-scan-track" cx="40" cy="40" r="36"/><circle class="dr-scan-prog" cx="40" cy="40" r="36" pathLength="100" transform="rotate(-90 40 40)"/></svg>';
-    this.scan.append(h('span', 'dr-scan-core', icon('scan'), this.scanSec));
-    this.scan.addEventListener('click', () => { if (this.run(events.actions.scan())) this.ui('tap'); });
+    this.scan.append(h('i', 'dr-scan-wave'), h('span', 'dr-scan-core', icon('scan'), this.scanSec));
+    this.scan.addEventListener('click', () => {
+      if (!this.run(events.actions.scan())) return;
+      this.ui('confirm');
+      // Retour visuel immédiat : une onde part du bouton.
+      this.scan.classList.remove('is-fired'); void this.scan.offsetWidth; this.scan.classList.add('is-fired');
+    });
     const fabs = h('div', 'dr-fabs', tilt, recenter, this.scan);
 
     root.append(top, fabs);
@@ -150,6 +171,8 @@ export class Hud implements HudApi {
     this.order = new OrderPanel(root, ctx);
     this.porter = new PorterPanel(root, ctx, {
       setAmbiance: (a) => this.setAmbiance(a), replayHelp: () => this.showHelp(),
+      ambianceMode: opts?.ambianceMode ?? (events0.onAmbianceMode ? 'auto' : this.ambiance),
+      setAmbianceMode: events0.onAmbianceMode ? (m) => events0.onAmbianceMode?.(m) : undefined,
       openNetwork: () => this.openNetwork(), editPseudo: () => this.pseudo.open(),
       settings: opts?.settings ?? {},
       setQuickPickup: (on) => { this.quick = on; try { events.onQuickPickup?.(on); } catch { /* la mémorisation ne doit pas gêner le jeu */ } },
@@ -174,7 +197,11 @@ export class Hud implements HudApi {
     this.view = view;
     const p = view.player;
 
-    setText(this.lvl, String(p.level));
+    if (this.lvl.textContent !== String(p.level)) {
+      // Niveau gagné : le losange bat une fois (pas au tout premier rendu).
+      if (this.lvl.textContent) { this.lvlBox.classList.remove('is-up'); void this.lvlBox.offsetWidth; this.lvlBox.classList.add('is-up'); }
+      this.lvl.textContent = String(p.level);
+    }
     setVar(this.xpFill, '--p', (p.xpNext > 0 ? Math.min(1, p.xp / p.xpNext) : 0).toFixed(3));
     setVar(this.stFill, '--p', Math.max(0, Math.min(1, p.stamina)).toFixed(2));
     this.stBar.classList.toggle('is-low', p.stamina < 0.25);
@@ -190,6 +217,7 @@ export class Hud implements HudApi {
 
     setText(this.loadTxt, `${fmtInt(p.carriedKg)}/${fmtInt(p.capacityKg)} kg`);
     this.loadBox.classList.toggle('is-full', p.capacityKg > 0 && p.carriedKg / p.capacityKg >= 0.9);
+    setVar(this.loadBox, '--p', (p.capacityKg > 0 ? Math.min(1, p.carriedKg / p.capacityKg) : 0).toFixed(2));
     setAttr(this.loadBox, 'aria-label', `Charge : ${fmtInt(p.carriedKg)} kg sur ${fmtInt(p.capacityKg)}`);
 
     // Équilibre : visible seulement si on porte quelque chose.

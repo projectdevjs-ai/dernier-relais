@@ -110,11 +110,12 @@ const link = new OnlineLink(net, demoGame, { toast: (text, tone) => hud.handle({
   { storage: null, shelterName: (id) => view().shelters.find((s) => s.id === id)?.name ?? null });
 let france: FrancePanel | null = null;
 
-const events: HudEvents = {
+const events: HudEvents & { onAmbianceMode?(m: 'auto' | Ambiance): void } = {
   actions,
   onUseGps: () => log('GPS'),
   onRecenter: () => log('recentrer'),
   onAmbiance: (a) => { log('ambiance', a); document.body.classList.toggle('clair', a === 'clair'); },
+  onAmbianceMode: (m: 'auto' | Ambiance) => { log('ambiance', m); const a: Ambiance = m === 'auto' ? ambiance : m; hud.setAmbiance(a); document.body.classList.toggle('clair', a === 'clair'); },
   onGoto: (at, label) => log('aller à', label, at),
   onNetwork: () => { log('réseau'); france?.open(); },
   online: link.hud,

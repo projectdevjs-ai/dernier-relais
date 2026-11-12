@@ -40,6 +40,8 @@ const MOODS: Record<WeatherKind, { rain: number; wind: number; pad: number; cut:
 const MOOD_DEFAULT = MOODS.nuages;
 /** Niveau général de la nappe : volontairement bas, bien en dessous des sons du jeu. */
 const BED = 0.4;
+/** Fond de l'air (ville lointaine le jour, silence feutré la nuit) : le plancher de la nappe, toujours au-dessus des pas. */
+const FOND = 0.5;
 const FIFTHS = [220.4, 196.2, 261.9, 174.8]; // la, sol, do, fa : la voix mobile du fond tonal
 const PATTER_S = 6.1;
 
@@ -50,7 +52,8 @@ function drift(t: number, a: number, b: number, phase: number): number {
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
 interface Layer { sources: AudioScheduledSourceNode[]; nodes: AudioNode[]; idleSince: number | null }
-interface WindLayer extends Layer { lp: BiquadFilterNode; g: GainNode; bp: BiquadFilterNode; gw: GainNode }
+interface WindLayer extends Layer { lp: BiquadFilterNode; g: GainNode; bp: BiquadFilterNode; gw: GainNode; air: BiquadFilterNode; ga: GainNode; pan: StereoPannerNode | null }
+interface FondLayer extends Layer { bands: BiquadFilterNode[]; gains: GainNode[] }
 interface RainLayer extends Layer { lp: BiquadFilterNode; g: GainNode; gp: GainNode }
 interface PadLayer extends Layer { gains: GainNode[]; mobile: OscillatorNode }
 
@@ -58,6 +61,7 @@ export class Ambience {
   private bus: GainNode | null = null;
   private veil: BiquadFilterNode | null = null;
   private wind: WindLayer | null = null;
+  private fond: FondLayer | null = null;
   private rain: RainLayer | null = null;
   private pad: PadLayer | null = null;
   private patter: AudioBuffer | null = null;
@@ -94,6 +98,13 @@ export class Ambience {
     this.set(this.bus!.gain, BED * (night ? 0.8 : 1), 0.6);
 
     const wind = clamp01(w.windKmh / 60), T = now, ph = this.phase;
+    // Fond de l'air : le jour, la rumeur d'une ville lointaine (deux bandes médium qui respirent, une de chaque côté) ;
+    // la nuit, la même matière plus grave et plus basse, feutrée. Sous la neige et le brouillard, elle s'étouffe.
+    if (this.layer('fond', true, now)) {
+      const l = this.fond!, muffle = mood.cut < 3000 ? 0.75 : 1;
+      l.gains.forEach((g, i) => this.set(g.gain, FOND * (night ? 0.8 : 1) * (0.7 + 0.5 * drift(T, 0.043 + 0.017 * i, 0.101 + 0.029 * i, ph + 8 + 3 * i)), 2));
+      l.bands.forEach((b, i) => this.set(b.frequency, (night ? 250 : 390) * (1 + 0.32 * i) * muffle * (0.9 + 0.2 * drift(T, 0.031 + 0.011 * i, 0.077, ph + 11 + i)), 3));
+    }
     // Vent : niveau proportionnel au vent, avec des rafales lentes ; le filtre s'ouvre quand il forcit.
     const gust = drift(T, 0.29, 0.67, ph);
     const windLevel = (0.015 + 0.3 * wind ** 1.4) * mood.wind * (0.55 + 0.9 * gust);
@@ -104,6 +115,10 @@ export class Ambience {
       const whistle = Math.max(0, wind - 0.45) * 0.3 * drift(T, 0.17, 0.41, ph + 2) ** 2;
       this.set(l.gw.gain, whistle, 0.8);
       this.set(l.bp.frequency, 520 + 520 * drift(T, 0.07, 0.19, ph + 3), 1.5);
+      // Texture : une bande d'air plus claire qui suit ses propres rafales et se promène lentement de gauche à droite.
+      this.set(l.ga.gain, windLevel * 0.5 * drift(T, 0.37, 0.83, ph + 13) ** 1.5, 0.6);
+      this.set(l.air.frequency, 900 + 1500 * wind * drift(T, 0.13, 0.31, ph + 14), 1.2);
+      if (l.pan) this.set(l.pan.pan, 1.2 * (drift(T, 0.11, 0.26, ph + 15) - 0.5), 1.5);
     }
     // Pluie : un fond de souffle et un grain de gouttes, deux boucles de longueurs différentes.
     if (this.layer('rain', mood.rain > 0, now)) {
@@ -130,7 +145,8 @@ export class Ambience {
       if (this.nextStep < now) this.nextStep = now + 0.04;
       while (this.nextStep < horizon) {
         this.foot = -this.foot;
-        play(this.rig, 'step', this.nextStep, inp.load, mood.rain, this.foot * 0.12);
+        // Un pas à gauche, un pas à droite, jamais tout à fait au même endroit.
+        play(this.rig, 'step', this.nextStep, inp.load, mood.rain, this.foot * (0.14 + 0.1 * this.rig.rand()));
         this.nextStep += (1 / hz) * (0.94 + 0.12 * this.rig.rand());
       }
     } else this.nextStep = 0;
@@ -174,11 +190,11 @@ export class Ambience {
     const now = this.rig.ctx.currentTime;
     bus.gain.cancelScheduledValues(now);
     bus.gain.setTargetAtTime(0, now, 0.06);
-    for (const l of [this.wind, this.rain, this.pad]) if (l) for (const s of l.sources) s.stop(now + 0.5);
+    for (const l of [this.fond, this.wind, this.rain, this.pad]) if (l) for (const s of l.sources) s.stop(now + 0.5);
     // Le bus se débranche tout seul quand la dernière source s'arrête ; à défaut, il ne porte plus aucun signal.
-    const first = [this.wind, this.rain, this.pad].find(l => l)?.sources[0];
+    const first = [this.fond, this.wind, this.rain, this.pad].find(l => l)?.sources[0];
     if (first) first.onended = () => bus.disconnect(); else bus.disconnect();
-    this.bus = null; this.veil = null; this.wind = null; this.rain = null; this.pad = null;
+    this.bus = null; this.veil = null; this.fond = null; this.wind = null; this.rain = null; this.pad = null;
     this.last = new WeakMap();
     this.lastUpdate = -1;
     this.nextStep = this.nextPulse = this.nextThunder = this.nextNote = this.nextShift = 0;
@@ -204,10 +220,10 @@ export class Ambience {
   }
 
   /** Crée la couche si elle est voulue, la détruit après 4 s de silence. Renvoie vrai si elle existe. */
-  private layer(name: 'wind' | 'rain' | 'pad', wanted: boolean, now: number): boolean {
+  private layer(name: 'fond' | 'wind' | 'rain' | 'pad', wanted: boolean, now: number): boolean {
     let l: Layer | null = this[name];
     if (wanted) {
-      if (!l) l = name === 'wind' ? (this.wind = this.makeWind(now)) : name === 'rain' ? (this.rain = this.makeRain(now)) : (this.pad = this.makePad(now));
+      if (!l) l = name === 'fond' ? (this.fond = this.makeFond(now)) : name === 'wind' ? (this.wind = this.makeWind(now)) : name === 'rain' ? (this.rain = this.makeRain(now)) : (this.pad = this.makePad(now));
       l.idleSince = null;
       return true;
     }
@@ -236,14 +252,39 @@ export class Ambience {
     return g;
   }
 
+  private panner(pan: number): StereoPannerNode | null {
+    const { ctx } = this.rig;
+    if (typeof ctx.createStereoPanner !== 'function') return null;
+    const p = ctx.createStereoPanner();
+    p.pan.value = pan;
+    return p;
+  }
+
+  private makeFond(now: number): FondLayer {
+    const { ctx } = this.rig, sources: AudioScheduledSourceNode[] = [], bands: BiquadFilterNode[] = [], gains: GainNode[] = [];
+    // Deux lectures du même bruit à des vitesses différentes, une de chaque côté : une matière large, sans motif.
+    [0.61, 0.47].forEach((rate, i) => {
+      const src = this.loop(this.rig.noise, now, rate), bp = ctx.createBiquadFilter(), g = this.silentGain(now), p = this.panner(i ? 0.55 : -0.55);
+      bp.type = 'bandpass'; bp.frequency.value = 390 * (1 + 0.32 * i); bp.Q.value = 0.8;
+      src.connect(bp); bp.connect(g);
+      if (p) { g.connect(p); p.connect(this.veil!); } else g.connect(this.veil!);
+      sources.push(src); bands.push(bp); gains.push(g);
+    });
+    return { sources, nodes: gains, idleSince: null, bands, gains };
+  }
+
   private makeWind(now: number): WindLayer {
     const { ctx } = this.rig, src = this.loop(this.rig.noise, now, 0.83);
-    const lp = ctx.createBiquadFilter(), bp = ctx.createBiquadFilter(), g = this.silentGain(now), gw = this.silentGain(now);
+    const lp = ctx.createBiquadFilter(), bp = ctx.createBiquadFilter(), air = ctx.createBiquadFilter();
+    const g = this.silentGain(now), gw = this.silentGain(now), ga = this.silentGain(now), pan = this.panner(0);
     lp.type = 'lowpass'; lp.frequency.value = 300; lp.Q.value = 0.6;
     bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 7;
+    air.type = 'bandpass'; air.frequency.value = 1200; air.Q.value = 1.1;
     src.connect(lp); lp.connect(g); g.connect(this.veil!);
     src.connect(bp); bp.connect(gw); gw.connect(this.veil!);
-    return { sources: [src], nodes: [g, gw], idleSince: null, lp, g, bp, gw };
+    src.connect(air); air.connect(ga);
+    if (pan) { ga.connect(pan); pan.connect(this.veil!); } else ga.connect(this.veil!);
+    return { sources: [src], nodes: [g, gw, ga], idleSince: null, lp, g, bp, gw, air, ga, pan };
   }
 
   private makeRain(now: number): RainLayer {
@@ -275,16 +316,21 @@ export class Ambience {
   }
 }
 
-/** Grain de pluie : quelques centaines de gouttes brèves réparties au hasard, bouclable sans couture. */
+/** Grain de pluie, en stéréo : des centaines de gouttes brèves placées au hasard dans l'espace, fines et aiguës pour la
+ *  plupart, quelques-unes plus lourdes et plus graves (sur une bâche, une tôle). Bouclable sans couture. */
 function makePatter(ctx: BaseAudioContext, rand: () => number): AudioBuffer {
-  const sr = ctx.sampleRate, len = Math.floor(sr * PATTER_S), buf = ctx.createBuffer(1, len, sr), d = buf.getChannelData(0);
-  const drops = Math.floor(PATTER_S * 45);
+  const sr = ctx.sampleRate, len = Math.floor(sr * PATTER_S), buf = ctx.createBuffer(2, len, sr);
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  const drops = Math.floor(PATTER_S * 60);
   for (let k = 0; k < drops; k++) {
-    const at = Math.floor(rand() * len), f = 1500 + 3500 * rand(), tau = sr * (0.002 + 0.006 * rand()), amp = 0.04 + 0.3 * rand() ** 3;
-    const n = Math.floor(tau * 6), ph = rand() * 6.28;
+    const heavy = rand() < 0.12;
+    const at = Math.floor(rand() * len), f = heavy ? 500 + 700 * rand() : 1500 + 3800 * rand();
+    const tau = sr * (heavy ? 0.006 + 0.01 * rand() : 0.002 + 0.006 * rand()), amp = (heavy ? 0.12 : 0.04) + 0.3 * rand() ** 3;
+    const n = Math.floor(tau * 6), ph = rand() * 6.28, pan = rand(), gl = Math.cos(pan * 1.5708), gr = Math.sin(pan * 1.5708);
     for (let i = 0; i < n; i++) {
       const rise = Math.min(1, i / (sr * 0.0006));
-      d[(at + i) % len] += amp * rise * Math.exp(-i / tau) * Math.sin(ph + (6.2832 * f * i) / sr);
+      const x = amp * rise * Math.exp(-i / tau) * Math.sin(ph + (6.2832 * f * (1 - (heavy ? 0.15 * i / n : 0)) * i) / sr);
+      L[(at + i) % len] += x * gl * 1.3; R[(at + i) % len] += x * gr * 1.3;
     }
   }
   return buf;

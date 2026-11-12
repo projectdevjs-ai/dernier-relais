@@ -14,7 +14,7 @@ export const PORTER_HEIGHT = 12;
 const HUMAN = 1.75;
 const MAX_STACK = 4;
 
-export const CRATE_MODEL: Record<CrateKind, string> = { bois: 'caisse_bois', alu: 'malle_alu', plastique: 'bac_plastique', carton: 'carton' };
+export const CRATE_MODEL: Record<CrateKind, string> = { bois: 'caisse_bois', alu: 'malle_alu', plastique: 'bac_plastique', carton: 'carton', coffre: 'colis_coffre', fut: 'colis_fut', sac: 'colis_sac' };
 
 type Anim = 'idle' | 'walk' | 'run';
 /**

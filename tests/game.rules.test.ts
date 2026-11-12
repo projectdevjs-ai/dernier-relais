@@ -9,7 +9,7 @@ import { gradeDelivery, gradeFromScore } from '../src/game/grade';
 import { HIDDEN_LINE, LINES, npcLine } from '../src/game/npc';
 import { ITEMS, baseReward, deadlineFor, destPenalty, easeOrder, makeOrder, minutesLeft, orderName, orderReward, pickDestination, sheltersNear } from '../src/game/orders';
 import { addXp } from '../src/game/progress';
-import { BAG_KG, DEST, GRADE_MULT, NEWBIE, STAR_THRESHOLDS, xpNeeded } from '../src/game/rules';
+import { BAG_KG, DEST, GRADE_MULT, NEWBIE, SCAN_COOLDOWN_MIN_S, SCAN_COOLDOWN_S, STAR_THRESHOLDS, xpNeeded } from '../src/game/rules';
 import { nextStarAt, nextUnlock, npcFor, starsFor, unlockText } from '../src/game/shelters';
 import { SKILLS, learnBlock, modsFor, skillViews } from '../src/game/skills';
 import { dayKey, nextDayMs, weekKey } from '../src/game/time';
@@ -95,7 +95,7 @@ describe('commandes', () => {
       crates.add(o.crate);
       fragile += o.fragile ? 1 : 0; timed += o.deadlineMin !== null ? 1 : 0; rare += o.rareName ? 1 : 0;
     }
-    expect(crates).toEqual(new Set(['bois', 'alu', 'plastique', 'carton']));
+    expect(crates).toEqual(new Set(['bois', 'alu', 'plastique', 'carton', 'sac', 'fut', 'coffre']));
     expect(fragile).toBeGreaterThan(60); expect(fragile).toBeLessThan(220);
     expect(timed).toBeGreaterThan(90); expect(timed).toBeLessThan(190);
     expect(rare).toBeGreaterThan(30); expect(rare).toBeLessThan(100);
@@ -234,9 +234,12 @@ describe('compétences', () => {
   });
   it('ont des effets mesurables', () => {
     const none = modsFor({});
-    expect(none).toMatchObject({ scanRangeM: 0, scanCooldownS: 8, capacityKg: BAG_KG, wearMult: 1, balanceMult: 1, pointsMult: 1, xpMult: 1 });
+    expect(none).toMatchObject({ scanRangeM: 0, scanCooldownS: SCAN_COOLDOWN_S, capacityKg: BAG_KG, wearMult: 1, balanceMult: 1, pointsMult: 1, xpMult: 1 });
     const all = modsFor(Object.fromEntries(SKILLS.map(s => [s.id, s.maxRank])));
-    expect(all.scanRangeM).toBe(120); expect(all.scanCooldownS).toBe(5); expect(all.capacityKg).toBe(40); expect(all.pickupBonusM).toBe(20);
+    expect(all.scanRangeM).toBe(120); expect(all.scanCooldownS).toBe(9);
+    // Chaque rang du condensateur compte encore avec la recharge de 15 s, sans passer sous le minimum.
+    expect([1, 2, 3].map(k => modsFor({ 'scan-recharge': k }).scanCooldownS)).toEqual([13, 11, 9]);
+    expect(all.scanCooldownS).toBeGreaterThanOrEqual(SCAN_COOLDOWN_MIN_S); expect(all.capacityKg).toBe(40); expect(all.pickupBonusM).toBe(20);
     expect(all.wearMult).toBeCloseTo(0.55); expect(all.balanceMult).toBeCloseTo(0.5); expect(all.drainMult).toBeCloseTo(0.55);
     expect(all.restMult).toBeCloseTo(1.5); expect(all.dangerMult).toBeCloseTo(0.4);
     expect(all.pointsMult).toBeCloseTo(1.3); expect(all.xpMult).toBeCloseTo(1.3); expect(all.contractMult).toBeCloseTo(1.3);

@@ -3,6 +3,7 @@ import type { Ambiance, ContractView, GameView, HudSettings, SkillBranch, SkillV
 import type { LngLat } from '../core/geo';
 import type { Ctx } from './ctx';
 import { KeyedList, btn, fmtInt, h, setAttr, setDisabled, setText, setVar, show, type Row } from './dom';
+import { drag, rollNumber, rubber } from './gestures';
 import { icon, type IconName } from './icons';
 import { Panel } from './panel';
 
@@ -39,6 +40,9 @@ export interface PorterHooks {
   /** Ouvre la carte du réseau (après le choix du pseudo si besoin). */
   openNetwork(): void;
   editPseudo(): void;
+  /** Ambiance à trois positions (Auto / Jour / Crépuscule) : présente seulement si l'appelant sait suivre le soleil. */
+  ambianceMode?: 'auto' | Ambiance;
+  setAmbianceMode?(mode: 'auto' | Ambiance): void;
   /** État initial des réglages. */
   settings: HudSettings;
   /** Le joueur change le réglage « Ramassage rapide ». */
@@ -62,6 +66,8 @@ export class PorterPanel {
   readonly panel: Panel;
   tab: PorterTab = 'competences';
   private tabBtns = new Map<PorterTab, HTMLButtonElement>();
+  private tabInk = h('i', 'dr-tab-ink');
+  private lastView: GameView | null = null;
   private pages = new Map<PorterTab, HTMLElement>();
   private points = h('span', 'dr-points-n');
   private pointsLabel = h('span', 'dr-points-l');
@@ -71,7 +77,12 @@ export class PorterPanel {
   private weekEmpty = h('p', 'dr-empty', 'Pas de contrat cette semaine.');
   private log: Record<'score' | 'deliveries' | 'distance' | 'level' | 'xp', HTMLElement>;
   private xpBar = h('span', 'dr-bar-fill');
-  private ambBtns = new Map<Ambiance, HTMLButtonElement>();
+  private ambBtns = new Map<'auto' | Ambiance, HTMLButtonElement>();
+  private seg!: HTMLElement;
+  private ambHint!: HTMLElement;
+  /** Position choisie quand le réglage a trois positions ; null : deux positions, l'ambiance affichée fait foi. */
+  private mode: 'auto' | Ambiance | null = null;
+  private shown: Ambiance = 'crépuscule';
   private netBtn: HTMLButtonElement;
   private netState = h('span', 'dr-net-state');
   private pseudoName = h('span', 'dr-set-value');
@@ -99,7 +110,28 @@ export class PorterPanel {
       page.setAttribute('aria-label', t.label);
       this.pages.set(t.id, page);
     }
+    tabs.append(this.tabInk);
     this.panel.body.before(tabs);
+    // Glisser à gauche ou à droite dans le corps du panneau : onglet suivant ou précédent.
+    const body = this.panel.body;
+    drag(body, {
+      axis: 'x',
+      canStart: ({ target }) => !target.closest('input, .dr-seg'),
+      move: (d) => {
+        const i = TABS.findIndex((t) => t.id === this.tab);
+        const edge = (d > 0 && i === 0) || (d < 0 && i === TABS.length - 1);
+        body.style.transition = 'none';
+        body.style.transform = `translateX(${edge ? rubber(d, 28) : d * 0.55}px)`;
+        body.style.opacity = String(Math.max(0.45, 1 - Math.abs(d) / 420));
+      },
+      end: (d, v, cancelled) => {
+        const i = TABS.findIndex((t) => t.id === this.tab);
+        const dir = cancelled ? 0 : d < -64 || (v < -0.45 && d < -16) ? 1 : d > 64 || (v > 0.45 && d > 16) ? -1 : 0;
+        const to = TABS[i + dir];
+        body.style.transition = ''; body.style.transform = ''; body.style.opacity = '';
+        if (dir && to) { ctx.ui('tap'); this.setTab(to.id, dir); }
+      },
+    });
     this.panel.body.append(...this.pages.values());
 
     // Compétences
@@ -137,14 +169,27 @@ export class PorterPanel {
 
     // Réglages
     const seg = h('div', 'dr-seg');
-    seg.setAttribute('role', 'group');
+    seg.setAttribute('role', 'radiogroup');
     seg.setAttribute('aria-label', 'Ambiance');
-    for (const [a, label, ic] of [['crépuscule', 'Crépuscule', 'moon'], ['clair', 'Clair', 'sun']] as [Ambiance, string, IconName][]) {
+    const modes: ['auto' | Ambiance, string, IconName][] = hooks.setAmbianceMode
+      ? [['auto', 'Auto', 'auto'], ['clair', 'Jour', 'sun'], ['crépuscule', 'Crépuscule', 'moon']]
+      : [['clair', 'Jour', 'sun'], ['crépuscule', 'Crépuscule', 'moon']];
+    seg.style.setProperty('--n', String(modes.length));
+    seg.append(h('i', 'dr-seg-thumb'));
+    this.mode = hooks.setAmbianceMode ? (hooks.ambianceMode ?? 'auto') : null;
+    for (const [m, label, ic] of modes) {
       const b = btn('dr-seg-btn', null, icon(ic), h('span', '', label));
-      b.addEventListener('click', () => { hooks.setAmbiance(a); ctx.events.onAmbiance(a); });
-      this.ambBtns.set(a, b);
+      b.setAttribute('role', 'radio');
+      b.addEventListener('click', () => {
+        ctx.ui('tap');
+        if (hooks.setAmbianceMode) { this.mode = m; this.paintMode(); hooks.setAmbianceMode(m); }
+        else if (m !== 'auto') { hooks.setAmbiance(m); ctx.events.onAmbiance(m); }
+      });
+      this.ambBtns.set(m, b);
       seg.append(b);
     }
+    this.seg = seg;
+    this.ambHint = h('p', 'dr-hint', '');
     const gps = btn('dr-btn dr-btn-wide dr-btn-line', null, icon('gps'), h('span', '', 'Utiliser mon GPS'));
     gps.addEventListener('click', () => { ctx.events.onUseGps(); this.panel.close(); });
     const places = h('div', 'dr-places');
@@ -186,7 +231,7 @@ export class PorterPanel {
       paint();
       sound.push(h('div', 'dr-set-row dr-set-static', h('span', 'dr-set-label', 'Volume'), range, val));
     }
-    if (ev.onVoices) sound.push(toggle('voice', 'Voix des personnages', st.voices !== false, (on) => { ev.onVoices?.(on); ctx.ui('tap'); }));
+    if (ev.onVoices) sound.push(toggle('voice', 'Voix du narrateur', st.voices !== false, (on) => { ev.onVoices?.(on); ctx.ui('tap'); }));
     if (ev.onHaptics) sound.push(toggle('vibrate', 'Vibrations', st.haptics !== false, (on) => { ev.onHaptics?.(on); ctx.ui(on ? 'confirm' : 'tap'); }));
     if (sound.length) page.append(sec('volume', 'Son et vibrations'), h('div', 'dr-set', ...sound));
 
@@ -198,7 +243,7 @@ export class PorterPanel {
     }
 
     page.append(
-      sec('sun', 'Ambiance'), seg,
+      sec('sun', 'Ambiance'), seg, this.ambHint,
       sec('gps', 'Position'), gps,
       h('p', 'dr-hint', 'Pas de GPS ? Explore un autre lieu, en position simulée :'), places,
       sec('help', 'Aide et histoire'),
@@ -217,14 +262,28 @@ export class PorterPanel {
     this.setTab(this.tab);
   }
 
-  setTab(t: PorterTab): void {
+  /** `dir` : sens d'arrivée de la page (1 : depuis la droite, −1 : depuis la gauche). */
+  setTab(t: PorterTab, dir = 0): void {
+    const changed = this.tab !== t;
     this.tab = t;
     for (const [id, b] of this.tabBtns) { b.setAttribute('aria-selected', String(id === t)); b.classList.toggle('is-on', id === t); }
-    for (const [id, p] of this.pages) p.hidden = id !== t;
+    for (const [id, p] of this.pages) {
+      p.hidden = id !== t;
+      if (id === t && changed) { p.dataset.from = dir > 0 ? 'right' : dir < 0 ? 'left' : 'fade'; p.classList.remove('is-in'); void p.offsetWidth; p.classList.add('is-in'); }
+    }
+    this.tabInk.style.setProperty('--i', String(TABS.findIndex((x) => x.id === t)));
     this.panel.body.scrollTop = 0;
+    // La page qui arrive est remplie tout de suite, sans attendre le prochain rendu.
+    if (changed && this.lastView && this.panel.isOpen) this.render(this.lastView);
   }
-  showAmbiance(a: Ambiance): void {
-    for (const [id, b] of this.ambBtns) { b.setAttribute('aria-pressed', String(id === a)); b.classList.toggle('is-on', id === a); }
+  showAmbiance(a: Ambiance): void { this.shown = a; this.paintMode(); }
+  private paintMode(): void {
+    const sel = this.mode ?? this.shown;
+    let i = 0, at = 0;
+    for (const [id, b] of this.ambBtns) { if (id === sel) at = i; i++; b.setAttribute('aria-checked', String(id === sel)); b.classList.toggle('is-on', id === sel); }
+    this.seg.style.setProperty('--i', String(at));
+    setText(this.ambHint, this.mode === 'auto' ? `Suit le soleil là où tu marches. En ce moment : ${this.shown === 'clair' ? 'jour' : 'crépuscule'}.` : '');
+    show(this.ambHint, this.mode === 'auto');
   }
   /** Montre ou cache le bouton d'installation (événement beforeinstallprompt capté, ou application installée). */
   setCanInstall(on: boolean): void { this.install.hidden = !(on && this.ctx.events.onInstall); }
@@ -235,6 +294,7 @@ export class PorterPanel {
   }
 
   render(v: GameView, force = false): void {
+    this.lastView = v;
     if (!this.panel.isOpen && !force) return;
     const p = v.player;
     // Pastille d'état : lecture immédiate, aucun appel réseau.
@@ -260,8 +320,8 @@ export class PorterPanel {
       this.day.sync(day); this.week.sync(week);
       show(this.dayEmpty, day.length === 0); show(this.weekEmpty, week.length === 0);
     } else if (this.tab === 'carnet') {
-      setText(this.log.score, `${fmtInt(p.score)} pts`);
-      setText(this.log.deliveries, fmtInt(p.deliveries));
+      rollNumber(this.log.score, Math.round(p.score), (n) => `${fmtInt(n)} pts`);
+      rollNumber(this.log.deliveries, Math.round(p.deliveries), fmtInt);
       setText(this.log.distance, `${p.distanceKm.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km`);
       setText(this.log.level, String(p.level));
       setText(this.log.xp, `${fmtInt(p.xp)} / ${fmtInt(p.xpNext)} XP avant le niveau ${p.level + 1}`);
@@ -275,7 +335,7 @@ export class PorterPanel {
     const learn = btn('dr-btn dr-btn-sm', null, label, cost);
     const el = h('div', 'dr-row dr-skill', h('div', 'dr-skill-txt', h('span', 'dr-row-l1', name), desc, pips), learn);
     let id = '', nPips = 0;
-    learn.addEventListener('click', () => { this.ctx.run(this.ctx.events.actions.learn(id)); });
+    learn.addEventListener('click', () => { if (this.ctx.run(this.ctx.events.actions.learn(id))) this.ctx.ui('confirm'); });
     return {
       el,
       update(s) {
@@ -305,7 +365,7 @@ export class PorterPanel {
     const doneTag = h('span', 'dr-tag dr-tag-good', icon('check'), 'Réclamé');
     const el = h('div', 'dr-row dr-contract', h('div', 'dr-skill-txt', h('span', 'dr-row-l1', name, reward), h('span', 'dr-contract-line', h('span', 'dr-bar', fill), prog)), claim, doneTag);
     let id = '';
-    claim.addEventListener('click', () => { this.ctx.run(this.ctx.events.actions.claim(id)); });
+    claim.addEventListener('click', () => { if (this.ctx.run(this.ctx.events.actions.claim(id))) this.ctx.ui('confirm'); });
     return {
       el,
       update(c) {

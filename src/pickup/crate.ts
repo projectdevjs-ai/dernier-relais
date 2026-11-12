@@ -2,22 +2,25 @@
 // modèle dès qu'il est chargé ; sangles tissées, boucles à cliquet, ombre au sol. Repris de l'ancien jeu (crateMesh, dressCrate).
 import * as THREE from 'three';
 import type { CrateKind, SpecialKind } from '../game/api';
+import { CRATE_DEFS, crateDef } from '../game/crates';
 import { loadModel } from '../render/assets';
 
 export interface CrateSpec { id: string; crate: CrateKind; weightKg: number; fragile: boolean; special?: SpecialKind | null }
 export type Dims = [number, number, number];
 export type Face = 'front' | 'right' | 'top';
 
-/** Proportions (largeur, hauteur, profondeur) de chaque modèle, pour l'habiller sans le déformer. */
+/** Proportions (largeur, hauteur, profondeur) de chaque modèle, pour l'habiller sans le déformer : matières (src/game/crates.ts) et colis spéciaux. */
 const SHAPE: Record<string, Dims> = {
-  carton: [1.16, 0.84, 1.0], bois: [0.94, 0.96, 1.08], alu: [1.22, 0.94, 0.84], plastique: [1.14, 0.91, 0.95],
+  ...Object.fromEntries(Object.values(CRATE_DEFS).map(d => [d.kind, d.shape])),
   cryo: [1.08, 1.06, 0.84], ruche: [1.1, 0.88, 0.99], batterie: [1.3, 0.93, 0.78], boitenoire: [1.36, 0.87, 0.8],
 };
 const MODEL: Record<string, string> = {
-  carton: 'carton', bois: 'caisse_bois', alu: 'malle_alu', plastique: 'bac_plastique',
+  ...Object.fromEntries(Object.values(CRATE_DEFS).map(d => [d.kind, d.model])),
   cryo: 'spe_cryo', ruche: 'spe_ruche', batterie: 'spe_batterie', boitenoire: 'spe_boitenoire',
 };
-const lookOf = (p: CrateSpec): string => p.special ?? p.crate;
+/** Modèle 3D d'un colis (matière ou colis spécial) ; inconnu : carton. */
+export const modelOf = (p: { crate: string; special?: string | null }): string => MODEL[p.special ?? p.crate] ?? 'carton';
+const lookOf = (p: CrateSpec): string => p.special ?? crateDef(p.crate).kind;
 
 /** Taille réelle de la caisse en mètres : elle grandit avec le poids. */
 export function crateDims(p: CrateSpec): Dims {
@@ -27,6 +30,7 @@ export function crateDims(p: CrateSpec): Dims {
 
 const COLORS: Record<string, [string, string]> = {
   carton: ['#b98a4e', '#8d6535'], bois: ['#8a5a2b', '#5a3a1c'], alu: ['#aab2b5', '#6d777b'], plastique: ['#2f6fb0', '#1b406b'],
+  sac: ['#5d7a52', '#34492f'], fut: ['#3f6f8a', '#1f3d4e'], coffre: ['#55603c', '#2e3520'],
   cryo: ['#8fd0e6', '#3d7f95'], ruche: ['#d9a93a', '#8f6609'], batterie: ['#d9742f', '#7a3a12'], boitenoire: ['#d9622f', '#3a2018'],
 };
 
@@ -36,7 +40,7 @@ function faceTexture(w: number, h: number, p: CrateSpec, face: 'front' | 'side' 
   c.width = Math.max(64, Math.round(w)); c.height = Math.max(64, Math.round(h));
   const g = c.getContext('2d')!, look = lookOf(p), [a, b] = COLORS[look] ?? COLORS.carton, W = c.width, H = c.height;
   g.fillStyle = a; g.fillRect(0, 0, W, H);
-  if (look === 'bois' || look === 'ruche') {
+  if (look === 'bois' || look === 'ruche' || look === 'coffre') {
     const n = Math.max(3, Math.round(H / 46));
     for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.05)'; g.fillRect(0, (i * H) / n, W, H / n - 3); g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, ((i + 1) * H) / n - 3, W, 3); }
   } else if (look === 'carton') {
@@ -85,7 +89,7 @@ export function makeCrate(p: CrateSpec, onDress?: () => void): Crate {
     dispose() { alive = false; geo.dispose(); for (const x of mats) { x.map?.dispose(); x.dispose(); } },
   };
   let alive = true;
-  void loadModel(MODEL[lookOf(p)] ?? 'carton', 'caisse').then(tpl => {
+  void loadModel(modelOf(p), 'caisse').then(tpl => {
     if (!alive) return;
     const model = tpl.root.clone(true);
     // Le modèle (hauteur 1, posé au sol) épouse la caisse : tourné d'un quart de tour si sa longueur n'est pas du bon côté.
@@ -152,11 +156,12 @@ function webbing(): THREE.CanvasTexture {
   webTex.wrapS = THREE.RepeatWrapping; webTex.anisotropy = 8; webTex.colorSpace = THREE.SRGBColorSpace;
   return webTex;
 }
-export function strapMaterials(): { fixed: THREE.MeshStandardMaterial; live: THREE.MeshStandardMaterial } {
-  const t = webbing();
+/** Matériaux des sangles ; `color` : la couleur propre à la matière du colis (orange par défaut). */
+export function strapMaterials(color = 0xd9822b): { fixed: THREE.MeshStandardMaterial; live: THREE.MeshStandardMaterial } {
+  const t = webbing(), c = new THREE.Color(color);
   return {
-    fixed: new THREE.MeshStandardMaterial({ color: 0xd9822b, roughness: 0.82, map: t }),
-    live: new THREE.MeshStandardMaterial({ color: 0xf0a050, roughness: 0.6, emissive: 0x3a1c00, map: t }),
+    fixed: new THREE.MeshStandardMaterial({ color: c, roughness: 0.82, map: t }),
+    live: new THREE.MeshStandardMaterial({ color: c.clone().lerp(new THREE.Color(0xffffff), 0.28), roughness: 0.6, emissive: c.clone().multiplyScalar(0.25), map: t }),
   };
 }
 /** Ruban posé à plat sur les faces, le long du chemin. */

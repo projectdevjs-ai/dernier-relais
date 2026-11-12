@@ -1,6 +1,7 @@
 // Colis perdus : des colis abandonnés en route par d'autres porteurs, à ramener à leur abri (récompense de solidarité).
 // Hors ligne ils sont générés, une case et un jour donnant toujours le même colis ; le champ `lost.net`
 // et Game.setNetworkLost permettent de les faire venir plus tard d'autres joueurs.
+import { crateDef } from './crates';
 import { type LngLat, cell, cellBounds, dist, hash, rng } from '../core/geo';
 import type { CellContent, Shelter } from '../world/types';
 import type { LostInput } from './api';
@@ -42,7 +43,7 @@ export function lostFor(cells: CellContent[], day: string): Order[] {
 /** Colis perdu venu du réseau : même forme qu'un colis généré, déjà visible (son propriétaire sait où il l'a laissé). */
 export function lostFromNetwork(i: LostInput): Order {
   return {
-    id: `réseau|${i.id}`, cell: '', name: i.name, rareName: null, crate: i.crate, weightKg: i.weightKg, fragile: i.fragile, at: [i.at[0], i.at[1]],
+    id: `réseau|${i.id}`, cell: '', name: i.name, rareName: null, crate: crateDef(i.crate).kind, weightKg: i.weightKg, fragile: i.fragile, at: [i.at[0], i.at[1]],
     destId: i.destId, destName: i.destName, destAt: [i.destAt[0], i.destAt[1]], deadlineMin: null,
     baseReward: round5(baseReward(i.weightKg, dist(i.at, i.destAt), i.fragile, false) * LOST.pay),
     state: 'révélé', condition: Math.min(1, Math.max(0, i.condition ?? 1)), pickedAt: null, lost: { by: i.by, net: true },

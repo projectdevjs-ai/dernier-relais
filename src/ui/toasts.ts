@@ -17,7 +17,9 @@ export class Toasts {
   push(text: string, tone: Tone = 'info', ic?: IconName, ms = 2800): void {
     // Un message identique encore affiché n'est pas répété.
     for (const c of Array.from(this.host.children)) if (c.textContent === text) return;
-    const el = h('div', `dr-toast dr-toast-${tone}`, icon(ic ?? ICON[tone]), h('span', '', text));
+    const el = h('div', `dr-toast dr-toast-${tone}`, h('i', 'dr-toast-ic', icon(ic ?? ICON[tone])), h('span', 'dr-toast-txt', text), h('i', 'dr-toast-life'));
+    el.style.setProperty('--ms', `${ms}ms`);
+    el.addEventListener('click', () => { el.classList.add('is-out'); setTimeout(() => el.remove(), 220); });
     this.host.append(el);
     while (this.host.children.length > 3) this.host.firstElementChild?.remove();
     setTimeout(() => {

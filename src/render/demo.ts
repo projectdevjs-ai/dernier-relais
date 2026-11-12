@@ -4,6 +4,7 @@
 //                    &arret=1 (joueur immobile)  &fete=1 (gerbe sur un abri)  &brume=1 (cases non visitées)
 // Systèmes secondaires : &special=cryo|ruche|batterie|boitenoire|inconnu  &porte=cryo|… (colis spécial au dos)
 //                    &perdu=1  &cache=1|proche  &rodeur=1|proche  &front=1|dedans  &lot=1  &tout=1 (un de chaque)
+//                    &soleil=35 (hauteur du soleil en degrés)  &lieu=lng,lat (autre endroit)
 //                    &calme=1 (pas d'onde de scanner, pour les captures)  &decal=est,nord (décalage du joueur en mètres)
 import { cellAt, cellsAround, type LngLat } from '../core/geo';
 import type { Ambiance, SpecialKind, WeatherKind } from '../game/api';
@@ -12,7 +13,8 @@ import { Stage } from './stage';
 
 const q = new URLSearchParams(location.search);
 const ambiance: Ambiance = q.get('ambiance') === 'clair' ? 'clair' : 'crépuscule';
-const centre: LngLat = [-1.5761, 47.1822];
+const lieu = q.get('lieu')?.split(',').map(Number);
+const centre: LngLat = lieu && lieu.length === 2 ? [lieu[0], lieu[1]] : [-1.5761, 47.1822];
 const log = document.getElementById('log')!;
 const say = (s: string): void => { log.textContent = s; };
 
@@ -53,6 +55,8 @@ function push(): void {
   const meteo = q.get('meteo') as WeatherKind | null;
   if (meteo) view.weather.kind = meteo;
   if (q.has('nuit')) { view.weather.night = true; view.weather.sunAltDeg = -20; }
+  // &soleil=35 : hauteur du soleil en degrés (jour > 6, heure dorée de -4 à 6, nuit < -4).
+  if (q.has('soleil')) { view.weather.sunAltDeg = Number(q.get('soleil')); view.weather.night = view.weather.sunAltDeg < -0.83; }
   if (!near) view.dangers[0].at = [centre[0] - 150 / 75000, centre[1] + 10 / 111000];
   withEvents(view, extras, t);
   if (q.has('brume')) {

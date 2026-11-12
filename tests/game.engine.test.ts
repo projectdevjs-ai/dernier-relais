@@ -6,7 +6,7 @@ import { dangerInCell, dangersFor } from '../src/game/dangers';
 import { Game } from '../src/game/game';
 import { LINES } from '../src/game/npc';
 import { addXp } from '../src/game/progress';
-import { GRADE_MULT } from '../src/game/rules';
+import { GRADE_MULT, SCAN_COOLDOWN_S } from '../src/game/rules';
 import { type GameSave, MemoryGameStore, emptyGameSave } from '../src/game/save';
 import { npcFor, unlockText } from '../src/game/shelters';
 import { dayKey, weekKey } from '../src/game/time';
@@ -146,16 +146,16 @@ describe('boucle complète', () => {
 });
 
 describe('scanner', () => {
-  it('ne révèle que les colis à portée et se recharge en 8 s', async () => {
+  it('ne révèle que les colis à portée et se recharge en 15 s', async () => {
     const r = await rig();
     r.game.setWorld(SMALL);
     expect(r.game.scan()).toEqual({ ok: false, why: 'Position inconnue.' });
     place(r, off(-100, 0)); // p1 à 141 m, p2 à 182 m
-    expect(r.game.view().scanner).toEqual({ ready: true, cooldownLeftS: 0, cooldownS: 8, rangeM: RANGE.scan });
+    expect(r.game.view().scanner).toEqual({ ready: true, cooldownLeftS: 0, cooldownS: SCAN_COOLDOWN_S, rangeM: RANGE.scan });
     r.game.scan();
     expect(r.game.view().orders.map(o => o.id)).toEqual(['p1']);
     expect(r.game.scan()).toEqual({ ok: false, why: 'Le scanner se recharge.' });
-    r.game.tick(7.5);
+    r.game.tick(SCAN_COOLDOWN_S - 0.5);
     expect(r.game.view().scanner).toMatchObject({ ready: false, cooldownLeftS: 0.5 });
     r.game.tick(0.5);
     expect(r.game.view().scanner.ready).toBe(true);
@@ -170,10 +170,12 @@ describe('scanner', () => {
     const r = await rig({ save: save({ skills: { 'scan-portee': 2, 'scan-recharge': 3 } }) });
     r.game.setWorld(SMALL);
     place(r, off(-100, 0));
-    expect(r.game.view().scanner).toMatchObject({ rangeM: 240, cooldownS: 5 });
+    expect(r.game.view().scanner).toMatchObject({ rangeM: 240, cooldownS: 9 });
     r.game.scan();
     expect(r.game.view().orders.map(o => o.id)).toEqual(['p1', 'p2']);
-    r.game.tick(5);
+    r.game.tick(8.5);
+    expect(r.game.view().scanner.ready).toBe(false);
+    r.game.tick(0.5);
     expect(r.game.view().scanner.ready).toBe(true);
   });
   it('porte 40 m plus loin autour d’un abri à 4 étoiles', async () => {
@@ -700,7 +702,7 @@ describe('événements', () => {
     expect(r.game.scan()).toEqual({ ok: true });
     expect(n).toBe(1);
     stop();
-    r.game.tick(8); r.game.scan();
+    r.game.tick(SCAN_COOLDOWN_S); r.game.scan();
     expect(n).toBe(1);
     expect(ofType(r.events, 'scan')).toHaveLength(2);
   });
@@ -720,7 +722,7 @@ describe('jour et sauvegarde', () => {
     r.clock.t = T0 + DAY; r.game.tick(1);
     expect(r.game.view().orders.map(o => [o.id, o.state])).toEqual([['p4', 'porté']]);
     r.game.setWorld(world([A, B], [spot('n1', off(210, -20))]));
-    wait(r, 8); r.game.scan();
+    wait(r, SCAN_COOLDOWN_S); r.game.scan();
     expect(r.game.view().orders.map(o => o.id)).toEqual(['p4', 'n1']);
   });
   it('ne fait pas réapparaître un colis ramassé ou livré le même jour', async () => {

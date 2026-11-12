@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { type LngLat, dist } from '../src/core/geo';
 import { dangersFor } from '../src/game/dangers';
-import { NEWBIE, SCAN_ECHO_M, SPEED, VEHICLE } from '../src/game/rules';
+import { NEWBIE, SCAN_COOLDOWN_S, SCAN_ECHO_M, SPEED, VEHICLE } from '../src/game/rules';
 import { type GameSave, MemoryGameStore, emptyGameSave, parseGameSave } from '../src/game/save';
 import { dayKey } from '../src/game/time';
 import type { CellContent } from '../src/world/types';
@@ -317,7 +317,7 @@ describe('voyage au loin', () => {
     // De retour le même jour : le colis oublié est de nouveau là, à rescanner.
     r.clock.t += 3 * 3600_000;
     r.game.setWorld(cells); place(r, off(20, 0));
-    wait(r, 10); r.game.scan();
+    wait(r, SCAN_COOLDOWN_S); r.game.scan();
     expect(r.game.view().orders.map(o => o.id).sort()).toEqual([s1.id, s2.id].sort());
   });
 });

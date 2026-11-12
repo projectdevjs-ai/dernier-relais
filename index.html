@@ -18,26 +18,112 @@
   body.dr-in-lab #hud>*:not(.dr-modal):not(.dr-toasts){display:none!important}
   /* Les messages courts ne se montrent au labo que par-dessus un panneau ouvert (refus d'une action, par exemple). */
   body.dr-in-lab #hud:not(:has(.dr-modal:not([hidden])))>.dr-toasts{display:none!important}
-  #splash{position:fixed;inset:0;z-index:70;border:0;margin:0;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
-    background:radial-gradient(120% 80% at 50% 40%,#22302c,#0c1413 70%);color:#e6e1d3;font:500 15px/1.4 system-ui,sans-serif;cursor:pointer;transition:opacity .45s}
-  #splash.out{opacity:0}
-  #splash .k{letter-spacing:.32em;text-transform:uppercase;font-size:12px;color:#e8a24a}
-  #splash strong{font:800 34px/1.05 "Roboto Condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;text-align:center}
-  #splash .go{margin-top:38px;font-size:14px;color:#8fa29c;animation:spl 2.2s ease-in-out infinite}
-  @keyframes spl{50%{opacity:.35}}
+  /* La carte (et son HUD) ne se montre qu'une fois le labo quitté : jamais derrière le chargement, le prologue ou le labo. */
+  body:not(.dr-map-on) #stage{visibility:hidden}
+  body:not(.dr-map-on):not(.dr-in-lab) #hud{visibility:hidden}
+  /* Écran de chargement, inscrit en dur : visible dès la première image, avant tout JavaScript. Il devient l'écran de départ au premier lancement. */
+  #boot{position:fixed;inset:0;z-index:100;margin:0;padding:calc(env(safe-area-inset-top,0px) + 24px) 24px calc(env(safe-area-inset-bottom,0px) + 24px);display:flex;flex-direction:column;align-items:center;justify-content:center;
+    color:#e6e1d3;font:500 15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;
+    background:radial-gradient(90% 50% at 50% 38%,rgba(232,162,74,.13),rgba(232,162,74,0) 70%),radial-gradient(120% 70% at 50% 108%,rgba(127,199,217,.12),rgba(127,199,217,0) 60%),linear-gradient(#101a19,#070c0b);
+    transition:opacity .6s ease,visibility 0s .6s}
+  #boot.out{opacity:0;visibility:hidden;pointer-events:none}
+  #boot::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+    background:repeating-linear-gradient(0deg,rgba(230,225,211,.035) 0 1px,transparent 1px 44px),repeating-linear-gradient(90deg,rgba(230,225,211,.035) 0 1px,transparent 1px 44px);
+    -webkit-mask-image:radial-gradient(75% 55% at 50% 42%,#000,transparent);mask-image:radial-gradient(75% 55% at 50% 42%,#000,transparent)}
+  #boot::after{content:"";position:absolute;inset:14px;pointer-events:none;border-radius:6px;
+    background:linear-gradient(#4a645f,#4a645f) 0 0/22px 1px,linear-gradient(#4a645f,#4a645f) 0 0/1px 22px,linear-gradient(#4a645f,#4a645f) 100% 0/22px 1px,linear-gradient(#4a645f,#4a645f) 100% 0/1px 22px,
+      linear-gradient(#4a645f,#4a645f) 0 100%/22px 1px,linear-gradient(#4a645f,#4a645f) 0 100%/1px 22px,linear-gradient(#4a645f,#4a645f) 100% 100%/22px 1px,linear-gradient(#4a645f,#4a645f) 100% 100%/1px 22px;background-repeat:no-repeat}
+  .bt-mark{position:relative;width:148px;height:148px;display:grid;place-items:center;margin-bottom:26px}
+  .bt-mark svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .bt-halo{position:absolute;inset:-34px;border-radius:50%;background:radial-gradient(closest-side,rgba(232,162,74,.22),rgba(232,162,74,0));animation:bt-breathe 3.2s ease-in-out infinite}
+  .bt-ticks{fill:none;stroke:#4a645f;stroke-width:3;stroke-dasharray:.6 3.566;opacity:.9;transform-origin:50% 50%;animation:bt-spin 40s linear infinite}
+  .bt-track{fill:none;stroke:#263a37;stroke-width:2}
+  .bt-prog{fill:none;stroke:#e8a24a;stroke-width:2.6;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;animation:bt-fill 2.5s cubic-bezier(.45,.05,.2,1) .15s forwards;filter:drop-shadow(0 0 5px rgba(232,162,74,.7))}
+  .bt-crate path{fill:none;stroke:#e8a24a;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;animation:bt-draw 1.1s ease-out .2s forwards}
+  .bt-crate path:nth-child(2){animation-delay:.55s}
+  .bt-crate path.s{stroke:#7fc7d9;animation-delay:.9s}
+  .bt-crate .f{fill:rgba(232,162,74,.1);stroke:none;opacity:0;animation:bt-in .8s ease-out 1.1s forwards}
+  .bt-k{font:600 12px/1 "Roboto Condensed","sans-serif-condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.42em;padding-left:.42em;text-transform:uppercase;color:#e8a24a;animation:bt-rise .7s ease-out .15s both}
+  .bt-t{margin:12px 0 0;font:800 clamp(30px,9.4vw,40px)/1.02 "Roboto Condensed","sans-serif-condensed","Arial Narrow",system-ui,sans-serif;font-stretch:condensed;letter-spacing:.2em;padding-left:.2em;text-transform:uppercase;text-align:center;white-space:nowrap;
+    text-shadow:0 2px 24px rgba(0,0,0,.6);animation:bt-rise .7s ease-out .3s both}
+  .bt-rule{display:flex;align-items:center;gap:10px;width:168px;margin-top:16px;color:#7fc7d9;animation:bt-rise .7s ease-out .45s both}
+  .bt-rule::before,.bt-rule::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,#4a645f)}
+  .bt-rule::after{transform:scaleX(-1)}
+  .bt-rule i{width:6px;height:6px;transform:rotate(45deg);background:currentColor}
+  .bt-low{position:relative;height:96px;width:100%;max-width:300px;margin-top:44px;display:grid;justify-items:center;align-content:start}
+  .bt-load{display:grid;justify-items:center;gap:12px;width:100%;transition:opacity .35s ease}
+  .bt-bar{width:100%;height:3px;border-radius:2px;background:#22332f;overflow:hidden}
+  .bt-bar i{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,#b9742a,#e8a24a 70%,#ffd9a0);transform-origin:0 50%;transform:scaleX(0);animation:bt-bar 2.5s cubic-bezier(.45,.05,.2,1) .15s forwards}
+  .bt-lines{position:relative;height:18px;width:100%;font:600 12px/18px "Roboto Condensed","sans-serif-condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#8fa29c;text-align:center}
+  .bt-lines span{position:absolute;inset:0;opacity:0;white-space:nowrap;animation:bt-line .8s ease both}
+  .bt-lines span:nth-child(1){animation-delay:.1s}.bt-lines span:nth-child(2){animation-delay:.9s}.bt-lines span:nth-child(3){animation-delay:1.7s}
+  .bt-lines span:nth-child(4){animation:bt-last .5s ease 2.5s both}
+  #boot.ready .bt-load{opacity:0}
+  #splash{position:absolute;inset:0;z-index:2;border:0;margin:0;padding:0;background:none;color:inherit;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+    padding-bottom:calc(env(safe-area-inset-bottom,0px) + 15vh);-webkit-tap-highlight-color:transparent;animation:bt-in .5s ease-out .2s both}
+  #splash[hidden]{display:none}
+  #splash .go{position:relative;min-height:54px;min-width:248px;padding:0 26px;display:inline-flex;align-items:center;justify-content:center;gap:12px;border-radius:14px;
+    background:linear-gradient(#f0b25e,#e39a3f);color:#1a1408;font:700 17px/1 "Roboto Condensed","sans-serif-condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.2em;text-transform:uppercase;
+    box-shadow:0 10px 30px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.12),inset 0 1px 0 rgba(255,255,255,.45);transition:transform .12s ease-out}
+  #splash .go::before{content:"";position:absolute;inset:-7px;border-radius:20px;border:1px solid rgba(232,162,74,.55);animation:bt-ring 2.2s ease-out infinite}
+  #splash:active .go{transform:scale(.96)}
+  #splash .go svg{width:18px;height:18px}
+  #splash small{margin-top:16px;font-size:12.5px;color:#8fa29c}
+  .bt-ver{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 26px);text-align:center;font:600 10.5px/1 "Roboto Condensed","sans-serif-condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.3em;text-transform:uppercase;color:#4a645f}
+  @keyframes bt-fill{to{stroke-dashoffset:0}}
+  @keyframes bt-bar{to{transform:scaleX(1)}}
+  @keyframes bt-draw{to{stroke-dashoffset:0}}
+  @keyframes bt-in{from{opacity:0}to{opacity:1}}
+  @keyframes bt-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @keyframes bt-line{0%{opacity:0;transform:translateY(6px)}20%,80%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-6px)}}
+  @keyframes bt-last{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes bt-breathe{50%{opacity:.55;transform:scale(1.06)}}
+  @keyframes bt-spin{to{transform:rotate(360deg)}}
+  @keyframes bt-ring{from{opacity:.9;transform:scale(.97)}to{opacity:0;transform:scale(1.08)}}
+  @media (max-height:600px){.bt-mark{width:112px;height:112px;margin-bottom:16px}.bt-low{margin-top:26px}}
   /* Téléphone couché : le jeu se joue à la verticale, on le dit simplement. */
-  #rotate{display:none;position:fixed;inset:0;z-index:90;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;
+  #rotate{display:none;position:fixed;inset:0;z-index:110;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;
     background:radial-gradient(120% 80% at 50% 40%,#22302c,#0c1413 70%);color:#e6e1d3;font:500 15px/1.4 system-ui,sans-serif}
   #rotate svg{width:54px;height:54px;color:#e8a24a;margin-bottom:6px}
   #rotate strong{font:800 24px/1.1 "Roboto Condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase}
   #rotate span{color:#8fa29c;font-size:14px}
   @media (orientation:landscape) and (max-height:520px) and (min-width:600px){#rotate{display:flex}}
-  @media (prefers-reduced-motion:reduce){#splash .go{animation:none}}
+  @media (prefers-reduced-motion:reduce){#boot *,#boot *::before{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important}}
 </style>
 </head>
 <body>
 <div id="stage"></div>
 <div id="hud"></div>
+<div id="boot" role="status" aria-label="Chargement de Dernier Relais">
+  <div class="bt-mark" aria-hidden="true">
+    <span class="bt-halo"></span>
+    <svg viewBox="0 0 148 148">
+      <circle class="bt-ticks" cx="74" cy="74" r="70" pathLength="100"/>
+      <circle class="bt-track" cx="74" cy="74" r="61"/>
+      <circle class="bt-prog" cx="74" cy="74" r="61" pathLength="100" transform="rotate(-90 74 74)"/>
+      <g class="bt-crate" transform="translate(74 75)">
+        <path class="f" d="M0-36l31 17v38L0 36l-31-17v-38z"/>
+        <path pathLength="1" d="M0-36l31 17v38L0 36l-31-17v-38z"/>
+        <path pathLength="1" d="M-31-19L0-2l31-17M0-2v38"/>
+        <path class="s" pathLength="1" d="M-15.5-27.5l31 17v12"/>
+      </g>
+    </svg>
+  </div>
+  <span class="bt-k">Station Lumen</span>
+  <h1 class="bt-t">Dernier Relais</h1>
+  <span class="bt-rule" aria-hidden="true"><i></i></span>
+  <div class="bt-low">
+    <div class="bt-load">
+      <span class="bt-bar"><i></i></span>
+      <span class="bt-lines"><span>Calibrage du Passeur…</span><span>Lecture du terrain…</span><span>Écoute des abris…</span><span>Liaison établie</span></span>
+    </div>
+  </div>
+  <button id="splash" type="button" hidden aria-label="Toucher pour commencer">
+    <span class="go">Toucher pour commencer</span>
+    <small>Le son s’active au premier toucher</small>
+  </button>
+  <span class="bt-ver" aria-hidden="true">Reconstruction · Secteur ouvert</span>
+</div>
 <div id="rotate" role="alert">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7.5" y="3" width="9" height="18" rx="2"/><path d="M11 18h2M2.5 9.5a8 8 0 0 1 2.4-4.6M2.5 9.5l-.4-2.6M2.5 9.5l2.5-.6M21.5 14.5a8 8 0 0 1-2.4 4.6M21.5 14.5l.4 2.6M21.5 14.5l-2.5.6"/></svg>
   <strong>Tourne ton téléphone</strong>

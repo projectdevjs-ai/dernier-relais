@@ -3,6 +3,7 @@
 import type { GameView, OrderView, ShelterView } from '../game/api';
 import type { Ctx } from './ctx';
 import { KeyedList, btn, condTone, delayTone, fmtDelay, fmtDist, fmtKg, fmtPct, h, setAttr, setDisabled, setText, show, type Row } from './dom';
+import { drag, rubber } from './gestures';
 import { icon, type IconName } from './icons';
 
 const KIND_LABEL: Record<string, string> = {
@@ -62,6 +63,7 @@ export class Sheet {
     this.next = btn('dr-next', null, this.nextIcon, h('span', 'dr-next-txt', this.nextTitle, this.nextSub), h('span', 'dr-next-num', this.nextDist, this.nextDelay));
     this.next.addEventListener('click', () => {
       const t = this.target;
+      ctx.ui('tap');
       if (t.kind === 'carry' || t.kind === 'reveal') ctx.openOrder(t.o.id);
       else if (t.kind === 'shelter') ctx.openShelter(t.s.id);
       else this.setExpanded(!this.expanded);
@@ -87,12 +89,62 @@ export class Sheet {
       h('div', 'dr-sec', h('h3', 'dr-sec-title', icon('scan'), 'Repérés près de toi')), nearList, this.nearEmpty);
     this.more.hidden = true;
 
-    this.el = h('section', 'dr-sheet', h('div', 'dr-sheet-bar', this.cta, this.next, this.bagBtn, this.toggle), this.more);
+    const grab = h('i', 'dr-sheet-grab');
+    grab.setAttribute('aria-hidden', 'true');
+    const bar = h('div', 'dr-sheet-bar', this.cta, this.next, this.bagBtn, this.toggle);
+    this.el = h('section', 'dr-sheet', bar, this.more, grab);
     this.el.setAttribute('aria-label', 'Prochaine étape et sac');
     parent.append(this.el);
+    this.bindDrag();
   }
 
-  setExpanded(on: boolean): void {
+  /** Tirer la fiche : vers le haut pour la déplier, vers le bas pour la replier. Deux crans, avec élan. */
+  private bindDrag(): void {
+    const more = this.more;
+    let full = 0, from = 0, opened = false;
+    const settle = (to: number, then: () => void): void => {
+      more.style.transition = 'height .26s cubic-bezier(.2, .9, .25, 1)';
+      more.style.height = `${to}px`;
+      let done = false;
+      const fin = (): void => { if (done) return; done = true; more.removeEventListener('transitionend', fin); more.style.transition = ''; more.style.height = ''; more.style.overflow = ''; this.el.classList.remove('is-dragging'); then(); };
+      more.addEventListener('transitionend', fin);
+      setTimeout(fin, 320);
+    };
+    drag(this.el, {
+      axis: 'y',
+      canStart: ({ target, dy }) => {
+        if (this.el.classList.contains('is-dragging')) return false;
+        // Dans la liste dépliée : on ne prend la main que pour refermer, liste tout en haut.
+        if (target.closest('.dr-sheet-more') && !(dy > 0 && more.scrollTop <= 0)) return false;
+        if (!this.expanded && dy > 0) return false;
+        opened = this.expanded;
+        if (!opened) { this.setExpanded(true, true); }
+        more.style.height = ''; more.style.transition = '';
+        full = more.getBoundingClientRect().height;
+        from = opened ? full : 0;
+        more.style.overflow = 'hidden';
+        more.style.height = `${from}px`;
+        this.el.classList.add('is-dragging');
+        return true;
+      },
+      move: (d) => {
+        const hgt = from - d;
+        more.style.height = `${hgt > full ? full + rubber(hgt - full, 40) : Math.max(0, hgt)}px`;
+      },
+      end: (d, v, cancelled) => {
+        const hgt = Math.max(0, Math.min(full, from - d));
+        // Cran choisi par l'élan d'abord, par la position sinon.
+        const open = cancelled ? opened : v < -0.35 ? true : v > 0.35 ? false : hgt > full * (opened ? 0.7 : 0.3);
+        settle(open ? full : 0, () => {
+          if (open !== opened) this.ctx.ui(open ? 'open' : 'close');
+          if (open) { if (!this.expanded) this.setExpanded(true, true); } else this.setExpanded(false, true);
+        });
+      },
+    });
+  }
+
+  setExpanded(on: boolean, quiet = false): void {
+    if (!quiet && on !== this.expanded) this.ctx.ui(on ? 'open' : 'close');
     this.expanded = on;
     this.more.hidden = !on;
     this.el.classList.toggle('is-open', on);
@@ -177,7 +229,7 @@ export class Sheet {
     const act = btn('dr-btn dr-btn-sm', null, actLabel);
     const el = h('div', 'dr-row', info, act);
     let state = '';
-    info.addEventListener('click', () => ctx.openOrder(id));
+    info.addEventListener('click', () => { ctx.ui('tap'); ctx.openOrder(id); });
     act.addEventListener('click', () => {
       if (state === 'porté') ctx.run(ctx.events.actions.drop(id)); else ctx.pickup(id);
     });

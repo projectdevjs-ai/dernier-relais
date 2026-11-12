@@ -8,8 +8,10 @@ import type { Palette } from './mapstyle';
 /** État du ciel calculé, partagé par tous les modules de rendu. */
 export interface Env {
   ambiance: Ambiance;
-  /** 0 : plein jour, 1 : nuit noire. */
+  /** 0 : jour ou heure dorée, 1 : nuit noire (soleil sous -4°). */
   night: number;
+  /** Heure dorée : 0 en plein jour (soleil au-dessus de 6°), 1 quand le soleil rase l'horizon. */
+  gold: number;
   /** Pluie ou neige, de 0 à 1. */
   rain: number;
   snow: boolean;
@@ -26,10 +28,12 @@ export interface Env {
 const smooth = (a: number, b: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export function computeEnv(ambiance: Ambiance, w: Weather | null): Env {
+  // Trois états pilotés par la SEULE hauteur du soleil : jour (> 6°), heure dorée (de -4° à 6°), nuit (< -4°),
+  // avec un fondu de quelques degrés autour de chaque seuil. Avant : la nuit commençait à monter dès 8° et le
+  // drapeau `weather.night` (vrai dès -0,83°) forçait 85 % de nuit alors que le ciel est encore clair.
   const alt = w ? w.sunAltDeg : 30;
-  let night = w ? 1 - smooth(-6, 8, alt) : 0;
-  if (w?.night) night = Math.max(night, 0.85);
-  night = Math.round(night * 10) / 10;
+  const night = Math.round(smooth(-2, -6, alt) * 10) / 10;
+  const gold = Math.round(smooth(8.5, 3.5, alt) * 10) / 10;
   const kind = w?.kind ?? 'clair';
   const rain = kind === 'pluie' ? 0.7 : kind === 'orage' ? 1 : kind === 'neige' ? 0.6 : 0;
   const fog = kind === 'brouillard' ? 1 : kind === 'orage' ? 0.35 : kind === 'pluie' || kind === 'neige' ? 0.25 : 0;
@@ -37,9 +41,9 @@ export function computeEnv(ambiance: Ambiance, w: Weather | null): Env {
   const windKmh = Math.round((w?.windKmh ?? 0) / 10) * 10;
   const low = Math.round(smooth(25, 5, alt) * 4) / 4; // soleil bas : lumière plus chaude
   return {
-    ambiance, night, rain, snow: kind === 'neige', fog, dull, windKmh,
-    dark: ambiance === 'crépuscule' || night >= 0.5,
-    key: `${ambiance}|${night}|${kind}|${windKmh}|${low}`,
+    ambiance, night, gold, rain, snow: kind === 'neige', fog, dull, windKmh,
+    dark: night >= 0.5,
+    key: `${ambiance}|${night}|${gold}|${kind}|${windKmh}|${low}`,
   };
 }
 
@@ -177,30 +181,25 @@ export class Sky {
 
   apply(env: Env, w: Weather | null, pal: Palette): void {
     const n = env.night, clair = env.ambiance === 'clair';
-    const alt = Math.max(8, w ? w.sunAltDeg : 35) * Math.PI / 180;
+    // Soleil jamais sous 9° pour l'éclairage : à l'heure dorée il rase, la nuit il fait office de lune.
+    const alt = Math.max(9, w ? w.sunAltDeg : 35) * Math.PI / 180;
     // Soleil au sud-ouest : la lumière vient de la gauche de l'écran, vers la caméra.
     this.sunDir.set(-Math.cos(alt) * 0.75, Math.sin(alt) + 0.25, Math.cos(alt) * 0.65).multiplyScalar(100);
     const low = w ? smooth(25, 5, w.sunAltDeg) : 0;
     const cover = 1 - env.dull * 0.55;
     const u = this.haze.material.uniforms;
-    if (clair) {
-      this.hemi.color.set(0xeaf4ff).lerp(tc.set(0x3b4f7a), n);
-      this.hemi.groundColor.set(0xc9b79a).lerp(tc.set(0x1a2233), n);
-      this.hemi.intensity = THREE.MathUtils.lerp(1.9, 1.2, n);
-      this.sun.color.set(0xfff4e0).lerp(tc.set(0xffb36b), low * 0.7).lerp(tc.set(0x8fa8ff), n);
-      this.sun.intensity = THREE.MathUtils.lerp(2.6 * cover, 0.55, n);
-      u.uTop.value = 0.62 + env.fog * 0.35; u.uStart.value = 0.56 - env.fog * 0.3;
-      u.uAll.value = env.fog * 0.16; u.uVignette.value = n * 0.4;
-    } else {
-      // Crépuscule : ambiance froide et sombre, lumière principale ambrée.
-      this.hemi.color.set(0x9fc4c0).lerp(tc.set(0x35507a), n);
-      this.hemi.groundColor.set(0x33423a).lerp(tc.set(0x141c26), n);
-      this.hemi.intensity = THREE.MathUtils.lerp(1.9, 1.25, n);
-      this.sun.color.set(0xffc98a).lerp(tc.set(0x86a4ff), n);
-      this.sun.intensity = THREE.MathUtils.lerp(2.3 * cover, 0.5, n);
-      u.uTop.value = 0.72 + env.fog * 0.25; u.uStart.value = 0.56 - env.fog * 0.3;
-      u.uAll.value = env.fog * 0.14; u.uVignette.value = 0.24 + n * 0.22;
-    }
+    const g = env.gold, L = THREE.MathUtils.lerp;
+    // Jour : ciel clair, soleil franc, ombres douces (beaucoup de lumière d'ambiance). « crépuscule » = même jour,
+    // un peu plus chaud et contrasté. Heure dorée : soleil orange et rasant. Nuit : bleu sombre, lune froide.
+    this.hemi.color.set(clair ? 0xeaf4ff : 0xf2f1e6).lerp(tc.set(0xffdcb4), g).lerp(tc.set(clair ? 0x3b4f7a : 0x35507a), n);
+    this.hemi.groundColor.set(clair ? 0xc9b79a : 0xbfa57e).lerp(tc.set(0xa67c58), g).lerp(tc.set(clair ? 0x1a2233 : 0x141c26), n);
+    this.hemi.intensity = L(L(clair ? 1.9 : 1.75, 1.5, g), 1.2, n);
+    this.sun.color.set(clair ? 0xfff4e0 : 0xffecc8).lerp(tc.set(0xffb36b), low * 0.6).lerp(tc.set(0xff9a4a), g * 0.8).lerp(tc.set(0x8fa8ff), n);
+    this.sun.intensity = L(L((clair ? 2.6 : 2.9) * cover, 3.0 * cover, g), 0.55, n);
+    u.uTop.value = 0.6 + env.fog * 0.35; u.uStart.value = 0.58 - env.fog * 0.3;
+    u.uAll.value = env.fog * 0.15;
+    // Bords assombris : jamais de jour, à peine à l'heure dorée, franchement la nuit.
+    u.uVignette.value = g * (1 - n) * 0.1 + n * (clair ? 0.4 : 0.46);
     // Le voile prend la teinte de l'air de la palette ; par temps bouché il perd sa lueur d'horizon.
     const air = (u.uColor.value as THREE.Color).set(pal.haze);
     (u.uHorizon.value as THREE.Color).set(pal.horizon).lerp(air, Math.max(env.dull, n * 0.3));

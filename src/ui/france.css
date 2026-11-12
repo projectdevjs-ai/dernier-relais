@@ -98,3 +98,20 @@
   .dr-fr-tile { transition: none; }
   .dr-fr-status.is-on .dr-fr-dot { animation: none; }
 }
+
+/* ---------- Finition (voir la fin de hud.css) ---------- */
+.dr-hud .dr-france::before, .dr-france .dr-panel-grab { display: none; }
+.dr-france .dr-panel-top { padding-top: 14px; }
+.dr-fr-status { font: 700 11px/1 var(--f-title); letter-spacing: .16em; text-transform: uppercase; }
+.dr-fr-status.is-on .dr-fr-dot { box-shadow: 0 0 8px var(--green); }
+.dr-fr-note { border-radius: 14px; background: var(--card); }
+.dr-fr-stat { border-radius: 16px; background: var(--card); border: 1px solid var(--edge); padding: 13px 6px 11px; }
+.dr-fr-stat-n { font-size: 28px; color: var(--amber); letter-spacing: .02em; }
+.dr-fr-stat-l { font-size: 10.5px; letter-spacing: .14em; }
+.dr-fr-map { filter: drop-shadow(0 10px 24px rgba(0, 0, 0, .3)); }
+.dr-fr-reg .dr-fr-tile.is-lit { filter: drop-shadow(0 0 5px var(--fr-glow)); }
+.dr-fr-legend { font: 600 10.5px/1 var(--f-title); letter-spacing: .12em; text-transform: uppercase; }
+.dr-fr-card { border-radius: 18px; background: var(--card); border: 1px solid var(--edge); }
+.dr-fr-card-name { letter-spacing: .06em; }
+.dr-fr-card .dr-bar { background: var(--well); }
+.dr-fr-fig-l { font: 700 10.5px/1.1 var(--f-title); letter-spacing: .12em; text-transform: uppercase; }

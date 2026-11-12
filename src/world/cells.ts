@@ -1,5 +1,6 @@
 // Génération d'une case. Fonction pure : mêmes données, même résultat, pour tous les joueurs.
 import { CELL_Z, type Cell, type LngLat, cell, dist, hash, inCell, rng, tileLngLat } from '../core/geo';
+import { shelterSite } from './site';
 import type { CellContent, ParcelSpot, RawTile, Shelter, ShelterKind } from './types';
 
 /** Type de lieu de la carte -> type d'abri. L'ordre donne la priorité quand une case a plusieurs lieux. */
@@ -99,6 +100,12 @@ export function generateCell(c: Cell, raw: RawTile, day: string): CellContent {
   }
   // Chaque case du bloc fait le même calcul ; seule celle qui contient l'abri l'affiche.
   const shelters: Shelter[] = pick && inCell(c, pick.at) ? [pick] : [];
+  // Le bâtiment n'est jamais posé sur la chaussée : implantation décalée au bord de la rue, façade vers elle.
+  // Toutes les rues de la tuile comptent (même non praticables : on ne bâtit pas non plus sur une voie rapide).
+  for (const s of shelters) {
+    const st = shelterSite(s.at, raw.roads.map(r => r.pts), s.source === 'lieu');
+    if (st) { s.site = st.site; s.facing = st.facing; }
+  }
 
   // 3. Emplacements de colis : toujours sur une rue ou un chemin, renouvelés chaque jour.
   const parcels: ParcelSpot[] = [];

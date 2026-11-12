@@ -22,7 +22,7 @@ const exo = (tier: number, cost: number, needs?: string): SkillDef => {
 };
 export const SKILLS: SkillDef[] = [
   { id: 'scan-portee', branch: 'scanner', name: 'Antenne longue', desc: 'Portée du scanner +40 m par rang.', maxRank: 3, cost: 1 },
-  { id: 'scan-recharge', branch: 'scanner', name: 'Condensateur', desc: 'Recharge du scanner −1 s par rang.', maxRank: 3, cost: 1 },
+  { id: 'scan-recharge', branch: 'scanner', name: 'Condensateur', desc: 'Recharge du scanner −2 s par rang.', maxRank: 3, cost: 1 },
   { id: 'bras-long', branch: 'scanner', name: 'Perche de ramassage', desc: 'Ramassage possible 10 m plus loin par rang.', maxRank: 2, cost: 2, needs: { id: 'scan-portee', rank: 1 } },
   { id: 'sac', branch: 'portage', name: 'Armature renforcée', desc: 'Capacité du sac +5 kg par rang.', maxRank: 4, cost: 1 },
   { id: 'calage', branch: 'portage', name: 'Calage soigné', desc: 'Les colis s’abîment 15 % moins vite par rang.', maxRank: 3, cost: 1, needs: { id: 'sac', rank: 1 } },
@@ -51,7 +51,7 @@ export interface Mods {
 export function modsFor(r: Ranks): Mods {
   return {
     scanRangeM: 40 * rank(r, 'scan-portee'),
-    scanCooldownS: Math.max(SCAN_COOLDOWN_MIN_S, SCAN_COOLDOWN_S - rank(r, 'scan-recharge')),
+    scanCooldownS: Math.max(SCAN_COOLDOWN_MIN_S, SCAN_COOLDOWN_S - 2 * rank(r, 'scan-recharge')),
     pickupBonusM: 10 * rank(r, 'bras-long'),
     capacityKg: BAG_KG + 5 * rank(r, 'sac'),
     wearMult: 1 - 0.15 * rank(r, 'calage'),

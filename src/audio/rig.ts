@@ -11,13 +11,21 @@ const CAP: Record<Prio, number> = { 0: 6, 1: 12, 2: MAX_VOICES };
 
 /** Plafond absolu de la sortie, en amplitude : 0,84 soit environ −1,5 dBFS. */
 export const CEILING = 0.84;
-// Le compresseur des navigateurs ajoute tout seul un gain de rattrapage (environ +5,6 dB avec ces réglages,
-// mesuré dans Chrome). On le retire juste après pour que les niveaux réglés à la main restent vrais.
-const COMP = { threshold: -12, knee: 6, ratio: 12, attack: 0.003, release: 0.18 };
+// Compresseur « musical » : seuil bas, taux doux, attaque assez lente pour laisser passer les transitoires
+// (le plafond arrondi les rattrape), relâchement court. Le compresseur des navigateurs ajoute tout seul un gain
+// de rattrapage (mesuré dans Chrome avec ces réglages) : on le retire juste après pour que les niveaux restent vrais.
+const COMP = { threshold: -14, knee: 8, ratio: 3, attack: 0.01, release: 0.2 };
 const COMP_MAKEUP = 1.9;
 /** Gain de sortie : un son seul culmine vers −7 dBFS, un passage dense est tenu par le compresseur puis arrondi par le plafond. */
 export const OUTPUT_BOOST = 1.4;
-const REVERB_S = 0.85;
+// Égalisation pensée pour un haut-parleur de téléphone : coupe-bas (rien d'inutile sous 35 Hz), présence vers 2,6 kHz,
+// extrême aigu adouci. Les graves restent audibles par leurs harmoniques (voir `sub` dans le catalogue).
+const EQ = { hp: 35, presence: 2600, presenceDb: 2.5, air: 9500, airDb: -1.5 };
+/** Deux réverbérations : « proche » (petite pièce, sons d'interface et de manipulation) et « vaste » (dehors, moments forts). */
+const ROOMS = {
+  near: { seconds: 0.8, pre: 0.004, early: 9, spread: 0.045, damp: 0.55, back: 0.5 },
+  far: { seconds: 1.45, pre: 0.018, early: 14, spread: 0.11, damp: 0.72, back: 0.45 },
+} as const;
 const NOISE_S = 3.7;
 
 /** Générateur pseudo-aléatoire reproductible (pour des mesures identiques d'un rendu à l'autre). */
@@ -32,24 +40,37 @@ export function seeded(seed: number): () => number {
   };
 }
 
-/** Réponse impulsionnelle d'une petite pièce : bruit qui s'éteint et s'assourdit, énergie normalisée à 1. */
-function makeImpulse(ctx: BaseAudioContext, seconds: number, rand: () => number): AudioBuffer {
-  const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
-  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+interface Room { seconds: number; pre: number; early: number; spread: number; damp: number; back: number }
+/**
+ * Réponse impulsionnelle générée : premières réflexions (échos discrets, différents à gauche et à droite) puis queue
+ * diffuse qui monte doucement, s'éteint et s'assombrit (les aigus meurent plus vite que les médiums). Énergie normalisée à 1.
+ */
+function makeImpulse(ctx: BaseAudioContext, room: Room, rand: () => number): AudioBuffer {
+  const sr = ctx.sampleRate, len = Math.max(1, Math.floor(sr * room.seconds));
+  const buf = ctx.createBuffer(2, len, sr), pre = Math.floor(sr * room.pre);
   for (let ch = 0; ch < 2; ch++) {
     const d = buf.getChannelData(ch);
-    let y = 0, energy = 0;
-    for (let i = 0; i < len; i++) {
-      const x = i / len;
-      const a = 0.3 + 0.62 * x; // passe-bas de plus en plus fermé : la queue est plus sombre que l'attaque
-      y = y * a + (rand() * 2 - 1) * (1 - a);
-      const fadeIn = Math.min(1, i / (ctx.sampleRate * 0.004));
-      const fadeOut = Math.min(1, (len - 1 - i) / (ctx.sampleRate * 0.03));
-      d[i] = y * Math.exp(-6.9 * x) * fadeIn * fadeOut;
-      energy += d[i] * d[i];
+    // Queue diffuse : bruit clair qui s'éteint vite + bruit assourdi qui dure, sans grave inutile.
+    let lp = 0, low = 0;
+    const build = sr * room.spread * 0.6;
+    for (let i = pre; i < len; i++) {
+      const x = (i - pre) / (len - pre), w = rand() * 2 - 1;
+      lp = lp * room.damp + w * (1 - room.damp);
+      low = low * 0.985 + lp * 0.015;
+      const fadeIn = Math.min(1, (i - pre) / build), fadeOut = Math.min(1, (len - 1 - i) / (sr * 0.04));
+      d[i] = (w * 0.45 * Math.exp(-13 * x) + (lp - low) * 1.6 * Math.exp(-6.9 * x)) * fadeIn * fadeOut;
     }
-    const k = 1 / Math.sqrt(energy || 1);
-    for (let i = 0; i < len; i++) d[i] *= k;
+    // Premières réflexions : quelques échos nets, de plus en plus faibles et de plus en plus doux.
+    for (let k = 0; k < room.early; k++) {
+      const at = pre + Math.floor(sr * room.spread * ((k + 0.3 + 0.6 * rand()) / room.early));
+      const amp = (rand() < 0.5 ? -1 : 1) * 0.5 * (1 - 0.6 * (k / room.early)) * (0.7 + 0.6 * rand());
+      const width = 2 + Math.floor(k / 3);
+      for (let j = 0; j < width && at + j < len; j++) d[at + j] += (amp / width) * (1 - j / width) * 2;
+    }
+    let energy = 0;
+    for (let i = 0; i < len; i++) energy += d[i] * d[i];
+    const g = 1 / Math.sqrt(energy || 1);
+    for (let i = 0; i < len; i++) d[i] *= g;
   }
   return buf;
 }
@@ -71,8 +92,10 @@ export class Rig {
   readonly ctx: BaseAudioContext;
   /** Entrée directe des sons ponctuels. */
   readonly dry: GainNode;
-  /** Départ vers la réverbération commune. */
+  /** Départ vers la réverbération proche (petite pièce). */
   readonly wet: GainNode;
+  /** Départ vers la réverbération vaste (dehors). */
+  readonly far: GainNode;
   /** Entrée de la nappe d'ambiance. */
   readonly amb: GainNode;
   /** Volume général, placé après le plafond : la sortie ne dépasse jamais CEILING. */
@@ -94,15 +117,24 @@ export class Rig {
     this.dry = ctx.createGain();
     this.amb = ctx.createGain();
     this.wet = ctx.createGain();
-    const room = ctx.createConvolver();
-    room.normalize = false;
-    room.buffer = makeImpulse(ctx, REVERB_S, this.rand);
-    const back = ctx.createGain();
-    back.gain.value = 0.55;
+    this.far = ctx.createGain();
     this.dry.connect(sum);
     this.amb.connect(sum);
-    this.wet.connect(room); room.connect(back); back.connect(sum);
+    for (const [send, room] of [[this.wet, ROOMS.near], [this.far, ROOMS.far]] as const) {
+      const conv = ctx.createConvolver(), back = ctx.createGain();
+      conv.normalize = false;
+      conv.buffer = makeImpulse(ctx, room, this.rand);
+      back.gain.value = room.back;
+      send.connect(conv); conv.connect(back); back.connect(sum);
+    }
 
+    const filter = (type: BiquadFilterType, f: number, q: number, gainDb = 0): BiquadFilterNode => {
+      const b = ctx.createBiquadFilter();
+      b.type = type; b.frequency.value = f; b.Q.value = q;
+      if (b.gain) b.gain.value = gainDb;
+      return b;
+    };
+    const hp = filter('highpass', EQ.hp, 0.7), presence = filter('peaking', EQ.presence, 0.8, EQ.presenceDb), air = filter('highshelf', EQ.air, 0.7, EQ.airDb);
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = COMP.threshold; comp.knee.value = COMP.knee; comp.ratio.value = COMP.ratio;
     comp.attack.value = COMP.attack; comp.release.value = COMP.release;
@@ -112,7 +144,8 @@ export class Rig {
     ceil.curve = makeCeilingCurve();
     this.out = ctx.createGain();
     this.out.gain.value = opts.volume ?? 1;
-    sum.connect(comp); comp.connect(pre); pre.connect(ceil); ceil.connect(this.out); this.out.connect(ctx.destination);
+    sum.connect(hp); hp.connect(presence); presence.connect(air); air.connect(comp);
+    comp.connect(pre); pre.connect(ceil); ceil.connect(this.out); this.out.connect(ctx.destination);
   }
 
   /** Réserve une voix sur [t0, end]. Refuse (false) si trop de voix se chevauchent déjà à ce moment-là. */
@@ -145,19 +178,24 @@ export class Rig {
     return peak;
   }
 
-  /** Branche une voix sur la sortie directe, avec un départ de réverbération et un panoramique facultatifs. */
-  route(node: AudioNode, send: number, pan: number): void {
+  /**
+   * Branche une voix sur la sortie directe, avec panoramique et départs de réverbération facultatifs.
+   * `move` : le son glisse de `pan` à `move.to` entre `move.t` et `move.t + move.dur` (léger mouvement dans l'espace).
+   */
+  route(node: AudioNode, send: number, pan: number, far = 0, move?: { to: number; t: number; dur: number }): void {
     let n = node;
-    if (pan && typeof this.ctx.createStereoPanner === 'function') {
-      const p = this.ctx.createStereoPanner();
-      p.pan.value = Math.max(-1, Math.min(1, pan));
+    if ((pan || move) && typeof this.ctx.createStereoPanner === 'function') {
+      const p = this.ctx.createStereoPanner(), lim = (x: number): number => Math.max(-1, Math.min(1, x));
+      p.pan.value = lim(pan);
+      if (move) { p.pan.setValueAtTime(lim(pan), move.t); p.pan.linearRampToValueAtTime(lim(move.to), move.t + move.dur); }
       n.connect(p); n = p;
     }
     n.connect(this.dry);
-    if (send > 0) {
+    for (const [level, bus] of [[send, this.wet], [far, this.far]] as const) {
+      if (!(level > 0)) continue;
       const s = this.ctx.createGain();
-      s.gain.value = send;
-      n.connect(s); s.connect(this.wet);
+      s.gain.value = level;
+      n.connect(s); s.connect(bus);
     }
   }
 }
@@ -192,9 +230,13 @@ export interface ToneOpts {
   fm?: { ratio: number; index: number; decay?: number };
   /** Passe-bas en Hz. */
   lp?: number;
-  /** Départ vers la réverbération, 0 à 1. */
+  /** Départ vers la réverbération proche, 0 à 1. */
   send?: number;
+  /** Départ vers la réverbération vaste, 0 à 1. */
+  far?: number;
   pan?: number;
+  /** Position d'arrivée : le son glisse de `pan` à `panTo` pendant sa durée. */
+  panTo?: number;
   prio?: Prio;
 }
 
@@ -225,7 +267,7 @@ export function tone(rig: Rig, o: ToneOpts): boolean {
   const env = ctx.createGain();
   shape(env.gain, o.t, attack, o.hold ?? 0, o.dur, o.gain);
   head.connect(env);
-  rig.route(env, o.send ?? 0, o.pan ?? 0);
+  rig.route(env, o.send ?? 0, o.pan ?? 0, o.far ?? 0, o.panTo === undefined ? undefined : { to: o.panTo, t: o.t, dur: o.dur });
   osc.start(o.t); osc.stop(end + 0.02);
   return true;
 }
@@ -242,7 +284,9 @@ export interface NoiseOpts {
   attack?: number;
   hold?: number;
   send?: number;
+  far?: number;
   pan?: number;
+  panTo?: number;
   prio?: Prio;
 }
 
@@ -262,7 +306,7 @@ export function noise(rig: Rig, o: NoiseOpts): boolean {
   const env = ctx.createGain();
   shape(env.gain, o.t, attack, o.hold ?? 0, o.dur, o.gain);
   src.connect(fl); fl.connect(env);
-  rig.route(env, o.send ?? 0, o.pan ?? 0);
+  rig.route(env, o.send ?? 0, o.pan ?? 0, o.far ?? 0, o.panTo === undefined ? undefined : { to: o.panTo, t: o.t, dur: o.dur });
   src.start(o.t, rig.rand() * (NOISE_S - 0.1)); src.stop(end + 0.02);
   return true;
 }

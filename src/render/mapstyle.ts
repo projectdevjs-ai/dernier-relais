@@ -17,19 +17,38 @@ export interface Palette {
 type Key = keyof Palette;
 const KEYS: Key[] = ['land', 'urban', 'park', 'wood', 'water', 'sand', 'road', 'roadMajor', 'roadEdge', 'path', 'rail', 'bLow', 'bHigh', 'roofLow', 'roofHigh', 'text', 'halo', 'veil', 'sky', 'horizon', 'haze'];
 
-/** Palettes de jour. « crépuscule » : heure bleue, sol ardoise, toits froids, horizon encore chaud. */
+/**
+ * Palettes de PLEIN JOUR : lumineuses dans les deux ambiances. « crépuscule » n'est plus une nuit permanente
+ * (son ancienne palette ardoise était appliquée même à midi) : c'est la variante chaude et contrastée —
+ * sol ocre, toits de tuile, verts profonds — sous un ciel bleu.
+ */
 const DAY: Record<Ambiance, Palette> = {
   'crépuscule': {
-    land: '#1b2d36', urban: '#20343e', park: '#1f4a3c', wood: '#194233', water: '#1a5f86', sand: '#4a4532',
-    road: '#3a5463', roadMajor: '#4c6b7c', roadEdge: '#7397a6', path: '#b08f4a', rail: '#806a40',
-    bLow: '#34505e', bHigh: '#5f8ea0', roofLow: '#4f7888', roofHigh: '#8dbfcc', text: '#f0ead8', halo: '#1b2d36', veil: '#4a6070',
-    sky: '#1f3160', horizon: '#f0a070', haze: '#5a7090',
+    land: '#ecdcb9', urban: '#e4d0a8', park: '#9fcb72', wood: '#7fb560', water: '#52aede', sand: '#f1d58c',
+    road: '#fdf6e6', roadMajor: '#ffd685', roadEdge: '#b39a6e', path: '#dcb26a', rail: '#a69274',
+    bLow: '#f4dfbb', bHigh: '#e0bd92', roofLow: '#d6784c', roofHigh: '#8fa9ba', text: '#66543a', halo: '#ecdcb9', veil: '#d6d3c6',
+    sky: '#4f9fe8', horizon: '#cfe7fa', haze: '#bcdaf2',
   },
   clair: {
     land: '#f3ecda', urban: '#ede4cf', park: '#bfe09a', wood: '#a3d188', water: '#86cdea', sand: '#f6e3a8',
     road: '#ffffff', roadMajor: '#ffe7b0', roadEdge: '#c9b996', path: '#e6c98c', rail: '#b9ad98',
     bLow: '#fbeedb', bHigh: '#f0d9c0', roofLow: '#e9a27c', roofHigh: '#c2d0d6', text: '#7b6c52', halo: '#f3ecda', veil: '#c4cfd4',
-    sky: '#8fc7ee', horizon: '#fff3da', haze: '#dcebf2',
+    sky: '#7cbdf0', horizon: '#dceefb', haze: '#cbe3f4',
+  },
+};
+/** Palettes de l'HEURE DORÉE (soleil entre -4° et 6°) : tout est chaud, l'horizon s'embrase, le zénith reste bleu. */
+const GOLD: Record<Ambiance, Palette> = {
+  'crépuscule': {
+    land: '#d8b582', urban: '#d0a976', park: '#94a252', wood: '#788f48', water: '#6a96bd', sand: '#e4ba6e',
+    road: '#f4d9aa', roadMajor: '#ffc063', roadEdge: '#a57d52', path: '#cf9550', rail: '#917253',
+    bLow: '#efba82', bHigh: '#d88f5e', roofLow: '#c35f36', roofHigh: '#a3857e', text: '#58402a', halo: '#d8b582', veil: '#c8ab8c',
+    sky: '#5179c4', horizon: '#ffa650', haze: '#e8b488',
+  },
+  clair: {
+    land: '#edd2a2', urban: '#e7c894', park: '#b2bd70', wood: '#97ad64', water: '#7db0d4', sand: '#f2d08a',
+    road: '#feebc4', roadMajor: '#ffcd78', roadEdge: '#be9e6c', path: '#dcae66', rail: '#ae9778',
+    bLow: '#f9d5a2', bHigh: '#ecb684', roofLow: '#dd8452', roofHigh: '#bea59a', text: '#6c5436', halo: '#edd2a2', veil: '#d6bf9e',
+    sky: '#73a2dc', horizon: '#ffbc70', haze: '#f1cda2',
   },
 };
 /** Palettes de pleine nuit : bleu profond, rues encore lisibles sous la lune. */
@@ -50,12 +69,12 @@ const NIGHT: Record<Ambiance, Palette> = {
 
 const ca = new THREE.Color(), cb = new THREE.Color(), grey = new THREE.Color();
 
-/** Palette pour une ambiance et un état du ciel (nuit de 0 à 1, grisaille de 0 à 1). */
-export function paletteFor(ambiance: Ambiance, night: number, dull: number): Palette {
-  const d = DAY[ambiance], n = NIGHT[ambiance];
+/** Palette pour une ambiance et un état du ciel (nuit de 0 à 1, grisaille de 0 à 1, heure dorée de 0 à 1) : fondu continu jour → doré → nuit. */
+export function paletteFor(ambiance: Ambiance, night: number, dull: number, gold = 0): Palette {
+  const d = DAY[ambiance], g = GOLD[ambiance], n = NIGHT[ambiance];
   const out = {} as Palette;
   for (const k of KEYS) {
-    ca.set(d[k]).lerp(cb.set(n[k]), night);
+    ca.set(d[k]).lerp(cb.set(g[k]), gold).lerp(cb.set(n[k]), night);
     if (dull > 0) {
       // Temps couvert : on tire chaque couleur vers son gris.
       const l = ca.r * 0.3 + ca.g * 0.55 + ca.b * 0.15;

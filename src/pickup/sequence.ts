@@ -2,11 +2,13 @@
 //   1. REPÉRAGE   la caisse est quelque part autour du joueur, dans l'image de la caméra (ou un panorama 360°) ;
 //                 il tourne sur lui-même (boussole) ou glisse le doigt pour la trouver et la garder dans le viseur ;
 //   2. INSPECTION on tourne la caisse du doigt : défauts à colmater, étiquette suspecte, contenu à écouter ;
-//   3. SANGLAGE   on relie les boucles l'une après l'autre en suivant le passage, puis on tend le cliquet dans la zone verte.
+//   3. SANGLAGE   on relie les boucles l'une après l'autre en suivant le passage, puis vient le geste propre à la matière :
+//                 cliquet à tendre (bois, coffre), attaches aimantées (malle alu, cryo), nœud (sac), câbles (cellule).
 // Rien ne bloque : sans caméra, le panorama ; sans boussole, le doigt ; sans WebGL, la caisse est dessinée à plat.
 import * as THREE from 'three';
 import type { CrateKind, SpecialKind, UiKind } from '../game/api';
-import { RATCHET_CENTER, STRAP, type StrapPlan, ratchetRelease, strapPlan } from '../game/gestures';
+import { type StrapGesture, crateDef, gestureFor } from '../game/crates';
+import { FINAL, RATCHET_CENTER, STRAP, type StrapPlan, cablePlan, cablePlug, knotCheckpoint, knotPath, ratchetRelease, strapPlan } from '../game/gestures';
 import { rng } from '../core/geo';
 import { loadModel } from '../render/assets';
 import { btn, h, reducedMotion, setText } from '../ui/dom';
@@ -57,7 +59,9 @@ export interface SeqOptions {
   /** Démo : fige l'image après ce délai, en ms. */
   freezeMs?: number;
   /** Démo : état d'avancement à montrer (colis dans le viseur, boucles déjà reliées, cliquet). */
-  demo?: { aim?: boolean; reached?: number; ratchet?: boolean; defects?: number; label?: boolean; listen?: boolean };
+  demo?: { aim?: boolean; reached?: number; ratchet?: boolean; defects?: number; label?: boolean; listen?: boolean;
+    /** Geste final à montrer : celui de la matière (`true`) ou un geste imposé ; `step` : avancement (attaches posées, câbles branchés, part du nœud). */
+    final?: boolean | StrapGesture; step?: number };
 }
 export type SeqResult =
   | { outcome: 'strapped'; /** état du colis à la fin du sanglage, 0 à 100 */ state: number }
@@ -85,8 +89,22 @@ interface StrapState {
   rw: number; plan: StrapPlan; corr: number; lag: number; jitter: number; guide: ScreenPt[] | null; A: ScreenPt[];
   reached: number; drag: boolean; finger: Pt | null; tip: Pt | null; f0: Pt; a0: Pt; real: Pt | null; lock: number; lastMove: (Pt & { t: number }) | null; lastHarsh: number; spd: number;
   integrity: number; limit: number; start: number; done: boolean; shake: number; ph: number;
-  mode: 'path' | 'ratchet'; rt: { v: number; hold: boolean; zone: number; c: number; last: number };
+  mode: 'path' | 'ratchet' | 'magnet' | 'knot' | 'cables'; rt: { v: number; hold: boolean; zone: number; c: number; last: number };
+  gesture: StrapGesture; wet: boolean;
+  /** Attaches aimantées : repères sur la malle, attaches à glisser. */
+  mg: { t: { v: THREE.Vector3; done: boolean; i: number; s: ScreenPt | null }[]; c: MagChip[]; drag: MagChip | null; marks: THREE.Mesh[] } | null;
+  /** Nœud : tracé à suivre, point atteint, tolérance. */
+  kn: { pts: Pt[]; i: number; tol: number; on: boolean } | null;
+  /** Câbles : ordre demandé, fiches à gauche, prises à droite. */
+  cb: { order: number[]; step: number; plugs: Plug[]; socks: Sock[]; drag: { pl: Plug; x: number; y: number } | null } | null;
 }
+interface MagChip { i: number; hx: number; hy: number; x: number; y: number; placed: boolean }
+interface Sock { c: number; x: number; y: number }
+interface Plug { c: number; x: number; y: number; done: boolean; to: Sock | null }
+const CABLES: [string, string][] = [['#e0644f', 'rouge'], ['#f2d16b', 'jaune'], ['#7fc7d9', 'bleu']];
+const KICK: Record<Exclude<StrapGesture, 'sangles'>, string> = {
+  cliquet: 'Cliquet · tension juste', aimants: 'Attaches aimantées · la malle bouge', noeud: 'Nœud de portage · suis la corde', cables: 'Cellule énergie · branchement dans l’ordre',
+};
 type State = ScanState | InspectState | StrapState;
 
 export class PickupSequence {
@@ -258,7 +276,7 @@ export class PickupSequence {
   private clearScene(): void {
     const s = this.st;
     if (s) {
-      if (s.phase === 'sanglage') { for (const b of s.buckles) b.dispose(); disposeGroup(s.straps); }
+      if (s.phase === 'sanglage') { for (const b of s.buckles) b.dispose(); disposeGroup(s.straps); for (const m of s.mg?.marks ?? []) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }
       if (s.phase === 'inspection') for (const m of s.marks) { m.mesh.geometry.dispose(); (m.mesh.material as THREE.Material).dispose(); }
       s.crate.dispose();
     }
@@ -566,7 +584,11 @@ export class PickupSequence {
     const buckles = nodes.map(n => { const b = makeBuckle(n.f, size); b.group.position.copy(n.v); crate.group.add(b.group); return b; });
     // Conditions : pluie = sangle glissante, fatigue = mains tremblantes, nuit = lampe frontale.
     const cond = host.conditions();
-    const corr = Math.max(8, plan.corr - (cond.wet ? 3 : 0) - (cond.tired ? 2 : 0));
+    const corr = Math.max(STRAP.minCorr, plan.corr - (cond.wet ? 3 : 0) - (cond.tired ? 2 : 0));
+    // Sangles à la couleur de la matière.
+    this.mats.fixed.dispose(); this.mats.live.dispose();
+    this.mats = strapMaterials(p.special ? undefined : crateDef(p.crate).strap);
+    const forced = demo?.final && demo.final !== true ? demo.final : demo?.ratchet ? 'cliquet' : null;
     const lag = Math.max(0.08, plan.lag - (cond.wet ? 0.04 : 0) - (cond.tired ? 0.03 : 0));
     const now = performance.now();
     const s: StrapState = {
@@ -574,6 +596,7 @@ export class PickupSequence {
       jitter: cond.exhausted ? 4 : cond.tired ? 2 : 0, guide: null, A: [], reached: 0, drag: false, finger: null, tip: null, f0: { x: 0, y: 0 }, a0: { x: 0, y: 0 }, real: null,
       lock: 0, lastMove: null, lastHarsh: 0, spd: 0, integrity: 100 - STRAP.defect * this.defectsLeft, limit: plan.time, start: now, done: false, shake: 0, ph: R(0, 9),
       mode: 'path', rt: { v: 0, hold: false, zone: plan.ratchetZone, c: R(RATCHET_CENTER[0], RATCHET_CENTER[1]), last: 0 },
+      gesture: forced ?? gestureFor(p.crate, p.special), wet: cond.wet, mg: null, kn: null, cb: null,
     };
     this.defectsLeft = 0;
     this.st = s;
@@ -585,11 +608,19 @@ export class PickupSequence {
     this.say(p.special === 'ruche' ? 'Ruche : gestes très lents, les abeilles s’agitent' : 'Pose le doigt où tu veux : la sangle part de la boucle 1');
     this.updateAnchors(s, now);
     // Démo : boucles déjà reliées, ou cliquet en cours.
-    if (demo?.reached || demo?.ratchet) {
-      const upTo = demo.ratchet ? nodes.length : Math.min(nodes.length - 1, demo.reached ?? 0);
+    if (demo?.reached || demo?.ratchet || demo?.final) {
+      const fin = !!(demo.ratchet || demo.final), upTo = fin ? nodes.length : Math.min(nodes.length - 1, demo.reached ?? 0);
       for (let i = 1; i < upTo; i++) this.fixStrap(s, i);
       s.reached = upTo;
-      if (demo.ratchet) { this.enterRatchet(s); s.rt.v = s.rt.c - 0.12; s.rt.hold = true; }
+      if (fin) {
+        if (s.gesture === 'sangles') { this.say('Sangles seules : la dernière boucle verrouille tout', 'good'); s.guide = null; }
+        else this.enterFinal(s);
+        const k = demo.step ?? 1;
+        if (s.mode === 'ratchet') { s.rt.v = s.rt.c - 0.12; s.rt.hold = true; }
+        if (s.mg) for (let i = 0; i < Math.min(k, s.mg.c.length - 1); i++) this.placeMagnet(s, s.mg.c[i]);
+        if (s.kn) { s.kn.i = Math.round((s.kn.pts.length - 1) * Math.min(0.9, 0.42 * k)); s.kn.on = true; }
+        if (s.cb) for (let i = 0; i < Math.min(k, 2); i++) { const pl = s.cb.plugs.find(q => q.c === s.cb!.order[i])!; pl.done = true; pl.to = s.cb.socks.find(q => q.c === pl.c)!; s.cb.step = i + 1; }
+      }
       else {
         this.updateAnchors(s, now);
         const a = s.A[upTo - 1], b = s.A[upTo], G = s.guide;
@@ -653,13 +684,13 @@ export class PickupSequence {
     const b = s.A[s.reached], k = 1 - Math.pow(1 - s.lag, dt * 60), tip = s.tip;
     tip.x += (s.finger.x - tip.x) * k; tip.y += (s.finger.y - tip.y) * k;
     if (s.jitter && !this.reduce) { tip.x += (Math.random() * 2 - 1) * s.jitter; tip.y += (Math.random() * 2 - 1) * s.jitter; }
-    if (Math.hypot(s.finger.x - tip.x, s.finger.y - tip.y) > 64) { this.dropStrap(s, STRAP.tooTight, 'Sangle trop tendue, elle a glissé'); return; }
+    if (Math.hypot(s.finger.x - tip.x, s.finger.y - tip.y) > STRAP.slackPx) { this.dropStrap(s, STRAP.tooTight, 'Sangle trop tendue, elle a glissé'); return; }
     const G = s.guide;
     let dmin = 1e9;
     for (let i = 0; i < G.length - 1; i++) dmin = Math.min(dmin, segDist(tip.x, tip.y, G[i], G[i + 1]));
     if (dmin > s.corr) { this.dropStrap(s, STRAP.offPath, `Sangle sortie du passage : reprends à la boucle ${s.reached}`); return; }
     this.liveTo(s, tip);
-    if (Math.hypot(tip.x - b.x, tip.y - b.y) < 14) {
+    if (Math.hypot(tip.x - b.x, tip.y - b.y) < STRAP.lockPx) {
       const before = s.lock;
       s.lock += dt * 1000;
       if (Math.floor(s.lock / 110) > Math.floor(before / 110)) this.host!.ui('tap');
@@ -669,18 +700,48 @@ export class PickupSequence {
         this.host!.ui('confirm'); this.host!.buzz([20, 30, 20]);
         s.reached++; s.lock = 0;
         s.tip = { x: b.x, y: b.y }; s.a0 = { x: b.x, y: b.y }; s.f0 = { ...(s.real ?? s.f0) }; s.finger = { ...s.a0 };
-        if (s.reached >= s.nodes.length) { this.enterRatchet(s); return; }
+        if (s.reached >= s.nodes.length) { if (s.gesture === 'sangles') this.finishStrap(s, true); else this.enterFinal(s); return; }
         this.say(`Cliquet verrouillé · boucle ${s.reached + 1} ensuite`, 'good');
       }
     } else s.lock = Math.max(0, s.lock - dt * 2000);
   }
-  /** Toutes les boucles sont reliées : il reste à tendre le cliquet. */
-  private enterRatchet(s: StrapState): void {
-    s.mode = 'ratchet'; s.drag = false; s.finger = null; s.tip = null; s.guide = null;
+  /** Toutes les boucles sont reliées : il reste le geste propre à la matière (cliquet, aimants, nœud, câbles). */
+  private enterFinal(s: StrapState): void {
+    const g = s.gesture, { W, H } = this, [dw, dh, dd] = s.crate.dims;
+    if (g === 'sangles') return;
+    s.mode = g === 'cliquet' ? 'ratchet' : g === 'aimants' ? 'magnet' : g === 'noeud' ? 'knot' : 'cables';
+    s.drag = false; s.finger = null; s.tip = null; s.guide = null;
     this.setLive(s, null);
-    s.limit = Math.max(s.limit + 6, (performance.now() - s.start) / 1000 + 6);
-    setText(this.kick, 'Cliquet · tension juste');
-    this.say('Maintiens pour tendre le cliquet, relâche dans la zone verte');
+    // Le temps accordé : six secondes de plus comme dans l'ancien jeu, et au moins la durée du geste.
+    s.limit = Math.max(s.limit + 6, (performance.now() - s.start) / 1000 + FINAL[g].time);
+    setText(this.kick, KICK[g]);
+    this.host?.ui('confirm');
+    if (g === 'cliquet') this.say('Maintiens pour tendre le cliquet, relâche dans la zone verte');
+    if (g === 'aimants') {
+      const L = [new THREE.Vector3(-dw * 0.3, dh * 0.25, dd / 2), new THREE.Vector3(dw * 0.3, -dh * 0.25, dd / 2), new THREE.Vector3(0, dh / 2, dd * 0.1)];
+      const y = Math.max(H * 0.72, H - 170), gap = Math.min(84, W * 0.24);
+      s.mg = { t: L.map((v, i) => ({ v, done: false, i, s: null })), c: L.map((_, i) => ({ i, hx: W / 2 + (i - 1) * gap, hy: y, x: W / 2 + (i - 1) * gap, y, placed: false })), drag: null, marks: [] };
+      this.say('Fais glisser chaque attache aimantée sur son repère');
+    }
+    if (g === 'noeud') {
+      const cx = W / 2, cy = H * 0.52, rx = Math.min(W * 0.34, 170), ry = Math.min(H * 0.18, 120);
+      s.kn = { pts: knotPath().map(q => ({ x: cx + rx * q.x, y: cy + ry * q.y })), i: 0, tol: s.wet ? FINAL.noeud.tolWetPx : FINAL.noeud.tolPx, on: false };
+      this.say('Pose le doigt sur le point de départ et suis la corde pour faire le nœud');
+    }
+    if (g === 'cables') {
+      const plan = cablePlan(this.opts.demo ? rng(`câbles|${this.p!.id}`) : Math.random), dy = Math.min(86, H * 0.105), y0 = Math.max(H * 0.34, 250);
+      const socks: Sock[] = plan.sockets.map((c, i) => ({ c, x: W * 0.8, y: y0 + i * dy }));
+      s.cb = { order: plan.order, step: 0, plugs: [0, 1, 2].map(i => ({ c: i, x: W * 0.2, y: y0 + i * dy, done: false, to: null })), socks, drag: null };
+      this.say(`Branche les câbles dans l’ordre : ${plan.order.map(i => CABLES[i][1]).join(', ')}`);
+    }
+  }
+  private placeMagnet(s: StrapState, k: MagChip): void {
+    const M = s.mg!, T = M.t[k.i];
+    k.placed = true; T.done = true;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.04, 0.03), new THREE.MeshStandardMaterial({ color: 0x3b4043, metalness: 0.6, roughness: 0.3, emissive: 0x16323a }));
+    m.position.copy(T.v);
+    if (k.i === 2) m.rotation.x = Math.PI / 2;
+    s.crate.group.add(m); M.marks.push(m);
   }
   private finishStrap(s: StrapState, ok: boolean, why?: string): void {
     s.done = true; s.drag = false; s.rt.hold = false;
@@ -715,6 +776,7 @@ export class PickupSequence {
     this.time.classList.toggle('is-low', left < 3);
     setText(this.int, `État du colis ${Math.round(s.integrity)} % · refusé sous ${STRAP.refuse} %`);
     if (s.mode === 'ratchet') { this.drawRatchet(c, s, dt); return; }
+    if (s.mode !== 'path') { this.drawFinal(c, s, now); return; }
     if (s.guide) {
       const G = s.guide;
       c.beginPath(); G.forEach((q, i) => (i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)));
@@ -756,6 +818,103 @@ export class PickupSequence {
     c.fillText(s.done ? 'Verrouillé' : R.hold ? 'Tension…' : 'Maintiens l’écran', cx, cy + r * 0.62);
   }
 
+  /** Aimants, nœud, câbles : dessinés sur le calque 2D, par-dessus le colis sanglé. */
+  private drawFinal(c: CanvasRenderingContext2D, s: StrapState, now: number): void {
+    const I = this.ink, { W } = this, v = this.view!, wob = this.reduce ? 0 : Math.sin(now / 160);
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    if (s.mg) {
+      for (const T of s.mg.t) {
+        if (T.done) continue;
+        const q = v.toScreen(s.crate.group.localToWorld(T.v.clone())); T.s = q;
+        c.fillStyle = this.ink.halo; c.beginPath(); c.arc(q.x, q.y, 15, 0, Math.PI * 2); c.fill();
+        c.setLineDash([4, 4]); c.beginPath(); c.arc(q.x, q.y, 19 + 3 * wob, 0, Math.PI * 2); this.stroke(c, I.blue, 2); c.setLineDash([]);
+        c.fillStyle = I.blue; c.font = '700 14px system-ui, sans-serif'; c.fillText(String(T.i + 1), q.x, q.y + 0.5);
+      }
+      for (const k of s.mg.c) {
+        if (k.placed) continue;
+        c.fillStyle = '#2f3539'; c.beginPath(); c.roundRect(k.x - 28, k.y - 22, 56, 44, 9); c.fill(); this.stroke(c, I.warn, 2);
+        c.fillStyle = I.warn; c.font = '700 14px system-ui, sans-serif'; c.fillText(`U ${k.i + 1}`, k.x, k.y + 0.5);
+      }
+    }
+    if (s.kn) {
+      const K = s.kn, P = K.pts;
+      c.beginPath(); P.forEach((q, i) => (i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)));
+      c.strokeStyle = 'rgba(243,239,226,.22)'; c.lineWidth = K.tol * 1.6; c.stroke();
+      c.setLineDash([6, 8]); this.stroke(c, I.ink, 1.5); c.setLineDash([]);
+      if (K.i > 0) { c.beginPath(); for (let i = 0; i <= K.i; i++) { if (i) c.lineTo(P[i].x, P[i].y); else c.moveTo(P[i].x, P[i].y); } this.stroke(c, '#c9a36a', 9); }
+      const q = P[K.i];
+      c.beginPath(); c.arc(q.x, q.y, 10 + 3 * wob, 0, Math.PI * 2); c.fillStyle = I.ink; c.fill(); this.stroke(c, I.warn, 2);
+      this.label(c, `${Math.round((K.i / (P.length - 1)) * 100)} %`, W / 2, Math.min(...P.map(o => o.y)) - 26, I.warn);
+    }
+    if (s.cb) {
+      const C = s.cb, wire = (x0: number, y0: number, x1: number, y1: number, col: string): void => { c.beginPath(); c.moveTo(x0, y0); c.bezierCurveTo(W / 2, y0, W / 2, y1, x1, y1); this.stroke(c, col, 7); };
+      for (const p of C.plugs) if (p.done && p.to) wire(p.x, p.y, p.to.x, p.to.y, CABLES[p.c][0]);
+      if (C.drag) wire(C.drag.pl.x, C.drag.pl.y, C.drag.x, C.drag.y, CABLES[C.drag.pl.c][0]);
+      c.font = '800 14px system-ui, sans-serif';
+      for (const q of C.socks) {
+        c.fillStyle = this.ink.halo; c.beginPath(); c.arc(q.x, q.y, 22, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(q.x, q.y, 19, 0, Math.PI * 2); this.stroke(c, CABLES[q.c][0], 4);
+        c.fillStyle = CABLES[q.c][0]; c.fillText(CABLES[q.c][1][0].toUpperCase(), q.x, q.y + 0.5);
+      }
+      for (const p of C.plugs) {
+        c.beginPath(); c.arc(p.x, p.y, 18, 0, Math.PI * 2); c.fillStyle = CABLES[p.c][0]; c.fill(); this.stroke(c, p.done ? I.ok : I.dark, 2);
+        c.fillStyle = I.dark; c.fillText(CABLES[p.c][1][0].toUpperCase(), p.x, p.y + 0.5);
+      }
+      // L'ordre demandé, rappelé au-dessus : fait en vert, à faire dans la couleur du câble.
+      const y = C.plugs[0].y - 52, gap = Math.min(92, W * 0.25);
+      C.order.forEach((o, i) => this.label(c, `${i + 1}. ${CABLES[o][1]}`, W / 2 + (i - 1) * gap, y, i < C.step ? I.ok : CABLES[o][0]));
+    }
+  }
+  private finalDown(s: StrapState, q: Pt): void {
+    if (s.mg) { const k = s.mg.c.find(o => !o.placed && Math.hypot(q.x - o.x, q.y - o.y) < FINAL.aimants.grabPx); if (k) { s.mg.drag = k; this.host!.ui('tap'); } }
+    if (s.kn) { const K = s.kn, p = K.pts[K.i]; if (Math.hypot(q.x - p.x, q.y - p.y) < K.tol * 1.4) K.on = true; else this.say('Repars du point lumineux'); }
+    if (s.cb) { const pl = s.cb.plugs.find(o => !o.done && Math.hypot(q.x - o.x, q.y - o.y) < FINAL.cables.grabPx); if (pl) { s.cb.drag = { pl, x: q.x, y: q.y }; this.host!.ui('tap'); } }
+  }
+  private finalMove(s: StrapState, q: Pt): void {
+    if (s.mg?.drag) { s.mg.drag.x = q.x; s.mg.drag.y = q.y; }
+    if (s.cb?.drag) { s.cb.drag.x = q.x; s.cb.drag.y = q.y; }
+    const K = s.kn;
+    if (!K || !K.on) return;
+    let adv = false;
+    for (let n = 0; n < 6 && K.i < K.pts.length - 1; n++) { const nx = K.pts[K.i + 1]; if (Math.hypot(q.x - nx.x, q.y - nx.y) < K.tol) { K.i++; adv = true; } else break; }
+    if (adv && K.i % 6 === 0) this.host!.ui('tap');
+    const p = K.pts[K.i];
+    if (Math.hypot(q.x - p.x, q.y - p.y) > K.tol * 2.2) {
+      K.on = false; K.i = knotCheckpoint(K.i, K.pts.length);
+      this.host!.ui('error');
+      this.hurt(s, FINAL.noeud.slipCost, 'La corde a filé : reprends au repère');
+      return;
+    }
+    if (K.i >= K.pts.length - 1) { K.on = false; this.host!.ui('confirm'); this.host!.buzz([20, 40, 60]); this.finishStrap(s, true); }
+  }
+  private finalUp(s: StrapState): void {
+    if (s.kn) s.kn.on = false;
+    const M = s.mg;
+    if (M?.drag) {
+      const k = M.drag, T = M.t[k.i];
+      M.drag = null;
+      if (T.s && Math.hypot(k.x - T.s.x, k.y - T.s.y) < FINAL.aimants.snapPx) {
+        this.placeMagnet(s, k);
+        this.host!.ui('confirm'); this.host!.buzz(30);
+        const left = M.c.filter(o => !o.placed).length;
+        if (!left) this.finishStrap(s, true); else this.say(`Attache verrouillée · ${left} restante${left > 1 ? 's' : ''}`, 'good');
+      } else { k.x = k.hx; k.y = k.hy; this.say('À côté : vise le repère qui bouge avec la malle', 'bad'); this.host!.ui('error'); }
+    }
+    const C = s.cb;
+    if (C?.drag) {
+      const d = C.drag;
+      C.drag = null;
+      const so = C.socks.find(o => Math.hypot(d.x - o.x, d.y - o.y) < FINAL.cables.socketPx);
+      if (!so) return;
+      const want = C.order[C.step], res = cablePlug(d.pl.c, so.c, want);
+      if (res !== 'ok') { this.host!.ui('error'); this.host!.buzz([60, 30, 60]); this.hurt(s, FINAL.cables.cost, res === 'couleur' ? 'Court-circuit : mauvaise couleur' : 'Étincelle : mauvais ordre'); return; }
+      d.pl.done = true; d.pl.to = so; C.step++;
+      this.host!.ui('confirm');
+      if (C.step >= C.order.length) this.finishStrap(s, true);
+      else this.say(`Câble ${CABLES[want][1]} branché · suivant : ${CABLES[C.order[C.step]][1]}`, 'good');
+    }
+  }
+
   // ───────────────────────── gestes
 
   private at(e: PointerEvent): Pt { const b = this.c2.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; }
@@ -769,6 +928,7 @@ export class PickupSequence {
     if (s.phase === 'inspection') { s.drag = { x: q.x, y: q.y, yaw: s.yaw, pitch: s.pitch, moved: 0 }; return; }
     if (s.done) return;
     if (s.mode === 'ratchet') { s.rt.hold = true; return; }
+    if (s.mode !== 'path') { this.finalDown(s, q); return; }
     const n = s.A[s.reached ? s.reached - 1 : 0];
     if (!n) return;
     // Pavé tactile : la sangle repart de là où elle était (ou de la boucle) et suit le mouvement relatif du doigt.
@@ -792,6 +952,7 @@ export class PickupSequence {
       s.yaw = d.yaw + (q.x - d.x) * 0.011; s.pitch = clamp(d.pitch + (q.y - d.y) * 0.009, -1.2, 1.3);
       return;
     }
+    if (s.mode !== 'path' && s.mode !== 'ratchet' && !s.done) { this.finalMove(s, q); return; }
     if (s.mode !== 'path' || !s.drag || s.done || !s.lastMove) return;
     const dtm = Math.max(1, now - s.lastMove.t), spd = (Math.hypot(q.x - s.lastMove.x, q.y - s.lastMove.y) / dtm) * 1000;
     if (spd > s.plan.harshSpeed && now - s.lastHarsh > 450) {
@@ -839,6 +1000,7 @@ export class PickupSequence {
       else { R.v = 0; this.say('Pas assez tendu : recommence', 'bad'); this.host!.ui('error'); }
       return;
     }
+    if (s.mode !== 'path') { this.finalUp(s); return; }
     if (s.drag) { s.drag = false; s.finger = null; s.lock = 0; this.say('Sangle tenue · repose le doigt pour continuer'); }
   }
 

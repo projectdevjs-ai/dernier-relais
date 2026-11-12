@@ -79,7 +79,7 @@ const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
 const pt = (v: unknown): LngLat | null =>
   Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && Number.isFinite(v[0]) && Number.isFinite(v[1]) ? [v[0], v[1]] : null;
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
-const CRATES: CrateKind[] = ['bois', 'alu', 'plastique', 'carton'];
+const CRATES: CrateKind[] = ['bois', 'alu', 'plastique', 'carton', 'sac', 'fut', 'coffre'];
 const SPECIALS: SpecialKind[] = ['batterie', 'boitenoire', 'cryo', 'ruche'];
 const SURPRISES: SurpriseKind[] = ['chat', 'bonus', 'lore', 'label'];
 

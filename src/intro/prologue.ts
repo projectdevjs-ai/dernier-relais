@@ -1,4 +1,4 @@
-// PROLOGUE — joué une seule fois. Une capsule écrasée sur la Plaine Noire ; le porteur se réveille,
+// PROLOGUE — joué une seule fois, porté par la voix d'un narrateur. Une capsule écrasée sur la Plaine Noire ; le porteur se réveille,
 // se lève, découvre la plaine et marche vers la Station Lumen. Scène three.js autonome (son propre
 // canvas), entièrement calculée à partir du temps : on peut la figer à n'importe quel instant.
 import * as THREE from 'three';
@@ -12,6 +12,25 @@ import {
 import '../scene3d/scene3d.css';
 import { Veil } from '../scene3d/veil';
 import './prologue.css';
+
+/**
+ * LA VOIX DU NARRATEUR (voix off masculine, grave, sobre : la seule voix enregistrée du jeu).
+ * `t` : instant où la phrase apparaît à l'écran et où la voix doit partir, en secondes depuis le repère sonore « vent »
+ * (le tout début de la séquence). Les mêmes phrases, mot pour mot, sont dans scripts/voix-extra.json (un test le vérifie).
+ * Plans : réveil (0 – 7,6 s), il se lève (7,6 – 13,4), la plaine et la station au loin (13,4 – 22,6),
+ * la marche (22,6 – 30,6), plan large vers la Station Lumen (30,6 – 37,6), titre.
+ */
+export const NARRATION: { t: number; who: 'narrateur'; text: string }[] = [
+  { t: 1.4, who: 'narrateur', text: 'Tu es tombé du ciel, et le sable noir t’a rattrapé.' },
+  { t: 8.6, who: 'narrateur', text: 'Tu ne sais plus d’où, ni pourquoi. Tu te relèves quand même.' },
+  { t: 13.8, who: 'narrateur', text: 'Depuis la Coupure, chaque ville vit seule, comme une île.' },
+  { t: 18.3, who: 'narrateur', text: 'Plus de routes sûres, plus de nouvelles des autres.' },
+  { t: 22.9, who: 'narrateur', text: 'Alors certains marchent, et portent ce qui manque.' },
+  { t: 27.0, who: 'narrateur', text: 'Bientôt, toi aussi : un colis, une porte, un lien.' },
+  { t: 31.8, who: 'narrateur', text: 'Là-bas, une lumière veille encore. Va : on t’y attend.' },
+];
+/** Instant où chaque phrase a fini de s'effacer : jamais moins de 3,2 s à l'écran, jamais deux phrases à la fois. */
+const NARRATION_END = [6.9, 13.3, 18.0, 22.5, 26.7, 30.5, 36.9];
 
 const SEEN_KEY = 'dernier-relais/prologue';
 
@@ -42,15 +61,15 @@ const T = {
 } as const;
 const WALK_SPEED = 1.28;
 
-/** Texte en surimpression. Les répliques « iris » reprennent mot pour mot l'ancienne version du jeu. */
-const LINES: { from: number; to: number; kind: 'line' | 'place' | 'title'; text: string; kicker?: string }[] = [
-  { from: 1.2, to: 6.4, kind: 'line', text: 'Tu es tombé du ciel.' },
-  { from: 8.4, to: 13.0, kind: 'place', kicker: 'Signal de la capsule perdu', text: 'Plaine Noire' },
-  { from: 14.4, to: 18.4, kind: 'line', text: 'Dehors, les villes sont coupées les unes des autres.' },
-  { from: 18.9, to: 22.3, kind: 'line', text: 'Plus de routes sûres, plus de liaisons.' },
-  { from: 23.3, to: 27.6, kind: 'line', text: 'Il ne reste que des gens comme toi, qui portent.' },
-  { from: 31.4, to: 36.6, kind: 'place', kicker: 'Le dernier laboratoire encore relié au réseau', text: 'Station Lumen' },
+/** Cartons de lieu et titre final (instants en secondes). Les phrases du narrateur viennent de NARRATION. */
+const CARDS: { from: number; to: number; kind: 'place' | 'title'; text: string; kicker?: string }[] = [
+  { from: 7.9, to: 11.6, kind: 'place', kicker: 'Signal de la capsule perdu', text: 'Plaine Noire' },
+  { from: 31.0, to: 35.2, kind: 'place', kicker: 'Le dernier laboratoire encore relié au réseau', text: 'Station Lumen' },
   { from: 37.6, to: 42.6, kind: 'title', text: 'Dernier Relais' },
+];
+const LINES: { from: number; to: number; kind: 'line' | 'place' | 'title'; text: string; kicker?: string }[] = [
+  ...NARRATION.map((n, i) => ({ from: n.t, to: NARRATION_END[i], kind: 'line' as const, text: n.text })),
+  ...CARDS,
 ];
 const CUES: [number, string][] = [[0, 'vent'], [T.wake, 'reveil'], [T.stand + 2.5, 'debout'], [T.walk, 'marche'], [T.cutE, 'station'], [37.6, 'titre']];
 
@@ -366,7 +385,7 @@ const SMOKE_HOT = new THREE.Color(0xb8551c), SMOKE_WARM = new THREE.Color(0x1c16
 function applyTime(w: World, t: number, aspect: number, still: boolean): void {
   // --- Porteur : animation ---
   const p = w.porter;
-  const wake = p.pick('Wake_Up_and_Look_Up'), stand = p.pick('Stand_Up1'), calm = p.pick('calm_0', 'calmv0', 'idle'), walk = p.pick('walk');
+  const wake = p.pick('Wake_Up_and_Look_Up'), stand = p.pick('Stand_Up1'), calm = p.pick('calmv0', 'calm_0', 'idle'), walk = p.pick('walk');
   const kStand = smooth(span(t, T.stand, T.stand + 0.7)), kCalm = smooth(span(t, T.calm, T.calm + 1.1)), kWalk = smooth(span(t, T.walk, T.walk + 0.8));
   p.pose([
     { name: wake, time: t - T.wake, weight: (1 - kStand) },

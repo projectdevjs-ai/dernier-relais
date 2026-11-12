@@ -1,12 +1,12 @@
 // Fiche de colis : ce que c'est, pour qui, et le bouton Ramasser ou Poser.
-import type { CrateKind, GameView } from '../game/api';
+import { crateLabel } from '../game/crates';
+import type { GameView } from '../game/api';
 import type { Ctx } from './ctx';
 import { btn, condTone, delayTone, distM, fmtDelay, fmtDist, fmtInt, fmtKg, fmtPct, h, setAttr, setDisabled, setText, show } from './dom';
 import { icon, type IconName } from './icons';
 import { Panel } from './panel';
 import { setTone } from './sheet';
 
-const CRATE: Record<CrateKind, string> = { bois: 'Caisse en bois', alu: 'Caisse en aluminium', plastique: 'Bac plastique', carton: 'Carton' };
 
 /** Case « icône, libellé, valeur » de la fiche. */
 function cell(ic: IconName, label: string): { el: HTMLElement; val: HTMLElement } {
@@ -96,7 +96,7 @@ export class OrderPanel {
     const o = v.orders.find((x) => x.id === this.id);
     if (!o) { this.panel.close(); this.id = null; return; } // livré, posé hors de vue ou perdu
     const carried = o.state === 'porté';
-    setText(this.crate, o.special && !o.special.known ? 'Colis scellé' : CRATE[o.crate]);
+    setText(this.crate, o.special && !o.special.known ? 'Colis scellé' : crateLabel(o.crate));
     setText(this.name, o.name);
     const sp = o.special ?? null, known = o.inspected !== false;
     const look = sp ? 'special' : o.lost || o.relay ? 'lost' : 'crate';

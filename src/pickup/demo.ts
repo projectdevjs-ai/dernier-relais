@@ -1,14 +1,17 @@
 // Démo du ramassage et du rangement, sans carte : chaque étape peut être figée pour une capture.
-//   ?etape=reperage|inspection|sanglage|cliquet|rangement|rangement0|rangement2   (sans étape : la séquence complète, jouable)
+//   ?etape=reperage|inspection|sanglage|geste|cliquet|rangement|rangement0|rangement2|rangementvide   (sans étape : la séquence complète, jouable)
+//   etape=geste : le geste final de la matière (bois, coffre : cliquet ; alu, cryo : aimants ; sac : nœud ; batterie : câbles ; les autres : sangles seules)
+//                 &geste=cliquet|aimants|noeud|cables impose un geste, &pas=0..2 son avancement
 //   &pano=ville|rural|riviere|plage|friche   décor 360° (sinon la caméra est demandée, puis le décor du colis)
 //   &ambiance=clair   &leger=1 (rendu allégé)   &sans3d=1 (sans WebGL : caisse dessinée à plat)
-//   &colis=bois|alu|plastique|carton|cryo|ruche|batterie|boitenoire   &kg=7   &fragile=1   &delai=1
+//   &colis=bois|alu|plastique|carton|sac|fut|coffre|cryo|ruche|batterie|boitenoire   &kg=7   &fragile=1   &delai=1
 //   &boucles=2 (sanglage : boucles déjà reliées)   &defauts=2   &etiquette=1   &ecoute=1   &vise=1 (repérage : colis dans le viseur)
-//   &nuit=1 &pluie=1 &fatigue=1   &palier=0..3 (rangement)   &anime=1 (ne fige pas l'image)   &fige=2500 (délai avant de figer, en ms)
+//   &nuit=1 &pluie=1 &fatigue=1   &palier=0..3 (rangement)   &plat=1 (rangement : écran 2D de repli)   &tourne=40 (rangement : porteur tourné, en degrés)   &anime=1 (ne fige pas l'image)   &fige=2500 (délai avant de figer, en ms)
 import '../ui/hud.css';
 import type { CrateKind, GameView, SpecialKind } from '../game/api';
 import { Game } from '../game/game';
 import { type GameSave, MemoryGameStore, emptyGameSave } from '../game/save';
+import { CRATE_DEFS, CRATE_KINDS, type StrapGesture } from '../game/crates';
 import { SPECIALS } from '../game/specials';
 import { cellAt } from '../core/geo';
 import type { LngLat } from '../core/geo';
@@ -62,12 +65,11 @@ game.on(e => {
 
 const fake = (): SeqParcel => {
   const kind = q.get('colis') ?? 'bois', special = (['cryo', 'ruche', 'batterie', 'boitenoire'] as SpecialKind[]).find(k => k === kind) ?? null;
-  const crate: CrateKind = special ? SPECIALS[special].crate : (['bois', 'alu', 'plastique', 'carton'] as CrateKind[]).find(k => k === kind) ?? 'bois';
-  const names: Record<string, string> = { bois: 'Outils', alu: 'Pièces de pompe', plastique: 'Médicaments', carton: 'Engrais' };
-  const labels: Record<string, string> = { bois: 'Caisse en bois', alu: 'Caisse en aluminium', plastique: 'Bac plastique', carton: 'Carton' };
+  const crate: CrateKind = special ? SPECIALS[special].crate : CRATE_KINDS.find(k => k === kind) ?? 'bois';
+  const names: Record<CrateKind, string> = { bois: 'Outils', alu: 'Pièces de pompe', plastique: 'Médicaments', carton: 'Livres', sac: 'Farine', fut: 'Eau potable', coffre: 'Pièces mécaniques' };
   return {
-    id: `démo-${kind}`, name: special ? SPECIALS[special].label : names[crate], crate, weightKg: Number(q.get('kg') ?? (special === 'batterie' ? 16 : 7)) || 7,
-    fragile: q.get('fragile') === '1' || special === 'cryo', special, crateLabel: special ? 'Colis spécial' : labels[crate], timed: q.get('delai') === '1',
+    id: `démo-${kind}`, name: special ? SPECIALS[special].label : names[crate], crate, weightKg: Number(q.get('kg') ?? (special === 'batterie' ? 16 : Math.round((CRATE_DEFS[crate].kg[0] + CRATE_DEFS[crate].kg[1]) / 2))) || 7,
+    fragile: q.get('fragile') === '1' || special === 'cryo', special, crateLabel: special ? 'Colis spécial' : CRATE_DEFS[crate].label, timed: q.get('delai') === '1',
     inspected: false, known: '', labelHidden: q.get('etiquette') === '1', bearingDeg: null, destName: 'Pharmacie des Couëts',
   };
 };
@@ -87,7 +89,7 @@ async function main(): Promise<void> {
     pano: (q.get('pano') as PanoName | null) ?? (frozen ? 'ville' : undefined), light: q.get('leger') === '1', flat: q.get('sans3d') === '1',
     freezeMs: frozen ? Number(q.get('fige') ?? 2600) || 2600 : undefined,
     demo: frozen ? {
-      aim: q.get('vise') === '1', reached: etape === 'sanglage' ? Number(q.get('boucles') ?? 2) || 0 : undefined, ratchet: etape === 'cliquet',
+      aim: q.get('vise') === '1', reached: etape === 'sanglage' ? Number(q.get('boucles') ?? 2) || 0 : undefined, ratchet: etape === 'cliquet', final: etape === 'geste' ? ((q.get('geste') as StrapGesture | null) ?? true) : undefined, step: q.has('pas') ? Number(q.get('pas')) : undefined,
       defects: q.has('defauts') ? Number(q.get('defauts')) : etape === 'inspection' ? 1 : undefined, label: q.get('etiquette') === '1', listen: q.get('ecoute') === '1',
     } : undefined,
   };
@@ -105,7 +107,7 @@ async function main(): Promise<void> {
     flow.load.open(view, q.get('choix') === '0' ? null : carried[carried.length - 1]?.id ?? null);
     return;
   }
-  const phase: Phase = etape === 'inspection' ? 'inspection' : etape === 'sanglage' || etape === 'cliquet' ? 'sanglage' : 'reperage';
+  const phase: Phase = etape === 'inspection' ? 'inspection' : etape === 'sanglage' || etape === 'cliquet' || etape === 'geste' ? 'sanglage' : 'reperage';
   if (etape === '' && !q.has('colis')) {
     // Séquence complète, jouable : un bouton par colis repéré, puis le vrai ramassage et le rangement.
     const list = document.createElement('div');

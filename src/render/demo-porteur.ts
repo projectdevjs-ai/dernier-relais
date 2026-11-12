@@ -20,6 +20,8 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(2, 4, 3)
 const ground = new THREE.Mesh(new THREE.CircleGeometry(0.7, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5d6b66 }));
 scene.add(ground);
 const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+const MAINS = q.has('mains');
+const cible = new THREE.Vector3();
 
 const label = (text: string, x: number, y: number): void => {
   const el = document.createElement('div'); el.className = 'lab'; el.textContent = text;
@@ -31,8 +33,12 @@ function draw(x: number, y: number, w: number, h: number, yaw: number): void {
   const H = innerHeight;
   renderer.setViewport(x, H - y - h, w, h); renderer.setScissor(x, H - y - h, w, h);
   cam.aspect = w / h; cam.updateProjectionMatrix();
-  const dist = Math.max(4.4, 2.5 / cam.aspect);
-  cam.position.set(Math.sin(yaw) * dist, 1.25, Math.cos(yaw) * dist); cam.lookAt(0, 0.95, 0);
+  // « mains=1 » : gros plan à hauteur des mains (bassin), pour juger poignets et doigts.
+  const dist = MAINS ? Math.max(1.9, 1.15 / cam.aspect) : Math.max(4.4, 2.5 / cam.aspect);
+  cam.position.set(Math.sin(yaw) * dist, MAINS ? 1.0 : 1.25, Math.cos(yaw) * dist); cam.lookAt(0, MAINS ? 0.86 : 0.95, 0);
+  // « main=Right|Left » : très gros plan centré sur l'os de cette main.
+  const os = q.get('main') ? scene.getObjectByName(`${q.get('main')}Hand`) : null;
+  if (os) { os.getWorldPosition(cible); const r = Number(q.get('recul') ?? 0.95); cam.position.set(cible.x + Math.sin(yaw) * r, cible.y + 0.12 * r, cible.z + Math.cos(yaw) * r); cam.lookAt(cible.x, cible.y - 0.06, cible.z); }
   renderer.render(scene, cam);
 }
 
@@ -57,7 +63,15 @@ if (clip) {
     if (other) { a.setEffectiveWeight(1 - w); mixer.clipAction(other).setEffectiveWeight(w).play(); }
   }
 }
-const [yawA, yawB] = q.has('dos') ? [Math.PI, Math.PI / 2] : [0, Math.PI / 4.5];
+// « vues=180,140 » : angles de caméra au choix (degrés, 0 = de face, 180 = de dos).
+const vues = q.get('vues')?.split(',').map(d => (Number(d) * Math.PI) / 180);
+const [yawA, yawB] = vues && vues.length === 2 ? vues : q.has('dos') ? [Math.PI, Math.PI / 2] : [0, Math.PI / 4.5];
+if (q.has('os')) {
+  // Inventaire : os du squelette et pistes du clip (pour savoir si les doigts sont animés).
+  const os: string[] = []; inst.root.traverse(o => { if ((o as THREE.Bone).isBone) os.push(o.name); });
+  console.log(`os : ${os.join(' ')}`.slice(0, 190)); console.log(`os mains : ${os.filter(n => /Hand|Finger|Thumb|Index|Middle|Ring|Pinky/i.test(n)).join(' ')}`.slice(0, 190));
+  console.log(`pistes ${clip?.name} : ${clip?.tracks.length} — ${clip?.tracks.filter(t => /Hand/i.test(t.name)).map(t => t.name).join(' ')}`.slice(0, 190));
+}
 const W = innerWidth, H = innerHeight;
 const pose = (t: number): void => { mixer.setTime(t); inst.root.updateMatrixWorld(true); };
 const n = Number(q.get('planche') ?? 0);

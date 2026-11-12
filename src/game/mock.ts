@@ -40,7 +40,7 @@ export function mockView(c: LngLat = [-1.5761, 47.1822], t = 0): GameView {
     dangers: [{ id: 'd1', at: off(150, 40), radiusM: 70, inside: false }],
     skills: [
       { id: 'scan-portee', branch: 'scanner', name: 'Antenne longue', desc: 'Portée du scanner +40 m par rang.', rank: 1, maxRank: 3, cost: 1, available: true },
-      { id: 'scan-recharge', branch: 'scanner', name: 'Condensateur', desc: 'Recharge du scanner −1 s par rang.', rank: 0, maxRank: 3, cost: 1, available: true },
+      { id: 'scan-recharge', branch: 'scanner', name: 'Condensateur', desc: 'Recharge du scanner −2 s par rang.', rank: 0, maxRank: 3, cost: 1, available: true },
       { id: 'sac', branch: 'portage', name: 'Armature renforcée', desc: 'Capacité du sac +5 kg par rang.', rank: 2, maxRank: 4, cost: 2, available: true },
       { id: 'exo-bras', branch: 'portage', name: 'Attaches de bras', desc: 'Noé l’installe au labo. Deux fixations aux bras (12 kg chacune). La charge tangue un peu plus.', rank: 1, maxRank: 1, cost: 1, available: false, needsLevel: 2, exoTier: 1 },
       { id: 'exo-jambes', branch: 'portage', name: 'Attaches de jambes', desc: 'Noé l’installe au labo. Deux fixations aux cuisses (9 kg chacune). Fatiguent davantage.', rank: 0, maxRank: 1, cost: 2, available: true, needsLevel: 4, exoTier: 2 },

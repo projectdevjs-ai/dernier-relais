@@ -15,7 +15,8 @@ const PAD = new THREE.Vector3(0, 0, -3.5);
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 /** Centre de la chambre des quartiers (pièce à part, derrière la porte : on y entre par un fondu). */
 export const CHAMBER = V(SX[2], 0, -26);
-export const EXO_AT = V(-1.0, 0, -2.1);
+/** Le râtelier de l'exosquelette : à gauche du Passeur, derrière l'épaule du porteur (il ne masque ni l'anneau ni Noé). */
+export const EXO_AT = V(-1.5, 0, -1.85);
 export const DOOR_AT = V(SX[2] - 0.2, 0, ROOM.back + 0.12);
 
 const SCI_AT: Record<SciId, { at: THREE.Vector3; ry: number; st: number }> = {
@@ -171,7 +172,12 @@ function drawContracts(g: CanvasRenderingContext2D, w: number, h: number, v: Gam
   if (!rows.length) { g.fillStyle = 'rgba(230,225,211,.7)'; g.font = `500 24px ${font}`; g.fillText('Aucun contrat pour le moment', 28, 110); }
 }
 
-const EXO_H = 2.25;
+/** Animation de repos, par ordre de préférence. */
+export const IDLE = ['calmv0', 'calm_0', 'idle'] as const;
+/** Hauteur du râtelier : celle d'une armure sur son support, à peine plus haute qu'un homme (les personnages font 1,70 à 1,80 m). */
+export const EXO_H = 1.92;
+/** Rapport à l'ancienne taille (2,25 m) : les repères posés sur le modèle suivent. */
+const EXO_K = EXO_H / 2.25;
 
 export interface LabScene {
   scene: THREE.Scene;
@@ -352,7 +358,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   place(G[0], caisses, SX[0] + 3.0, -1.2, 0.5);
   // Poste 2 — Le Passeur : téléporteur, râtelier de l'exosquelette, établi de Noé
   place(G[1], tele, PAD.x, PAD.z, 0, 0.5);
-  const exoG = place(G[1], exoM, EXO_AT.x, EXO_AT.z, 0.45);
+  const exoG = place(G[1], exoM, EXO_AT.x, EXO_AT.z, 0.7);
   place(G[1], bench, 3.0, -4.9, -0.15);
   // Poste 3 — Quartiers : baie médicale, hydroponie, porte de la chambre
   place(G[2], med, SX[2] + 3.3, -2.6, -0.9);
@@ -408,7 +414,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
             float y = vRack.y / ${EXO_H.toFixed(2)};
             if (y > 0.8) { lv = uLv.x; tint = vec3(0.5, 0.78, 0.85); }
             else if (y < 0.36) { lv = uLv.z; tint = vec3(0.61, 0.81, 0.48); }
-            else if (abs(vRack.x) > 0.2) { lv = uLv.y; tint = vec3(0.91, 0.64, 0.29); }
+            else if (abs(vRack.x) > ${(0.2 * EXO_K).toFixed(3)}) { lv = uLv.y; tint = vec3(0.91, 0.64, 0.29); }
             else { lv = uLv.w; tint = vec3(0.94, 0.78, 0.37); }
           }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
@@ -416,7 +422,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
           float exoOn = step(0.001, exoLv);
           diffuseColor.rgb = mix(vec3(0.01, 0.026, 0.032), diffuseColor.rgb * mix(vec3(1.0), exoTint * 1.4, 0.25) * (0.42 + 0.3 * exoLv), exoOn);`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-          float exoScan = pow(0.5 + 0.5 * sin(vRack.y * 46.0 - uT * 1.6), 10.0);
+          float exoScan = pow(0.5 + 0.5 * sin(vRack.y * ${(46 / EXO_K).toFixed(1)} - uT * 1.6), 10.0);
           totalEmissiveRadiance += (1.0 - exoOn) * vec3(0.08, 0.36, 0.46) * (0.08 + 0.8 * exoScan);
           totalEmissiveRadiance += exoOn * exoTint * (0.015 + 0.05 * exoLv) * (1.0 + 0.25 * sin(uT * 2.0 + vRack.y * 3.0)) + exoOn * exoTint * uPulse;`);
     };
@@ -426,7 +432,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   const nodeAt: Record<SkillBranch, [number, number, number]> = { scanner: [0, 2.12, 0.3], portage: [0.62, 1.55, 0.25], endurance: [-0.5, 0.5, 0.35], 'réseau': [0, 1.25, 0.32] };
   const exoNodes = BRANCHES.map(b => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: disc, color: BRANCH_COLOR[b], transparent: true, opacity: 0, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false }));
-    s.position.set(...nodeAt[b]);
+    s.position.set(nodeAt[b][0] * EXO_K, nodeAt[b][1] * EXO_K, nodeAt[b][2] * EXO_K);
     exoG.add(s);
     return s;
   });
@@ -528,13 +534,14 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   scene.add(pg);
   pg.add(porterM.root, blobShadow(shadowTex, 0.9, 0.9, 0.6));
   pg.position.copy(porterSpot(1)); pg.rotation.y = 0.55;
-  porter.play(porter.pick('calm_0', 'calmv0', 'idle'), 0);
+  // Repos : « calmv0 » (bras le long du corps). « calm_0 » écarte les bras du porteur et fige les scientifiques, un bras tendu.
+  porter.play(porter.pick(...IDLE), 0);
   const scis: Sci[] = sciIds.map((id, i) => {
     const m = sciM[i], actor = new Actor(m), g = new THREE.Group();
     G[SCI_AT[id].st].add(g);
     g.add(m.root, blobShadow(shadowTex, 0.9, 0.9, 0.6));
     g.position.copy(SCI_AT[id].at); g.rotation.y = SCI_AT[id].ry;
-    actor.play(actor.pick('calm_0', 'calmv0'), 0);
+    actor.play(actor.pick(...IDLE), 0);
     actor.mixer.update(i * 0.7); // désynchronise les respirations
     return { id, st: SCI_AT[id].st, actor, head: SCI_AT[id].at.clone().setY(m.size.y + 0.12), talkUntil: 0, nextIdle: 6 + i * 4 };
   });
@@ -550,7 +557,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     scene.add(m); hits.push(m);
   };
   for (const id of sciIds) hit('sci', id, SCI_AT[id].st, SCI_AT[id].at.clone().setY(0.9), V(0.8, 1.8, 0.8));
-  hit('exo', 'exo', 1, EXO_AT.clone().setY(1.15), V(1.5, 2.3, 1.2));
+  hit('exo', 'exo', 1, EXO_AT.clone().setY(EXO_H / 2), V(1.5 * EXO_K, EXO_H + 0.1, 1.1));
   hit('porte', 'porte', 2, DOOR_AT.clone().setY(1.6), V(2, 3.2, 0.6));
 
   for (const m of models) setEnvIntensity(m.root, 1);
@@ -701,11 +708,11 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
       if (!shown[s.st]) continue;
       s.actor.update(dt);
       // Au repos, un geste de temps en temps ; après une réplique, retour au calme.
-      if (s.talkUntil && t > s.talkUntil) { s.talkUntil = 0; s.actor.play(s.actor.pick('calm_0', 'calmv0'), 0.6); s.nextIdle = t + 8 + hash(t) * 8; }
+      if (s.talkUntil && t > s.talkUntil) { s.talkUntil = 0; s.actor.play(s.actor.pick(...IDLE), 0.6); s.nextIdle = t + 8 + hash(t) * 8; }
       else if (!s.talkUntil && t > s.nextIdle) {
-        const cur = s.actor.currentName, next = cur === 'calm_0' ? s.actor.pick(hash(t * 3) > 0.5 ? 'calmv2' : 'calmv3', 'calm_0') : s.actor.pick('calm_0', 'calmv0');
+        const base = s.actor.pick(...IDLE), cur = s.actor.currentName, next = cur === base ? s.actor.pick(hash(t * 3) > 0.5 ? 'calmv2' : 'calmv3', base) : base;
         s.actor.play(next, 0.8);
-        s.nextIdle = t + (next === 'calm_0' ? 9 + hash(t) * 9 : Math.max(3, s.actor.duration(next) - 0.8));
+        s.nextIdle = t + (next === base ? 9 + hash(t) * 9 : Math.max(3, s.actor.duration(next) - 0.8));
       }
     }
     if (chamberOn) return;

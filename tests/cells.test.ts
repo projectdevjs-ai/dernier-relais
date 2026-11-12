@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cell, cellAt, cellBounds, cellCenter, dist, inCell, type LngLat } from '../src/core/geo';
 import { cellPaths, generateCell, PATHS } from '../src/world/cells';
+import { shelterSite } from '../src/world/site';
 import type { RawTile } from '../src/world/types';
 
 const c = cellAt(-1.5761, 47.1822);
@@ -71,5 +72,36 @@ describe('cases', () => {
     const len = (p: LngLat[]) => p.slice(1).reduce((a, q, i) => a + dist(p[i], q), 0);
     expect(len(paths[0])).toBeGreaterThan(330);
     expect(Math.abs(paths[0][0][1] - lat)).toBeLessThan(1e-9);
+  });
+  it('ne pose jamais le bâtiment d’un abri sur la chaussée : implantation décalée, façade vers la rue', () => {
+    // Distance d'un point au tracé le plus proche (mètres), par échantillonnage fin des segments.
+    const toRoads = (p: LngLat, roads: LngLat[][]) => Math.min(...roads.flatMap(r => r.slice(1).flatMap((b, i) =>
+      Array.from({ length: 41 }, (_, k) => dist(p, [r[i][0] + (b[0] - r[i][0]) * k / 40, r[i][1] + (b[1] - r[i][1]) * k / 40])))));
+    // Abri de secours posé sur un point de rue (carrefour de deux rues en croix).
+    const raw = base();
+    raw.roads.push(road([[mid[0], mid[1] - 0.001], mid, [mid[0], mid[1] + 0.001]]), road([[mid[0] - 0.001, mid[1]], mid]));
+    const s = allShelters(raw)[0];
+    const roads = raw.roads.map(r => r.pts);
+    expect(s.kind).toBe('carrefour');
+    expect(toRoads(s.at, roads)).toBeLessThan(0.5);
+    expect(s.site).toBeDefined();
+    expect(toRoads(s.site!, roads)).toBeGreaterThan(9);
+    expect(dist(s.at, s.site!)).toBeLessThan(30);
+    expect(allShelters(raw)[0]).toEqual(s);
+    // Rue seule, est-ouest : recul de 15 m, perpendiculaire, façade plein nord ou plein sud.
+    const rue: LngLat[][] = [[[mid[0] - 0.002, mid[1]], [mid[0] + 0.002, mid[1]]]];
+    const a = shelterSite(mid, rue)!;
+    expect(Math.abs(dist(mid, a.site) - 15)).toBeLessThan(0.5);
+    expect(Math.abs(a.site[0] - mid[0])).toBeLessThan(1e-6);
+    expect(a.facing % 180).toBeCloseTo(0, 0);
+    // Une seconde rue parallèle à 20 m au nord : l'abri part du côté sud, façade au nord.
+    const b = shelterSite(mid, [...rue, [[mid[0] - 0.002, mid[1] + 20 / 111320], [mid[0] + 0.002, mid[1] + 20 / 111320]]])!;
+    expect(b.site[1]).toBeLessThan(mid[1]); expect(b.facing).toBeCloseTo(0, 0);
+    // Vrai lieu : à 30 m de la rue il ne bouge pas, à 3 m il est reculé.
+    const loin: LngLat = [mid[0], mid[1] + 30 / 111320], pres: LngLat = [mid[0], mid[1] + 3 / 111320];
+    expect(shelterSite(loin, rue, true)!.site).toEqual(loin);
+    expect(shelterSite(loin, rue, true)!.facing).toBeCloseTo(180, 0);
+    expect(toRoads(shelterSite(pres, rue, true)!.site, rue)).toBeGreaterThan(11);
+    expect(shelterSite(mid, [])).toBeNull();
   });
 });

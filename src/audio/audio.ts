@@ -3,14 +3,21 @@
 //   addEventListener('pointerdown', () => son.unlock());
 //   game.on(e => son.handle(e));                   // sons et vibrations des événements
 //   son.ambient(view);                             // à chaque image de jeu : nappe, pas, alerte d'équilibre
+//   son.blip('mara', 'content');                   // interjection vocale d'un personnage (« ah », « hm »…), à la place des voix
+//   son.cue('depart');                             // jingle court de mise en scène
+//   son.music('labo');                             // nappe musicale générative de la scène ; son.music(null) l'arrête
 import type { GameEvent, GameView, Grade } from '../game/api';
 import { Ambience, ambientInput } from './ambience';
+import { BLIP_VARIANTS, type BlipHandle, type BlipMood, personaKey, playBlip } from './blip';
+import { Music, type MusicScene } from './music';
 import { Rig } from './rig';
 import { SOUNDS, type SoundName, play } from './sounds';
 
 export { MAX_VOICES } from './rig';
 export interface SoundOptions { volume?: number; muted?: boolean; haptics?: boolean }
 export type UiKind = 'tap' | 'open' | 'close' | 'error' | 'confirm';
+export type CueName = 'chargement' | 'depart' | 'labo' | 'passeur' | 'chapitre';
+export type { BlipMood, MusicScene };
 
 /** Durée totale maximale d'une vibration, pauses comprises (ms). */
 export const HAPTIC_MAX_MS = 400;
@@ -52,6 +59,7 @@ export function clampPattern(pattern: readonly number[]): number[] {
 }
 
 const UI: Record<UiKind, SoundName> = { tap: 'uiTap', open: 'uiOpen', close: 'uiClose', error: 'uiError', confirm: 'uiConfirm' };
+const CUES: Record<CueName, SoundName> = { chargement: 'cueChargement', depart: 'cueDepart', labo: 'cueLabo', passeur: 'cuePasseur', chapitre: 'cueChapitre' };
 const GRADES: Record<Grade, SoundName> = { E: 'deliveryE', D: 'deliveryD', C: 'deliveryC', B: 'deliveryB', A: 'deliveryA', S: 'deliveryS' };
 /** Une phrase (jingle) attend la fin de la précédente, mais jamais plus longtemps que ça : au-delà, elle est abandonnée. */
 const MAX_QUEUE_S = 2.5;
@@ -73,6 +81,11 @@ export class Sound {
   private phraseEnd = 0;
   private levelUpQuietUntil = 0;
   private lastPlayed = new Map<SoundName, number>();
+  private mus: Music | null = null;
+  private musicScene: MusicScene | null = null;
+  private musicTimer: ReturnType<typeof setInterval> | null = null;
+  private blipNow: BlipHandle | null = null;
+  private blipTurn = new Map<string, number>();
 
   constructor(opts: SoundOptions = {}) {
     this.volume = Math.max(0, Math.min(1, opts.volume ?? 0.8));
@@ -93,7 +106,7 @@ export class Sound {
         this.amb = new Ambience(this.rig);
       }
       this.power();
-    } catch { this.ctx = null; this.rig = null; this.amb = null; /* pas de son sur cet appareil : le jeu continue */ }
+    } catch { this.ctx = null; this.rig = null; this.amb = null; this.mus = null; /* pas de son sur cet appareil : le jeu continue */ }
   }
 
   /** Vrai une fois le son débloqué et le contexte créé. */
@@ -190,6 +203,55 @@ export class Sound {
     } catch { /* voir handle */ }
   }
 
+  /**
+   * Interjection vocale d'un personnage (« hm », « ah », « oh », « hé »… 0,2 à 0,5 s), à la place d'une réplique parlée.
+   * `who` : mara, tomas, agathe, kenji, iris, noe, selma ; tout autre nom (rôdeur, inconnu) prend une voix neutre.
+   * `mood` infléchit l'intonation. Deux ou trois variantes tournent ; une nouvelle interjection coupe la précédente en fondu.
+   */
+  blip(who: string, mood: BlipMood = 'neutre'): void {
+    if (!this.audible()) return;
+    try {
+      const rig = this.rig!, now = rig.ctx.currentTime, key = personaKey(who), turn = this.blipTurn.get(key) ?? 0;
+      const cutting = this.blipNow !== null && this.blipNow.end > now;
+      this.blipNow?.cut(now);
+      this.wake();
+      // Si une interjection est coupée, la nouvelle part juste après le fondu : jamais deux voix superposées.
+      const next = playBlip(rig, key, mood, turn, now + (cutting ? 0.04 : 0.015));
+      if (next) { this.blipNow = next; this.blipTurn.set(key, (turn + 1) % BLIP_VARIANTS); }
+    } catch { /* voir handle */ }
+  }
+
+  /** Jingle court de mise en scène : écran de chargement, toucher de départ, arrivée au labo, passeur (téléportation), fin de chapitre. */
+  cue(name: CueName): void {
+    if (!this.unlocked) return;
+    const sound = CUES[name];
+    if (!sound) return;
+    try { this.phrase(sound); } catch { /* voir handle */ }
+  }
+
+  /**
+   * Nappe musicale générative, très discrète, propre à la scène (bourdon de ré et quelques notes lentes en ré mineur
+   * pentatonique, sans boucle). Changement et arrêt en fondu ; `null` = arrêt. La scène est mémorisée : si le son est
+   * coupé, verrouillé ou en arrière-plan, rien ne tourne, et la musique reprend d'elle-même au retour du son.
+   */
+  music(scene: MusicScene | null): void {
+    this.musicScene = scene === 'labo' || scene === 'prologue' || scene === 'carte' ? scene : null;
+    try { this.syncMusic(); } catch { /* voir handle */ }
+  }
+
+  private syncMusic(): void {
+    const want = this.audible() ? this.musicScene : null;
+    if (want) {
+      this.wake();
+      this.mus ??= new Music(this.rig!);
+      this.mus.set(want);
+      this.musicTimer ??= setInterval(() => { try { this.mus?.tick(); } catch { /* voir handle */ } }, 450);
+    } else {
+      if (this.musicTimer !== null) { clearInterval(this.musicTimer); this.musicTimer = null; }
+      this.mus?.stop(this.audible() ? 1.2 : 0.2);
+    }
+  }
+
   /** Volume général de 0 à 1. À 0, la nappe est détruite et le contexte audio mis en veille. */
   setVolume(v: number): void { this.volume = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0)); this.power(); }
   /** Coupe ou rétablit tout le son (les vibrations se règlent à part, avec setHaptics). */
@@ -214,8 +276,10 @@ export class Sound {
     rig.out.gain.cancelScheduledValues(now);
     // Curseur au carré : la progression du volume paraît régulière à l'oreille.
     rig.out.gain.setTargetAtTime(on ? this.volume * this.volume : 0, now, on ? 0.05 : 0.03);
-    if (on) { this.wake(); return; }
+    if (on) { this.wake(); this.syncMusic(); return; }
     this.amb?.stop();
+    this.syncMusic();
+    this.blipNow?.cut(now); this.blipNow = null;
     this.phraseEnd = 0;
     // Le contexte s'endort une fois le fondu terminé : plus aucun calcul audio tant que le son est coupé.
     this.sleepTimer = setTimeout(() => { this.sleepTimer = null; if (!this.audible()) void ctx.suspend().catch(() => { /* déjà fermé */ }); }, 300);

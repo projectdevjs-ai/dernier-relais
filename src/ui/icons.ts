@@ -55,6 +55,7 @@ const P = {
   user: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.6-3.8 3.4-6 7-6s6.4 2.2 7 6"/>',
   install: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M12 8v6M9.8 12l2.2 2.2 2.2-2.2"/>',
   film: '<rect x="4" y="5.5" width="16" height="13" rx="2"/><path d="M10.5 9.5v5l4-2.5z"/>',
+  auto: '<circle cx="12" cy="12" r="4"/><path d="M12 8v8a4 4 0 0 0 0-8z" fill="currentColor"/><path d="M12 2.8v2.2M12 19v2.2M2.8 12H5M19 12h2.2M5.5 5.5l1.5 1.5M17 17l1.5 1.5M5.5 18.5L7 17M17 7l1.5-1.5"/>',
   flask: '<path d="M9.5 3.5h5M10.5 3.5v6L5.5 18a1.8 1.8 0 0 0 1.6 2.6h9.8a1.8 1.8 0 0 0 1.6-2.6l-5-8.5v-6M8 15h8"/>',
 } as const;
 

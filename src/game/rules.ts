@@ -59,7 +59,7 @@ export const WEAR = {
   /** multiplicateur pour un colis fragile (pluie, déséquilibre) */ fragile: 2, fragileUnbalanced: 1.5,
   /** multiplicateur d'usure quand l'endurance est à 0 */ exhausted: 1.3,
   /** sensibilité de chaque caisse à la pluie et à la neige */
-  crateWet: { bois: 1, alu: 0.5, plastique: 0.6, carton: 1.5 },
+  crateWet: { bois: 1, alu: 0.5, plastique: 0.6, carton: 1.5, sac: 0.3, fut: 0.4, coffre: 0.4 },
 } as const;
 
 export const BALANCE = {

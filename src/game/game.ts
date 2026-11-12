@@ -1,5 +1,6 @@
 // Le moteur de jeu. Aucun accès à l'écran ni au réseau : il reçoit le monde, la météo et la position,
 // et produit un GameView. Les règles sont dans les petits modules voisins (fonctions pures).
+import { crateDef } from './crates';
 import { type LngLat, cellAt, dist } from '../core/geo';
 import type { Fix } from '../player/gps';
 import type { CellContent, Shelter } from '../world/types';
@@ -800,7 +801,7 @@ export class Game implements GameEngine {
     if (dryRun) return OK;
     const t = this.now();
     const o: Order = {
-      id, cell: '', name: String(p.name || 'Colis').slice(0, 40), rareName: null, crate: p.crate, weightKg, fragile: p.fragile === true,
+      id, cell: '', name: String(p.name || 'Colis').slice(0, 40), rareName: null, crate: crateDef(p.crate).kind, weightKg, fragile: p.fragile === true,
       at: [sh.at[0], sh.at[1]], destId: p.destId, destName: String(p.destName || 'Abri').slice(0, 80), destAt: [p.destAt[0], p.destAt[1]],
       deadlineMin: null, baseReward: Math.min(400, Math.max(5, Number.isFinite(p.reward) ? Math.round(p.reward) : 5)),
       state: 'porté', condition: Math.min(1, Math.max(0, Number.isFinite(p.condition) ? p.condition! : 1)), pickedAt: t, inspected: true, slot,

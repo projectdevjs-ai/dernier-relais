@@ -3,6 +3,7 @@
 import { type LngLat, dist, hash, rng } from '../core/geo';
 import type { ParcelSpot, Shelter } from '../world/types';
 import type { CrateKind, SlotId, SpecialKind, SurpriseKind } from './api';
+import { CRATE_DEFS } from './crates';
 import { DEST, NEWBIE, SHELTER_PERK } from './rules';
 import { makeSpecial, specialFor } from './specials';
 
@@ -50,29 +51,47 @@ export interface Order {
   label?: boolean;
 }
 
-interface Item { name: string; crate: CrateKind; min: number; max: number; fragile: number }
+interface Item {
+  name: string;
+  /** Matière habituelle de la marchandise. */
+  crate: CrateKind;
+  /** Autres emballages plausibles (tirés une fois sur trois environ). Aucun : toujours la matière habituelle. */
+  alt?: CrateKind[];
+  min: number; max: number; fragile: number;
+}
+/** Catalogue : chaque marchandise voyage dans une matière cohérente (liquides en fût, vrac en sac, matériel sensible en malle ou en coffre). */
 export const ITEMS: Item[] = [
-  { name: 'Médicaments', crate: 'plastique', min: 1, max: 4, fragile: 0.8 },
-  { name: 'Engrais', crate: 'carton', min: 1, max: 3, fragile: 0.1 },
-  { name: 'Pièces de pompe', crate: 'alu', min: 4, max: 10, fragile: 0 },
-  { name: 'Filtres à eau', crate: 'plastique', min: 2, max: 6, fragile: 0.3 },
-  { name: 'Outils', crate: 'bois', min: 5, max: 12, fragile: 0 },
-  { name: 'Batteries', crate: 'alu', min: 4, max: 10, fragile: 0.4 },
-  { name: 'Livres', crate: 'carton', min: 2, max: 8, fragile: 0 },
-  { name: 'Câbles', crate: 'plastique', min: 2, max: 7, fragile: 0 },
-  { name: 'Ampoules', crate: 'carton', min: 1, max: 3, fragile: 1 },
-  { name: 'Conserves', crate: 'bois', min: 4, max: 10, fragile: 0 },
-  { name: 'Couvertures', crate: 'carton', min: 2, max: 5, fragile: 0 },
-  { name: 'Pansements', crate: 'plastique', min: 1, max: 3, fragile: 0.2 },
-  { name: 'Panneaux solaires', crate: 'alu', min: 6, max: 12, fragile: 0.9 },
-  { name: 'Bocaux', crate: 'bois', min: 3, max: 8, fragile: 1 },
-  { name: 'Pièces de radio', crate: 'alu', min: 1, max: 4, fragile: 0.7 },
-  { name: 'Farine', crate: 'carton', min: 4, max: 10, fragile: 0 },
-  { name: 'Savon', crate: 'carton', min: 1, max: 4, fragile: 0 },
-  { name: 'Lampes', crate: 'plastique', min: 1, max: 4, fragile: 0.6 },
+  { name: 'Médicaments', crate: 'plastique', alt: ['alu'], min: 1, max: 4, fragile: 0.8 },
+  { name: 'Engrais', crate: 'sac', alt: ['plastique'], min: 1, max: 4, fragile: 0.1 },
+  { name: 'Pièces de pompe', crate: 'alu', alt: ['coffre', 'bois'], min: 4, max: 10, fragile: 0 },
+  { name: 'Filtres à eau', crate: 'plastique', alt: ['carton'], min: 2, max: 6, fragile: 0.3 },
+  { name: 'Outils', crate: 'bois', alt: ['coffre', 'alu'], min: 5, max: 12, fragile: 0 },
+  { name: 'Batteries', crate: 'alu', alt: ['plastique'], min: 4, max: 10, fragile: 0.4 },
+  { name: 'Livres', crate: 'carton', alt: ['bois'], min: 2, max: 8, fragile: 0 },
+  { name: 'Câbles', crate: 'plastique', alt: ['sac', 'carton'], min: 2, max: 7, fragile: 0 },
+  { name: 'Ampoules', crate: 'carton', alt: ['plastique'], min: 1, max: 3, fragile: 1 },
+  { name: 'Conserves', crate: 'bois', alt: ['carton'], min: 4, max: 10, fragile: 0 },
+  { name: 'Couvertures', crate: 'sac', alt: ['carton'], min: 2, max: 5, fragile: 0 },
+  { name: 'Pansements', crate: 'plastique', alt: ['carton'], min: 1, max: 3, fragile: 0.2 },
+  { name: 'Panneaux solaires', crate: 'alu', alt: ['bois'], min: 6, max: 12, fragile: 0.9 },
+  { name: 'Bocaux', crate: 'bois', alt: ['carton'], min: 3, max: 8, fragile: 1 },
+  { name: 'Pièces de radio', crate: 'alu', alt: ['plastique'], min: 1, max: 4, fragile: 0.7 },
+  { name: 'Farine', crate: 'sac', alt: ['carton'], min: 4, max: 8, fragile: 0 },
+  { name: 'Savon', crate: 'carton', alt: ['sac'], min: 1, max: 4, fragile: 0 },
+  { name: 'Lampes', crate: 'plastique', alt: ['carton'], min: 1, max: 4, fragile: 0.6 },
+  // Marchandises de l'ancien jeu et nouvelles formes : sacs, fûts, coffres.
+  { name: 'Vêtements chauds', crate: 'sac', min: 1, max: 5, fragile: 0 },
+  { name: 'Cordages', crate: 'sac', alt: ['bois'], min: 2, max: 7, fragile: 0 },
+  { name: 'Riz', crate: 'sac', min: 3, max: 8, fragile: 0 },
+  { name: 'Eau potable', crate: 'fut', min: 6, max: 12, fragile: 0 },
+  { name: 'Huile de lampe', crate: 'fut', min: 5, max: 10, fragile: 0.15 },
+  { name: 'Carburant', crate: 'fut', min: 6, max: 12, fragile: 0 },
+  { name: 'Vivres scellés', crate: 'fut', alt: ['bois'], min: 5, max: 11, fragile: 0 },
+  { name: 'Pièces mécaniques', crate: 'coffre', alt: ['bois'], min: 7, max: 12, fragile: 0 },
+  { name: 'Archives', crate: 'coffre', alt: ['carton'], min: 7, max: 11, fragile: 0 },
+  { name: 'Lentilles optiques', crate: 'coffre', alt: ['alu'], min: 7, max: 10, fragile: 1 },
 ];
 export const RARE_NAMES = ['Vaccins', 'Émetteur radio', 'Microscope', 'Graines anciennes', 'Cartes du réseau', 'Pièces d’horloge'];
-const CRATES: CrateKind[] = ['bois', 'alu', 'plastique', 'carton'];
 export const ORDER = { deadlineChance: 0.35, rareChance: 0.15, itemCrateChance: 0.7 } as const;
 
 const round5 = (n: number): number => Math.max(5, Math.round(n / 5) * 5);
@@ -146,14 +165,18 @@ export function makeOrder(spot: ParcelSpot, shelters: Shelter[]): Order | null {
   const r = rng(`commande|${spot.id}`);
   const item = ITEMS[Math.floor(r() * ITEMS.length)];
   const weightKg = item.min + Math.floor(r() * (item.max - item.min + 1));
-  const fragile = r() < item.fragile;
-  const ownCrate = r() < ORDER.itemCrateChance, otherCrate = CRATES[Math.floor(r() * CRATES.length)];
+  const brittle = r() < item.fragile;
+  // Matière : celle de la marchandise le plus souvent, sinon un de ses autres emballages plausibles (jamais au hasard).
+  const ownCrate = r() < ORDER.itemCrateChance, alt = item.alt ?? [item.crate], otherCrate = alt[Math.floor(r() * alt.length)];
+  const crate = ownCrate ? item.crate : otherCrate;
+  // Une matière qui protège (malle, coffre, fût) rend certains contenus fragiles moins sensibles.
+  const fragile = brittle && hash(`protégé|${spot.id}`) / 4294967296 < CRATE_DEFS[crate].fragility;
   const timed = r() < ORDER.deadlineChance;
   const rare = r() < ORDER.rareChance, rareName = RARE_NAMES[Math.floor(r() * RARE_NAMES.length)];
   const d = dist(spot.at, dest.at);
   const o: Order = {
     id: spot.id, cell: spot.cell, name: item.name, rareName: rare ? rareName : null,
-    crate: ownCrate ? item.crate : otherCrate, weightKg, fragile, at: spot.at,
+    crate, weightKg, fragile, at: spot.at,
     destId: dest.id, destName: dest.name, destAt: dest.at,
     deadlineMin: timed ? deadlineFor(d) : null,
     baseReward: baseReward(weightKg, d, fragile, timed),

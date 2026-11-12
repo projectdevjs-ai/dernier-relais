@@ -349,15 +349,19 @@ describe('rangement en jeu', () => {
 describe('sanglage', () => {
   it('nombre de boucles selon le colis : 3 pour un colis simple, jusqu’à 7', () => {
     const plain = strapPlan({ weightKg: 3, fragile: false, timed: false });
-    expect(plain).toMatchObject({ nodes: 3, corr: 24, hold: 220, time: 15, harshSpeed: 1600, harshCost: 5, ratchetZone: 0.14 });
-    expect(plain.lag).toBeCloseTo(0.42); expect(plain.sway).toBeCloseTo(2.5);
-    expect(strapPlan({ weightKg: 7, fragile: true, timed: false })).toMatchObject({ nodes: 4, harshSpeed: 900, harshCost: 10, ratchetZone: 0.17 });
-    expect(strapPlan({ weightKg: 12, fragile: false, timed: true })).toMatchObject({ nodes: 6, corr: 17.5, hold: 430, time: 20, ratchetZone: 0.1 });
+    // Réglages assouplis d'un cinquième environ (ancien jeu : passage 24 px, maintien 220 ms, 15 s, zone verte 0,14).
+    expect(plain).toMatchObject({ nodes: 3, corr: 29, hold: 175, time: 19, harshSpeed: 2000, harshCost: 4, ratchetZone: 0.175 });
+    expect(plain.lag).toBeCloseTo(0.42); expect(plain.sway).toBeCloseTo(2);
+    expect(strapPlan({ weightKg: 7, fragile: true, timed: false })).toMatchObject({ nodes: 4, harshSpeed: 1100, harshCost: 8, ratchetZone: 0.21 });
+    const heavy = strapPlan({ weightKg: 12, fragile: false, timed: true });
+    expect(heavy).toMatchObject({ nodes: 6, hold: 340, time: 25, ratchetZone: 0.125 }); expect(heavy.corr).toBeCloseTo(21.2);
+    // La difficulté monte toujours avec le poids et l'urgence.
+    expect(heavy.corr).toBeLessThan(plain.corr); expect(heavy.hold).toBeGreaterThan(plain.hold); expect(heavy.sway).toBeGreaterThan(plain.sway); expect(heavy.ratchetZone).toBeLessThan(plain.ratchetZone);
     expect(strapPlan({ weightKg: 16, fragile: false, timed: false, special: 'batterie' }).nodes).toBe(7);
-    expect(strapPlan({ weightKg: 11, fragile: false, timed: false, special: 'ruche' })).toMatchObject({ harshSpeed: 520, harshCost: 8 });
+    expect(strapPlan({ weightKg: 11, fragile: false, timed: false, special: 'ruche' })).toMatchObject({ harshSpeed: 650, harshCost: 6 });
     for (const kg of [1, 5, 10, 18]) for (const timed of [false, true]) {
       const p = strapPlan({ weightKg: kg, fragile: false, timed });
-      expect(p.time).toBeGreaterThanOrEqual(15); expect(p.time).toBeLessThanOrEqual(22); expect(p.corr).toBeGreaterThanOrEqual(15); expect(p.lag).toBeGreaterThan(0.2);
+      expect(p.time).toBeGreaterThanOrEqual(19); expect(p.time).toBeLessThanOrEqual(27); expect(p.corr).toBeGreaterThanOrEqual(18); expect(p.lag).toBeGreaterThan(0.2);
     }
   });
   it('qualité : parfaite à partir de 95 % d’état, sinon l’état lui-même', () => {
@@ -365,6 +369,7 @@ describe('sanglage', () => {
     expect(strapQualityFromState(90)).toBe(0.9); expect(strapQualityFromState(36)).toBe(0.36);
     expect(strapQualityFromState(-5)).toBe(0); expect(strapQualityFromState(250)).toBe(1); expect(strapQualityFromState(Number.NaN)).toBe(0);
     expect(STRAP.refuse).toBe(35);
+    expect(STRAP).toMatchObject({ offPath: 12, tooTight: 11, overRatchet: 8, snapped: 11, defect: 8 });
   });
   it('un colis bien sanglé s’abîme moins quand la charge est déséquilibrée', () => {
     const c = { weather: 'clair' as const, inDanger: false, unbalanced: true, running: true, exhausted: false, wearMult: 1, dangerMult: 1 };

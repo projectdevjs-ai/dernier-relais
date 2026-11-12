@@ -306,20 +306,25 @@ describe('textes', () => {
     expect(new Set(texts).size).toBe(texts.length);
   });
 
-  it('scripts/voix-extra.json contient exactement les messages radio, plus les lignes du prologue', () => {
+  it('scripts/voix-extra.json contient exactement la narration du prologue, puis les messages radio', () => {
     const extra = JSON.parse(readFileSync('scripts/voix-extra.json', 'utf8')) as { who: string; text: string }[];
     for (const j of extra) expect(['iris', 'noe', 'selma', 'narrateur']).toContain(j.who);
     const key = (j: { who: string; text: string }): string => `${j.who}|${j.text}`;
     const radio = allRadio().map(key);
-    // Lignes du prologue, lues dans le code source lui-même.
+    // Phrases du narrateur, lues dans le code source lui-même (constante NARRATION de src/intro/prologue.ts).
     const src = readFileSync('src/intro/prologue.ts', 'utf8');
-    const block = src.slice(src.indexOf('const LINES'), src.indexOf('const CUES'));
-    const prologue = [...block.matchAll(/kind: '(?:line|place|title)',(?: kicker: '[^']*',)? text: '([^']+)'/g)].map(m => m[1]);
-    expect(prologue.length).toBe(7);
+    const block = src.slice(src.indexOf('export const NARRATION'), src.indexOf('const NARRATION_END'));
+    const lines = [...block.matchAll(/\{ t: ([\d.]+), who: 'narrateur', text: '([^']+)' \}/g)].map(m => ({ t: Number(m[1]), text: m[2] }));
+    expect(lines.length).toBeGreaterThanOrEqual(6);
+    expect(lines.length).toBeLessThanOrEqual(9);
+    // Instants croissants, et jamais moins de 3,2 s entre deux phrases.
+    for (let i = 1; i < lines.length; i++) expect(lines[i].t - lines[i - 1].t).toBeGreaterThanOrEqual(3.2);
+    // Le narrateur est la seule voix du prologue : plus aucune ligne d'Iris ni carton de lieu dans le fichier des voix.
     const rest = extra.filter(j => !radio.includes(key(j)));
     expect(extra.filter(j => radio.includes(key(j))).map(key)).toEqual(radio);
-    expect(rest.map(j => j.text)).toEqual(prologue);
-    for (const j of rest) expect(['iris', 'narrateur']).toContain(j.who);
+    expect(rest.map(j => j.text)).toEqual(lines.map(l => l.text));
+    for (const j of rest) expect(j.who).toBe('narrateur');
+    for (const j of extra) if (j.who === 'narrateur') expect(rest).toContain(j);
   });
 });
 

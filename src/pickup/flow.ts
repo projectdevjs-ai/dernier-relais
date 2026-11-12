@@ -1,6 +1,7 @@
 // Le ramassage d'un colis, de bout en bout : vérification, séquence en caméra (repérage, inspection, sanglage),
 // puis ramassage réel et écran de rangement. Avec « Ramassage rapide », le colis va droit à l'emplacement conseillé.
 import type { GameActions, GameEvent, GameView, OrderView, UiKind } from '../game/api';
+import { crateLabel } from '../game/crates';
 import { strapQualityFromState } from '../game/gestures';
 import { SURPRISE_HEARD } from '../game/surprises';
 import { LoadScreen } from './load';
@@ -20,7 +21,6 @@ export interface FlowHost {
   overlay?(open: boolean): void;
 }
 
-const CRATE: Record<string, string> = { bois: 'Caisse en bois', alu: 'Caisse en aluminium', plastique: 'Bac plastique', carton: 'Carton' };
 const D2R = Math.PI / 180;
 function bearing(a: [number, number], b: [number, number]): number {
   const dL = (b[0] - a[0]) * D2R, y = Math.sin(dL) * Math.cos(b[1] * D2R);
@@ -32,7 +32,7 @@ export function seqParcel(o: OrderView, v: GameView | null): SeqParcel {
   const sp = o.special ?? null, at = v?.player.at ?? null;
   return {
     id: o.id, name: o.name, crate: o.crate, weightKg: o.weightKg, fragile: o.fragile, special: sp?.kind ?? null,
-    crateLabel: sp ? (sp.known ? 'Colis spécial' : 'Colis scellé') : CRATE[o.crate] ?? 'Caisse',
+    crateLabel: sp ? (sp.known ? 'Colis spécial' : 'Colis scellé') : crateLabel(o.crate),
     timed: o.minutesLeft !== null, inspected: o.inspected === true, labelHidden: o.labelHidden === true,
     known: sp?.known ? `${sp.label}. ${sp.rule}` : o.inspected && o.fragile ? 'Colis fragile : aucun geste brusque' : '',
     bearingDeg: at && o.distanceM > 6 ? bearing(at, o.at) : null, destName: o.destName,

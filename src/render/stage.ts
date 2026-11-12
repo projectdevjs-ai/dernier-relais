@@ -12,7 +12,8 @@ import { Fronts } from './fronts';
 import { Celebration, Dangers, FxKit, ScanPulse } from './fx';
 import { Jams } from './jams';
 import { LAYER_ID, Layer3D } from './layer';
-import { applyPalette, BUILDING_LAYERS, buildGameStyle, type GameStyle, paletteFor, STYLE_URL, windowPattern } from './mapstyle';
+import { applyPalette, BUILDING_LAYERS, buildGameStyle, type GameStyle, paletteFor, SOURCE, STYLE_URL, windowPattern } from './mapstyle';
+import { shelterSite, type Site } from '../world/site';
 import { PARCEL_TOP, Parcels, parcelModel } from './parcels';
 import { Porter } from './porter';
 import { Router } from './route';
@@ -27,7 +28,8 @@ const DEFAULT_CENTER: LngLat = [-1.5761, 47.1822];
 const ZOOM = 19.4;
 const PITCH = 62;
 const BEARING = -18;
-const MIN_ZOOM = 15, MAX_ZOOM = 20.5, MAX_PITCH = 70;
+// Plage de zoom élargie (15 – 20,5 avant) : le zoom à un doigt permet de voir tout le quartier ou de serrer le porteur.
+const MIN_ZOOM = 14, MAX_ZOOM = 21, MAX_PITCH = 70;
 /** Le cap de marche n'est relevé qu'après cette distance parcourue (mètres) : un GPS qui hésite ne fait pas tourner la caméra. */
 const COURSE_STEP_M = 5;
 /** Part de la hauteur d'écran laissée au-dessus du point suivi : place le porteur dans le tiers bas. */
@@ -62,7 +64,7 @@ export class Stage implements StageApi {
   private guideKey = '';
   private guideTone: TrailTone = 'blue';
   private guideFar = false;
-  private dark = true;
+  private dark = false;
   private paused = false;
   /** Dernier instant où quelque chose a bougé (porteur, carte, effet) : au-delà, le rendu ralentit. */
   private lastBusy = 0;
@@ -121,6 +123,8 @@ export class Stage implements StageApi {
     this.rig = new CameraRig(this.map.getCanvasContainer(), {
       bearing: BEARING, zoom: ZOOM, pitch: PITCH, minZoom: MIN_ZOOM, maxZoom: MAX_ZOOM, maxPitch: MAX_PITCH,
       onTap: (x, y) => { const at = this.map.unproject([x, y]); this.onTap(x, y, [at.lng, at.lat]); },
+      // Un objet sous le doigt : son toucher part tout de suite, sans attendre un éventuel double appui.
+      isHot: (x, y) => this.hit(x, y),
     });
     if (opts.tilt === '2d') this.rig.setTilt('2d');
     // Mention des sources : repliée par défaut (un toucher l'ouvre).
@@ -129,7 +133,7 @@ export class Stage implements StageApi {
     const scene = this.layer.scene;
     this.sky = new Sky(scene);
     this.porter = new Porter(scene, this.kit);
-    this.shelters = new Shelters(scene, this.kit, this.layer);
+    this.shelters = new Shelters(scene, this.kit, this.layer, at => this.siteFor(at));
     this.parcels = new Parcels(scene, this.kit, this.layer);
     this.dangers = new Dangers(scene, this.kit, this.layer);
     this.caches = new Caches(scene, this.kit, this.layer);
@@ -277,23 +281,25 @@ export class Stage implements StageApi {
     const env = computeEnv(this.ambiance, w);
     if (env.key === this.envKey || !this.ready || this.paused) return;
     this.envKey = env.key;
-    const pal = paletteFor(env.ambiance, env.night, env.dull);
-    const clair = env.ambiance === 'clair', n = env.night;
+    const pal = paletteFor(env.ambiance, env.night, env.dull, env.gold);
+    const clair = env.ambiance === 'clair', n = env.night, g = env.gold;
     this.dark = env.dark;
     applyPalette(this.map, this.style, pal);
     // Lumière de la carte : rasante et chaude au crépuscule, haute et franche de jour, froide la nuit.
     // Plus elle est intense, plus les façades à l'ombre se détachent des façades éclairées.
-    const sunAlt = w ? w.sunAltDeg : clair ? 40 : 12;
+    const sunAlt = w ? w.sunAltDeg : 40;
     const polar = n > 0.5 ? 50 : Math.min(80, Math.max(35, 90 - sunAlt));
     this.map.setLight({
       anchor: 'map', position: [1.5, clair ? 215 : 250, polar],
-      color: n > 0.5 ? '#c8d6ff' : clair ? '#fff7ea' : '#ffe2c2',
-      intensity: (clair ? 0.42 : 0.5) * (1 - env.dull * 0.4) * (1 - n * 0.25),
+      color: n > 0.5 ? '#c8d6ff' : g > 0.5 ? '#ffcf9c' : clair ? '#fff7ea' : '#fff0d8',
+      // Ombres douces de jour, plus marquées à l'heure dorée (lumière rasante).
+      intensity: ((clair ? 0.36 : 0.42) + g * 0.14) * (1 - env.dull * 0.4) * (1 - n * 0.25),
     });
     this.map.setSky({ 'sky-color': pal.sky, 'horizon-color': pal.horizon, 'fog-color': pal.haze, 'sky-horizon-blend': 0.75, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.5, 'atmosphere-blend': 0 });
-    // Fenêtres allumées dès que le jour baisse.
-    if (this.map.getLayer('building-win')) this.map.setLayoutProperty('building-win', 'visibility', (clair ? n >= 0.5 : true) ? 'visible' : 'none');
-    this.fog.applyColors(pal.veil, pal.haze, clair && n < 0.5 ? 0.76 : 0.74);
+    // Fenêtres allumées à la nuit tombante seulement (jamais de jour).
+    if (this.map.getLayer('building-win')) this.map.setLayoutProperty('building-win', 'visibility', n >= 0.4 ? 'visible' : 'none');
+    // Brume d'exploration : une nappe claire de jour (elle ne salit pas la carte), dense la nuit.
+    this.fog.applyColors(pal.veil, pal.haze, n < 0.5 ? 0.7 : 0.74);
     this.sky.apply(env, w, pal);
     this.kit.applyEnv(env);
     this.shelters.applyEnv(env);
@@ -450,8 +456,28 @@ export class Stage implements StageApi {
     return Math.hypot(px - (a.x + dx * t), py - (a.y + dy * t));
   }
 
-  /** Test de toucher par distance à l'écran, avec une zone généreuse (doigt). */
-  private onTap(px: number, py: number, at: LngLat): void {
+  private hitKind: 'abri' | 'colis' | 'cache' | 'rôdeur' | null = null;
+  private hitId = '';
+
+  /** Rues de la carte autour d'un point (tuiles déjà chargées), pour implanter un abri hors chaussée. */
+  private siteFor(at: LngLat): Site | null {
+    if (!this.style || !this.map.getSource(SOURCE)) return null;
+    const dLat = 220 / 111320, dLng = dLat / Math.cos((at[1] * Math.PI) / 180);
+    const roads: LngLat[][] = [];
+    for (const f of this.map.querySourceFeatures(SOURCE, { sourceLayer: 'transportation' })) {
+      if (f.properties?.brunnel === 'tunnel') continue;
+      const geo = f.geometry;
+      const lines = geo.type === 'LineString' ? [geo.coordinates] : geo.type === 'MultiLineString' ? geo.coordinates : [];
+      for (const line of lines) {
+        if (line.some(p => Math.abs(p[0] - at[0]) < dLng && Math.abs(p[1] - at[1]) < dLat)) roads.push(line as LngLat[]);
+      }
+    }
+    // Aucune rue : les tuiles ne sont pas encore là (ou c'est la pleine campagne) — l'abri réessaiera.
+    return roads.length ? shelterSite(at, roads) : null;
+  }
+
+  /** Vrai si un objet interactif est sous ce point de l'écran (son identité est gardée pour onTap). */
+  private hit(px: number, py: number): boolean {
     let best = 1, kind: 'abri' | 'colis' | 'cache' | 'rôdeur' | null = null, id = '';
     for (const p of this.parcels.all) {
       const g = p.group.position;
@@ -480,6 +506,15 @@ export class Stage implements StageApi {
       if (d < best) { best = d; kind = 'rôdeur'; id = w.id; }
     }
     // Cache ou rôdeur : si personne n'écoute ce toucher, il compte comme un toucher du sol.
+    if ((kind === 'cache' && !this.events.onTapCache) || (kind === 'rôdeur' && !this.events.onTapWanderer)) kind = null;
+    this.hitKind = kind; this.hitId = id;
+    return kind !== null;
+  }
+
+  /** Test de toucher par distance à l'écran, avec une zone généreuse (doigt). */
+  private onTap(px: number, py: number, at: LngLat): void {
+    this.hit(px, py);
+    const kind = this.hitKind, id = this.hitId;
     if (kind === 'cache' && this.events.onTapCache) this.events.onTapCache(id);
     else if (kind === 'rôdeur' && this.events.onTapWanderer) this.events.onTapWanderer(id);
     else if (kind === 'cache' || kind === 'rôdeur') this.events.onTapGround(at);

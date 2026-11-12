@@ -24,8 +24,29 @@ const pref = {
   get(k: string): string | null { try { return localStorage.getItem(`dernier-relais/${k}`); } catch { return null; } },
   set(k: string, v: string): void { try { localStorage.setItem(`dernier-relais/${k}`, v); } catch { /* stockage indisponible */ } },
 };
-const ambiance: Ambiance = pref.get('ambiance') === 'clair' ? 'clair' : 'crépuscule';
+// Ambiance : « auto » (par défaut, y compris pour qui n'a jamais touché au réglage) suit le soleil du lieu ; sinon le choix du joueur.
+type AmbianceMode = 'auto' | Ambiance;
+const savedMode = pref.get('ambiance-mode');
+let ambianceMode: AmbianceMode = savedMode === 'clair' || savedMode === 'crépuscule' ? savedMode : 'auto';
+/** Avant la première météo, « auto » se fie à l'heure du téléphone. */
+const byClock = (): Ambiance => { const hr = new Date().getHours(); return hr >= 7 && hr < 19 ? 'clair' : 'crépuscule'; };
+const ambiance: Ambiance = ambianceMode === 'auto' ? byClock() : ambianceMode;
 let currentAmbiance: Ambiance = ambiance;
+/** Applique une ambiance partout (carte, interface et histoire, labo, atelier), seulement si elle change. */
+function applyAmbiance(a: Ambiance): void {
+  if (a === currentAmbiance) return;
+  currentAmbiance = a;
+  stage.setAmbiance(a); hud.setAmbiance(a); lab.setAmbiance(a); skillTree.setAmbiance(a);
+}
+/** En « auto » : clair quand le soleil est levé, crépuscule sinon. Appelée à chaque rendu, sans effet tant que rien ne change. */
+let weatherSeen = false;
+function autoAmbiance(v: GameView): void {
+  if (ambianceMode !== 'auto') return;
+  if (!weatherSeen) { applyAmbiance(byClock()); return; } // hors ligne ou météo pas encore reçue : l'heure du téléphone
+  const w = v.weather as GameView['weather'] & { sunAltDeg?: number };
+  const day = typeof w.sunAltDeg === 'number' && Number.isFinite(w.sunAltDeg) ? w.sunAltDeg > 6 : !w.night;
+  applyAmbiance(day ? 'clair' : 'crépuscule');
+}
 
 // Sons, voix et vibrations : préférences mémorisées. Le navigateur n'autorise le son qu'après un premier toucher.
 const prefs = {
@@ -36,7 +57,10 @@ const prefs = {
 };
 const sound = new Sound({ muted: !prefs.sound, haptics: prefs.haptics, volume: prefs.volume });
 const voice = new Voice();
+/** Interjection courte propre à chaque personnage (« huh » de MMORPG), à la place des voix de synthèse. */
+const blip = (who: string): void => { try { (sound as Sound & { blip?: (who: string) => void }).blip?.(who); } catch { /* le son ne doit jamais gêner le jeu */ } };
 const applyVoice = (): void => {
+  // La voix ne sert plus qu'au narrateur du prologue : les personnages ont un petit son vocal (sound.blip).
   voice.muted = !prefs.sound || !prefs.voices;
   voice.volume = Math.min(1, prefs.volume * 1.1);
   if (voice.muted) voice.stop();
@@ -62,7 +86,7 @@ function place(fix: Fix): void {
   const now = Date.now();
   if (!lastWeather || now - lastWeather.t > 15 * 60_000 || dist(lastWeather.at, me) > 5000) {
     lastWeather = { at: me, t: now };
-    fetchWeather(fix.lng, fix.lat).then(w => game.setWeather(w)).catch(() => { /* le jeu garde le dernier temps connu */ });
+    fetchWeather(fix.lng, fix.lat).then(w => { game.setWeather(w); weatherSeen = true; }).catch(() => { /* le jeu garde le dernier temps connu */ });
   }
 }
 
@@ -77,7 +101,7 @@ const stage = new Stage('stage', {
   onTapShelter: id => {
     hud.openShelter(id);
     const sh = view?.shelters.find(x => x.id === id);
-    if (sh && sh.stars > 0) voice.say(sh.npc, sh.line);
+    if (sh && sh.stars > 0) blip(sh.npc);
   },
   onTapOrder: id => hud.openOrder(id),
   onTapCache: id => hud.openCache?.(id),
@@ -102,7 +126,13 @@ const hud = new Hud(hudRoot, {
   // Vue 2D (de dessus) / 3D (inclinée) : le choix est mémorisé pour le prochain lancement.
   onSkills: () => { void openSkills(); },
   onTilt: () => { pref.set('vue', stage.toggleTilt()); },
-  onAmbiance: a => { currentAmbiance = a; pref.set('ambiance', a); stage.setAmbiance(a); lab.setAmbiance(a); skillTree.setAmbiance(a); },
+  onAmbiance: a => { ambianceMode = a; pref.set('ambiance-mode', a); applyAmbiance(a); },
+  // Choix à trois positions des réglages : « auto » reprend aussitôt l'ambiance du moment.
+  onAmbianceMode: m => {
+    ambianceMode = m; pref.set('ambiance-mode', m);
+    if (m !== 'auto') applyAmbiance(m);
+    else if (view) autoAmbiance(view); else applyAmbiance(byClock());
+  },
   onGoto: (at, label) => {
     simTarget = null;
     stage.jumpTo(at);
@@ -130,7 +160,7 @@ const hud = new Hud(hudRoot, {
   // Ramassage : réglage « Ramassage rapide » mémorisé ; la carte se met en veille sous la séquence en caméra.
   onQuickPickup: on => pref.set('ramassage-rapide', on ? 'oui' : 'non'),
   onOverlay: open => { if (!inLab && !prologueOn) stage.setPaused?.(open); },
-}, { ambiance, settings: { ...prefs, canInstall: false, quickPickup: pref.get('ramassage-rapide') === 'oui' }, tilted: pref.get('vue') !== '2d' });
+}, { ambiance, ambianceMode, settings: { ...prefs, canInstall: false, quickPickup: pref.get('ramassage-rapide') === 'oui' }, tilted: pref.get('vue') !== '2d' });
 
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e as InstallPrompt; hud.setCanInstall(true); });
 addEventListener('appinstalled', () => { installPrompt = null; hud.setCanInstall(false); });
@@ -141,7 +171,7 @@ online.net.start();
 
 // Histoire principale : observe le jeu, donne l'objectif en cours et les messages radio de la Station Lumen.
 const story = new Story();
-const storyUi = new StoryUi(hudRoot, story, { onVoice: (who, text) => voice.say(who, text), hold: () => away });
+const storyUi = new StoryUi(hudRoot, story, { onVoice: who => blip(who), hold: () => away });
 
 let view: GameView | null = null;
 game.on(e => {
@@ -156,7 +186,7 @@ game.on(e => {
     if (sh) online.net.onDelivery(e.result, { id: sh.id, name: sh.name, at: sh.at });
     // Le responsable de l'abri réagit de vive voix, une fois le jingle de la note passé.
     const sid = e.result.shelterId;
-    setTimeout(() => { const now = game.view().shelters.find(x => x.id === sid); if (now && now.stars > 0) voice.say(now.npc, now.line); }, 1900);
+    setTimeout(() => { const now = game.view().shelters.find(x => x.id === sid); if (now && now.stars > 0) blip(now.npc); }, 1900);
   }
 });
 
@@ -176,6 +206,7 @@ function frame(): void {
   stepSim(dtS);
   game.tick(dtS);
   view = game.view();
+  autoAmbiance(view);
   stage.sync(view);
   hud.render(view);
   sound.ambient(view);
@@ -194,8 +225,8 @@ const lab = new Lab(document.body, {
   onNetwork: () => hud.openNetwork(),
   onContracts: () => hud.openPorter('contrats'),
   onJournal: () => hud.openPorter('carnet'),
-  // Les scientifiques parlent : voix enregistrée quand elle existe, sinon un petit son.
-  onVoice: (who, text) => { if (!voice.say(who, text)) sound.ui('open'); },
+  // Les scientifiques ne parlent plus en voix de synthèse : une interjection courte, propre à chacun.
+  onVoice: who => blip(who),
   onRest: () => game.rest(),
 }, { ambiance });
 
@@ -213,11 +244,16 @@ async function openSkills(): Promise<void> {
 /** Vrai tant que le joueur n'est pas sur la carte (écran de départ, prologue, labo) : les messages radio attendent. */
 let away = true;
 let prologueOn = false;
+/** La carte n'est visible (et dessinée) qu'une fois le labo quitté : jamais derrière le chargement, le prologue ou le labo. */
+function showMap(on: boolean): void {
+  document.body.classList.toggle('dr-map-on', on);
+  stage.setPaused?.(!on);
+}
 function leaveLab(): void {
   inLab = false;
   away = prologueOn;
   document.body.classList.remove('dr-in-lab');
-  if (!prologueOn) stage.setPaused?.(false);
+  if (!prologueOn) showMap(true);
   stage.recenter();
   if (!gpsStarted) { gpsStarted = true; locator.startGPS(); }
 }
@@ -232,13 +268,22 @@ async function enterLab(): Promise<void> {
   simTarget = null;
   storyUi.dismissRadio(true);
   voice.stop();
+  showMap(false);
   document.body.classList.add('dr-in-lab');
-  stage.setPaused?.(true);
   try { await lab.open(view ?? game.view()); }
   catch { lab.close(); leaveLab(); }
 }
 
-/** Prologue, avec la narration en voix française calée sur les textes à l'écran. */
+/** Narration du prologue : la seule voix du jeu. Table « instant (s) → texte », calée sur les textes à l'écran
+ *  (src/intro/prologue.ts) ; les textes sont ceux de scripts/voix-extra.json, entrées "who": "narrateur". */
+const NARRATION: [number, string][] = [
+  [1.2, 'Tu es tombé du ciel.'],
+  [8.4, 'Plaine Noire'],
+  [31.4, 'Station Lumen'],
+  [37.6, 'Dernier Relais'],
+];
+
+/** Prologue, avec le narrateur calé sur les textes à l'écran. */
 async function runPrologue(): Promise<void> {
   if (prologueOn) return;
   prologueOn = true;
@@ -246,24 +291,18 @@ async function runPrologue(): Promise<void> {
   closeEverything();
   storyUi.dismissRadio(true);
   voice.stop();
+  showMap(false); // « Revoir le prologue » depuis la carte : la carte s'efface avant le film
   // Revu depuis le labo : le labo se met en veille pendant le film, puis revient.
   const fromLab = inLab;
   if (fromLab) lab.close();
-  const lines: [number, string, string][] = [
-    [1.2, 'narrateur', 'Tu es tombé du ciel.'],
-    [14.4, 'iris', 'Dehors, les villes sont coupées les unes des autres.'],
-    [18.9, 'iris', 'Plus de routes sûres, plus de liaisons.'],
-    [23.3, 'iris', 'Il ne reste que des gens comme toi, qui portent.'],
-  ];
   // La narration part quand la première image est là (repère « vent »), pas pendant le chargement.
   let timers: ReturnType<typeof setTimeout>[] = [];
   let over = false;
-  stage.setPaused?.(true);
   try {
     await playPrologue(document.body, {
       ambiance: currentAmbiance,
       onSound: cue => {
-        if (cue === 'vent' && !over) timers = lines.map(([t, who, text]) => setTimeout(() => { if (!over) voice.say(who, text); }, t * 1000));
+        if (cue === 'vent' && !over) timers = NARRATION.map(([t, text]) => setTimeout(() => { if (!over) voice.say('narrateur', text); }, t * 1000));
       },
     });
   } catch { /* prologue impossible : on continue sans lui */ }
@@ -273,18 +312,31 @@ async function runPrologue(): Promise<void> {
   prologueOn = false;
   if (fromLab) {
     try { await lab.open(view ?? game.view()); } catch { lab.close(); leaveLab(); }
-  } else if (!inLab) { away = false; stage.setPaused?.(false); }
+  } else if (!inLab) { away = false; showMap(true); }
+}
+
+// ---------- Écran de chargement (inscrit en dur dans index.html) puis écran de départ ----------
+const bootEl = document.getElementById('boot');
+const bootT0 = performance.now();
+const BOOT_MIN_MS = 2500;
+const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, Math.max(0, ms)));
+/** Le chargement dure au moins 2,5 s : assez pour lire l'emblème, jamais un éclair. */
+const bootMin = (): Promise<void> => sleep(BOOT_MIN_MS - (performance.now() - bootT0));
+function bootOut(): void {
+  if (!bootEl || bootEl.classList.contains('out')) return;
+  bootEl.classList.add('out');
+  setTimeout(() => bootEl.remove(), 800);
 }
 
 /** Écran de départ du tout premier lancement : un toucher est nécessaire pour que le son soit autorisé. */
 function splash(): Promise<void> {
   return new Promise(done => {
-    const el = document.createElement('button');
-    el.id = 'splash';
-    el.type = 'button';
-    el.innerHTML = '<span class="k">Station Lumen</span><strong>Dernier Relais</strong><span class="go">Toucher pour commencer</span>';
-    el.addEventListener('click', () => { sound.unlock(); voice.unlock(); el.classList.add('out'); setTimeout(() => { el.remove(); done(); }, 450); }, { once: true });
-    document.body.append(el);
+    const el = document.getElementById('splash');
+    if (!bootEl || !el) { done(); return; }
+    bootEl.classList.add('ready');
+    el.hidden = false;
+    el.addEventListener('click', () => { sound.unlock(); voice.unlock(); sound.ui('confirm'); el.hidden = true; done(); }, { once: true });
+    try { el.focus({ preventScroll: true }); } catch { /* sans focus, le toucher marche quand même */ }
   });
 }
 
@@ -301,12 +353,24 @@ game.load().then(async () => {
   setInterval(frame, 200);
   frame();
   // Essais automatiques : « ?direct » saute le prologue et le labo.
-  if (new URLSearchParams(location.search).has('direct')) { away = false; gpsStarted = true; locator.startGPS(); return; }
-  // La carte ne se dessine pas derrière l'écran de départ, le prologue et le labo.
-  stage.setPaused?.(true);
-  if (shouldPlayPrologue()) { await splash(); await runPrologue(); }
-  await enterLab();
-});
+  if (new URLSearchParams(location.search).has('direct')) { away = false; gpsStarted = true; showMap(true); bootOut(); locator.startGPS(); return; }
+  // La carte ne se dessine pas (et reste invisible) derrière le chargement, l'écran de départ, le prologue et le labo.
+  showMap(false);
+  await bootMin();
+  if (shouldPlayPrologue()) {
+    await splash();
+    // Le film charge sous l'écran de départ, qui ne s'efface qu'une fois le prologue lancé.
+    setTimeout(bootOut, 500);
+    await runPrologue();
+    await enterLab();
+  } else {
+    // Lancements suivants : fondu vers le labo dès qu'il est prêt (ou au bout de quelques secondes s'il tarde).
+    const opened = enterLab();
+    await Promise.race([opened, sleep(6000)]);
+    bootOut();
+    await opened;
+  }
+}).catch(() => bootOut());
 const flush = () => { void game.flush().then(() => online.store.flush()); };
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { flush(); sound.suspend(); voice.stop(); } else sound.resume();

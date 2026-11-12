@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { RATCHET_CENTER, proofBonus, ratchetRelease, strapBalanceMult, strapPlan, strapQualityFromState, strapXp } from '../src/game/gestures';
+import { FINAL, RATCHET_CENTER, cablePlan, cablePlug, knotCheckpoint, knotPath, proofBonus, ratchetRelease, strapBalanceMult, strapPlan, strapQualityFromState, strapXp } from '../src/game/gestures';
+import { CRATE_DEFS, CRATE_KINDS, crateDef, crateLabel, crateModel, gestureFor } from '../src/game/crates';
+import { ITEMS, makeOrder } from '../src/game/orders';
+import { rng } from '../src/core/geo';
+import { existsSync } from 'node:fs';
 import { GESTURE, PROOF } from '../src/game/rules';
 import { type GameSave, SAVE_REV, emptyGameSave, parseGameSave } from '../src/game/save';
 import { findSpot, off, ofType, place, rig, spot, wait, walk, world } from './game.helpers';
@@ -15,6 +19,60 @@ async function one(want: Parameters<typeof findSpot>[3] = o => !o.fragile && o.d
   r.game.scan();
   return { r, g: r.game, id: s.id, cells };
 }
+
+describe('matières de colis', () => {
+  it('sept matières, chacune avec son modèle, ses proportions, son poids et son geste final', () => {
+    expect(CRATE_KINDS.sort()).toEqual(['alu', 'bois', 'carton', 'coffre', 'fut', 'plastique', 'sac']);
+    for (const k of CRATE_KINDS) {
+      const d = CRATE_DEFS[k];
+      expect(existsSync(`public/models/${d.model}.glb`)).toBe(true);
+      expect(d.label.length).toBeGreaterThan(3); expect(d.shape.every(v => v > 0.4 && v < 1.6)).toBe(true);
+      expect(d.kg[0]).toBeGreaterThanOrEqual(1); expect(d.kg[1]).toBeLessThanOrEqual(12); expect(d.kg[0]).toBeLessThan(d.kg[1]);
+    }
+    // Gestes de l'ancien jeu : cliquet (bois, coffre), aimants (alu, cryo), nœud (sac), câbles (cellule).
+    expect(CRATE_KINDS.map(k => [k, gestureFor(k)]).sort()).toEqual([['alu', 'aimants'], ['bois', 'cliquet'], ['carton', 'sangles'], ['coffre', 'cliquet'], ['fut', 'sangles'], ['plastique', 'sangles'], ['sac', 'noeud']]);
+    expect(gestureFor('alu', 'batterie')).toBe('cables'); expect(gestureFor('alu', 'cryo')).toBe('aimants'); expect(gestureFor('bois', 'ruche')).toBe('sangles'); expect(gestureFor('alu', 'boitenoire')).toBe('sangles');
+    // Matière inconnue : carton, sans erreur.
+    expect(crateDef('titane').kind).toBe('carton'); expect(crateLabel(undefined)).toBe('Carton'); expect(crateModel('toString')).toBe('carton'); expect(gestureFor('???')).toBe('sangles');
+  });
+  it('chaque marchandise voyage dans une matière cohérente, de façon reproductible', () => {
+    expect(new Set(ITEMS.map(i => i.name)).size).toBe(ITEMS.length);
+    expect(ITEMS.some(i => /semence/i.test(i.name))).toBe(false);
+    for (const i of ITEMS) for (const k of [i.crate, ...(i.alt ?? [])]) {
+      const d = CRATE_DEFS[k];
+      expect(d, `${i.name} : ${k}`).toBeTruthy();
+      // Le poids de la marchandise recoupe le poids typique de la matière.
+      expect(i.min, i.name).toBeLessThanOrEqual(d.kg[1]); expect(i.max, i.name).toBeGreaterThanOrEqual(d.kg[0]);
+    }
+    for (const k of CRATE_KINDS) expect(ITEMS.filter(i => i.crate === k).length, k).toBeGreaterThanOrEqual(3);
+    const liquids = ITEMS.filter(i => ['Eau potable', 'Carburant', 'Huile de lampe'].includes(i.name));
+    expect(liquids.every(i => i.crate === 'fut' && !i.alt)).toBe(true);
+    const seen = new Map<string, number>();
+    for (let i = 0; i < 600; i++) {
+      const sp = spot(`m${i}`, off(50, 0)), o = makeOrder(sp, [A, B])!;
+      expect(makeOrder(sp, [A, B])).toEqual(o);
+      if (o.special) continue;
+      const item = ITEMS.find(x => x.name === o.name)!;
+      expect([item.crate, ...(item.alt ?? [])]).toContain(o.crate);
+      seen.set(o.crate, (seen.get(o.crate) ?? 0) + 1);
+    }
+    expect([...seen.keys()].sort()).toEqual(['alu', 'bois', 'carton', 'coffre', 'fut', 'plastique', 'sac']);
+    for (const n of seen.values()) expect(n).toBeGreaterThan(25);
+  });
+  it('gestes finaux : câbles dans l’ordre et à la bonne couleur, nœud repris au dernier quart', () => {
+    const p = cablePlan(rng('câbles|x'));
+    expect([...p.order].sort()).toEqual([0, 1, 2]); expect([...p.sockets].sort()).toEqual([0, 1, 2]);
+    expect(cablePlan(rng('câbles|x'))).toEqual(p);
+    expect(cablePlug(1, 1, 1)).toBe('ok'); expect(cablePlug(1, 2, 1)).toBe('couleur'); expect(cablePlug(1, 1, 0)).toBe('ordre');
+    const k = knotPath();
+    expect(k).toHaveLength(FINAL.noeud.points + 1);
+    expect(Math.hypot(k[0].x - k[k.length - 1].x, k[0].y - k[k.length - 1].y)).toBeLessThan(1e-6);
+    expect(Math.max(...k.map(q => Math.abs(q.x)))).toBeLessThanOrEqual(1.16); expect(Math.max(...k.map(q => Math.abs(q.y)))).toBeLessThanOrEqual(0.76);
+    expect(knotCheckpoint(50, 90)).toBe(44); expect(knotCheckpoint(10, 90)).toBe(0); expect(knotCheckpoint(89, 90)).toBe(88);
+    // Assouplis par rapport à l'ancien jeu (aimant 30 px, nœud 28 px, prise 36 px, erreur de câble 12).
+    expect(FINAL.aimants.snapPx).toBeGreaterThan(30); expect(FINAL.noeud.tolPx).toBeGreaterThan(28); expect(FINAL.cables.socketPx).toBeGreaterThan(36); expect(FINAL.cables.cost).toBeLessThan(12);
+  });
+});
 
 describe('arrimage', () => {
   it('cliquet : relâché dans la zone verte c’est serré, au-delà trop serré, avant pas assez', () => {

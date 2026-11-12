@@ -9,8 +9,8 @@ import { Loader3D, Viewport, clamp01, easeInOut, el, lerp, reducedMotion, smooth
 import '../scene3d/scene3d.css';
 import { Veil } from '../scene3d/veil';
 import './lab.css';
-import { CHAMBER, EXO_AT, type LabScene, PAD_AT, SX, type Sci, branchLevels, buildLab, labLook, porterSpot } from './room';
-import { BRANCH_LABEL, BRANCH_PART, CAST, FIRST, FIRST_NAME, HINT_FIRST, POOL, STATIONS, type SciId, type StationId, contextual, fmtInt, fmtKm, plural, progressOf } from './texts';
+import { CHAMBER, EXO_AT, EXO_H, IDLE, type LabScene, PAD_AT, SX, type Sci, branchLevels, buildLab, labLook, porterSpot } from './room';
+import { BRANCH_LABEL, BRANCH_PART, CAST, FIRST_LINES, FIRST_NAME, HINT_FIRST, POOL, STATIONS, type SciId, type StationId, contextual, fmtInt, fmtKm, plural, progressOf } from './texts';
 
 export interface LabEvents {
   /** « Partir » : retour au jeu sur la carte, à la position GPS. Appelé à la fin de la séquence du Passeur. */
@@ -101,6 +101,9 @@ export class Lab {
   private poolAt: Record<SciId, number> = { iris: 0, noe: 0, selma: 0 };
   private talking: Sci | null = null;
   private bubbleTimer = 0;
+  /** Première rencontre en cours : personnage dont il reste des répliques à enchaîner. */
+  private chain: SciId | null = null;
+  private readonly firstAt: Record<SciId, number> = { iris: 0, noe: 0, selma: 0 };
   // départ
   private departT = -1;
   private departDur = DEPART_S;
@@ -141,7 +144,7 @@ export class Lab {
     this.bubble = el('div', 'lab-bubble');
     this.bubble.hidden = true;
     this.bubble.setAttribute('role', 'status');
-    this.bubble.addEventListener('click', () => this.hush());
+    this.bubble.addEventListener('click', () => this.nextLine());
     this.hint = el('div', 'lab-hint');
     this.hint.hidden = true;
     this.hint.setAttribute('role', 'status');
@@ -315,7 +318,15 @@ export class Lab {
     let text: string;
     const met = this.met();
     const ctx = contextual(id, v).find(c => !this.said.has(`${id}:${c.key}`));
-    if (!met[id]) { text = FIRST[id]; met[id] = 1; try { localStorage.setItem(MET_KEY, JSON.stringify(met)); } catch { /* stockage indisponible */ } }
+    let more = '';
+    if (!met[id]) {
+      // Première rencontre : deux ou trois répliques qui s'enchaînent (toucher la bulle, ou attendre, passe à la suivante).
+      const lines = FIRST_LINES[id], i = Math.min(this.firstAt[id], lines.length - 1);
+      text = lines[i];
+      this.firstAt[id] = i + 1;
+      if (i + 1 < lines.length) more = `Touche pour la suite · ${i + 1}/${lines.length}`;
+      else { met[id] = 1; try { localStorage.setItem(MET_KEY, JSON.stringify(met)); } catch { /* stockage indisponible */ } }
+    }
     else if (ctx) { text = ctx.text; this.said.add(`${id}:${ctx.key}`); }
     else { const pool = POOL[id]; text = pool[this.poolAt[id] % pool.length]; this.poolAt[id]++; }
 
@@ -328,11 +339,13 @@ export class Lab {
     const who = el('div', 'lab-bubble-who');
     who.append(el('b', '', CAST[id].name), el('small', '', CAST[id].role));
     this.bubble.append(who, el('p', '', text));
+    if (more) this.bubble.append(el('small', 'lab-bubble-more', more));
+    this.chain = more ? id : null;
     this.bubble.dataset.qui = id;
     this.bubble.hidden = false;
     this.host.classList.add('is-talking');
     clearTimeout(this.bubbleTimer);
-    if (!this.still) this.bubbleTimer = window.setTimeout(() => this.hush(), dur * 1000);
+    if (!this.still) this.bubbleTimer = window.setTimeout(() => this.nextLine(), (more ? dur + 1.5 : dur) * 1000);
     this.render();
     this.dirty = 3;
     try { this.events.onVoice?.(id, text); } catch (e) { console.warn('[labo] voix', e); }
@@ -378,7 +391,7 @@ export class Lab {
     const lab = this.lab;
     if (!lab) return;
     lab.porterG.position.copy(porterSpot(this.st)); lab.porterG.rotation.y = 0.55; lab.porterG.visible = true;
-    lab.porter.play(lab.porter.pick('calm_0', 'calmv0'), 0);
+    lab.porter.play(lab.porter.pick(...IDLE), 0);
     this.walking = false;
   }
 
@@ -591,8 +604,15 @@ export class Lab {
     return row;
   }
 
+  /** Suite d'une première rencontre s'il en reste, sinon la bulle se referme. */
+  private nextLine(): void {
+    const id = this.chain;
+    if (id && !this.bubble.hidden && this.mode === 'hall' && this.departT < 0) this.talk(id); else this.hush();
+  }
+
   private hush(): void {
     clearTimeout(this.bubbleTimer);
+    this.chain = null;
     if (this.bubble.hidden) return;
     this.bubble.hidden = true;
     this.host.classList.remove('is-talking');
@@ -639,7 +659,7 @@ export class Lab {
     const face = Math.atan2(_v.x - this.departFrom.x, _v.z - this.departFrom.z);
     g.position.lerpVectors(this.departFrom, _v, w);
     g.rotation.y = w >= 1 ? lerp(face, Math.PI * 2, smooth(clamp01((k - 0.72) / 0.1))) : lerp(0.55, face, smooth(clamp01(k / 0.12)));
-    if (w >= 1 && this.walking) { this.walking = false; lab.porter.play(lab.porter.pick('calm_0', 'calmv0'), 0.3); }
+    if (w >= 1 && this.walking) { this.walking = false; lab.porter.play(lab.porter.pick(...IDLE), 0.3); }
     g.visible = k < 0.9;
     this.flash.style.opacity = smooth(clamp01((k - 0.8) / 0.2)).toFixed(3);
     if (k >= 1 && !this.departed) {
@@ -678,7 +698,7 @@ export class Lab {
       return { pos: V(CHAMBER.x - 0.2, 1.5, CHAMBER.z + (wide ? 3.0 : 3.6)), look: V(CHAMBER.x - 0.6, 0.75, CHAMBER.z - 1.6), fov: wide ? 46 : 58, off: wide ? 0 : 0.16, offX: wide ? -0.18 : 0 };
     }
     if (this.mode === 'exo') {
-      return { pos: V(EXO_AT.x + 2.3, 1.5, EXO_AT.z + 4.7), look: V(EXO_AT.x, 1.3, EXO_AT.z), fov: wide ? 36 : 54, off: wide ? 0 : 0.2, offX: wide ? -0.2 : 0 };
+      return { pos: V(EXO_AT.x + 2.5, 1.4, EXO_AT.z + 3.5), look: V(EXO_AT.x, EXO_H * 0.56, EXO_AT.z), fov: wide ? 36 : 54, off: wide ? 0 : 0.2, offX: wide ? -0.2 : 0 };
     }
     // En vertical, l'image est décalée vers le haut ; en paysage, vers la droite (le panneau est à gauche).
     return wide
@@ -746,7 +766,7 @@ export class Lab {
     const dx = to.x - g.position.x, dz = to.z - g.position.z, d = Math.hypot(dx, dz);
     if (d < 0.06 || this.still || this.calm) {
       if (d >= 0.06) g.position.copy(to);
-      if (this.walking) { this.walking = false; lab.porter.play(lab.porter.pick('calm_0', 'calmv0'), 0.3); }
+      if (this.walking) { this.walking = false; lab.porter.play(lab.porter.pick(...IDLE), 0.3); }
       const turn = Math.atan2(Math.sin(0.55 - g.rotation.y), Math.cos(0.55 - g.rotation.y));
       if (this.still || this.calm) { g.rotation.y = 0.55; return false; }
       g.rotation.y += turn * Math.min(1, dt * 5);
@@ -831,7 +851,7 @@ export class Lab {
     const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
     if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) { if (this.mode === 'hall') this.step(dx < 0 ? 1 : -1); return; }
     if (d.moved > 12) return;
-    if (!this.bubble.hidden) { this.hush(); return; }
+    if (!this.bubble.hidden) { this.nextLine(); return; }
     // Toucher : un scientifique, le râtelier de l'exosquelette, la porte des quartiers.
     const r = this.vp.canvas.getBoundingClientRect();
     this.ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
