@@ -175,10 +175,10 @@ describe('déplacement en véhicule', () => {
     const p = r.game.view().player;
     expect(p.distanceKm).toBe(0);
     expect(p.moving).toBe(false);
-    expect(toasts(r).filter(t => /trop vite pour un porteur/.test(t))).toHaveLength(1);
+    expect(ofType(r.events, 'vehicle').filter(e => e.phase === 'début')).toHaveLength(1);
     expect(r.game.view().player.stamina).toBe(1);
     r.game.scan();
-    expect(r.game.pickup(s1.id)).toEqual({ ok: false, why: 'Tu vas trop vite : arrête-toi et descends pour ramasser.' });
+    expect(r.game.pickup(s1.id)).toEqual({ ok: false, why: 'Tu vas vite : confirme que tu es passager pour ramasser.' });
     wait(r, SPEED.vehicleCoolS + SPEED.idleMs / 1000 + 2);
     expect(toasts(r).some(t => /De nouveau à pied/.test(t))).toBe(true);
     expect(r.game.pickup(s1.id)).toEqual({ ok: true });
@@ -205,7 +205,7 @@ describe('déplacement en véhicule', () => {
       return r;
     };
     const car = await run(12), foot = await run(1.3);
-    expect(car.game.deliver('F')).toEqual({ ok: false, why: 'Tu vas trop vite : arrête-toi et descends pour livrer.' });
+    expect(car.game.deliver('F')).toEqual({ ok: false, why: 'Tu vas vite : confirme que tu es passager pour livrer.' });
     wait(car, SPEED.vehicleCoolS + SPEED.idleMs / 1000 + 2);
     expect(car.game.deliver('F')).toEqual({ ok: true });
     expect(foot.game.deliver('F')).toEqual({ ok: true });
@@ -213,6 +213,27 @@ describe('déplacement en véhicule', () => {
     expect(c.notes).toContain('Transporté en véhicule'); expect(f.notes).not.toContain('Transporté en véhicule');
     expect(c.points).toBeLessThanOrEqual(Math.ceil(f.points * VEHICLE.mult) + 1);
     expect(car.game.view().player.distanceKm).toBe(0);
+  });
+  it('passager confirmé : le jeu n’est pas bridé, mais la marche ne compte pas', async () => {
+    const far = shelter('F', off(0, 650), 'Gare du Nord');
+    const want = (o: { fragile: boolean; deadlineMin: number | null; weightKg: number; destId: string }) => !o.fragile && o.deadlineMin === null && o.destId === 'F';
+    const s1 = findSpot('w', off(0, 30), [A, far], want);
+    const cells = world([A, far], [s1]);
+    const r = await rig({ t: calmT(cells) });
+    r.game.setWorld(cells); place(r, off(0, 30));
+    expect(r.game.confirmPassenger()).toEqual({ ok: false, why: 'Tu es à pied.' });
+    r.game.scan(); expect(r.game.pickup(s1.id)).toEqual({ ok: true });
+    walk(r, off(0, 645), 12, i => { if (i % 5 === 0) r.game.steady(); if (!r.game.view().player.passenger) r.game.confirmPassenger(); });
+    expect(ofType(r.events, 'vehicle').map(e => e.phase)).toEqual(['début']);
+    expect(r.game.view().player.vehicle).toBe(true); expect(r.game.view().player.passenger).toBe(true);
+    // Toujours en train de rouler : la livraison passe, sans pénalité.
+    expect(r.game.deliver('F')).toEqual({ ok: true });
+    expect(ofType(r.events, 'delivery')[0].result.notes).not.toContain('Transporté en véhicule');
+    expect(r.game.view().player.distanceKm).toBe(0);
+    // De retour à pied, la confirmation est oubliée : elle sera redemandée au prochain trajet.
+    wait(r, SPEED.vehicleCoolS + SPEED.idleMs / 1000 + 2);
+    expect(r.game.view().player.vehicle).toBe(false); expect(r.game.view().player.passenger).toBe(false);
+    expect(ofType(r.events, 'vehicle').map(e => e.phase)).toEqual(['début', 'fin']);
   });
 });
 

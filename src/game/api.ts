@@ -170,6 +170,9 @@ export interface PlayerView {
   speedMps: number;
   moving: boolean;
   mode: 'gps' | 'simulé';
+  /** Vrai quand le joueur se déplace à vitesse de véhicule ; `passenger` quand il a confirmé être passager. */
+  vehicle?: boolean;
+  passenger?: boolean;
   level: number;
   xp: number;
   xpNext: number;
@@ -256,6 +259,8 @@ export type GameEvent =
   | { type: 'contract'; contract: ContractView }
   | { type: 'danger'; entered: boolean }
   | { type: 'toast'; text: string; tone?: 'info' | 'good' | 'warn' }
+  /** Vitesse de véhicule détectée ('début') ou retour à pied ('fin'). L'interface demande alors si le joueur est passager. */
+  | { type: 'vehicle'; phase: 'début' | 'fin' }
   // ── Ajouts (systèmes secondaires)
   | { type: 'special'; order: OrderView }
   | { type: 'cache'; cacheId: string; points: number; xp: number; skillPoint: boolean }
@@ -277,6 +282,8 @@ export interface GameActions {
   deliver(shelterId: string): ActionResult;
   /** Recentre la charge (geste du joueur quand l'équilibre dérive). */
   steady(): void;
+  /** Le joueur confirme qu'il est passager : ramassage et livraison restent possibles jusqu'au retour à pied. */
+  confirmPassenger?(): ActionResult;
   learn(skillId: string): ActionResult;
   claim(contractId: string): ActionResult;
   // ── Ajouts (systèmes secondaires) : tous facultatifs pour le joueur.

@@ -105,7 +105,7 @@ export const CHAPTERS: Chapter[] = [
         done: { who: 'selma', text: 'Tu as la main douce quand il le faut. Quelqu’un dormira mieux ce soir grâce à ça.' },
       },
       {
-        id: 'c1-nuit', objective: 'Livre de nuit ou par mauvais temps', cond: { stat: 'rudes', goal: 1 }, orElse: { stat: 'livraisons', goal: 15 },
+        id: 'c1-nuit', objective: 'Livre de nuit ou par mauvais temps', cond: { stat: 'rudes', goal: 1 }, orElse: { stat: 'livraisons', goal: 6 },
         start: { who: 'selma', text: 'Le monde ne s’arrête pas quand le jour tombe ou que le ciel se couvre. Livre une fois de nuit ou sous la pluie, et rentre entier.' },
         done: { who: 'selma', text: 'Tu es rentré entier, c’est tout ce que je demandais. Bois de l’eau, je ne plaisante pas.' },
       },
@@ -132,12 +132,12 @@ export const CHAPTERS: Chapter[] = [
         done: { who: 'iris', text: 'Celle-ci porte la marque de Lumen. Ce n’est pourtant aucun de nous qui l’a posée là.' },
       },
       {
-        id: 'c2-voyageur', objective: 'Parle à un voyageur de passage', cond: { stat: 'rencontres', goal: 1 }, orElse: { stat: 'caches', goal: 4 },
+        id: 'c2-voyageur', objective: 'Parle à un voyageur de passage', cond: { stat: 'rencontres', goal: 1 }, orElse: { stat: 'caches', goal: 2 },
         start: { who: 'selma', text: 'Tu n’es pas seul à marcher dehors. Si tu croises quelqu’un sur ta route, arrête-toi et parle-lui.' },
         done: { who: 'selma', text: 'Les gens des chemins savent des choses que nos capteurs ignorent. Certains ont déjà croisé un porteur venu de l’Est.' },
       },
       {
-        id: 'c2-front', objective: 'Traverse un front de mauvais temps', cond: { stat: 'fronts', goal: 1 }, orElse: { stat: 'rudes', goal: 4 },
+        id: 'c2-front', objective: 'Traverse un front de mauvais temps', cond: { stat: 'fronts', goal: 1 }, orElse: { stat: 'livraisons', goal: 8 },
         start: { who: 'noe', text: 'Un front, c’est un mur de pluie qui traverse tout le secteur. Entres-y, ressors de l’autre côté, et dis-moi ce que l’exosquelette en pense.' },
         done: { who: 'noe', text: 'Trempé, mais debout. Mes soudures et toi, vous tenez mieux que prévu.' },
       },

@@ -195,7 +195,8 @@ export class StoryUi {
 
   /** Vrai si un écran plein (note de livraison, panneau, carton) occupe le joueur : le message attend. */
   private busy(): boolean {
-    return !this.card.hidden || this.opts.hold?.() === true || !!this.root.querySelector('.dr-grade:not([hidden]), .dr-modal:not([hidden])');
+    // L'aide de première ouverture passe d'abord : le message radio vient ensuite, pas en même temps.
+    return !this.card.hidden || this.opts.hold?.() === true || !!this.root.querySelector('.dr-grade:not([hidden]), .dr-modal:not([hidden]), .dr-help:not([hidden])');
   }
 
   private nextRadio(): void {

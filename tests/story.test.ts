@@ -156,7 +156,9 @@ describe('chapitre 1', () => {
     expect(r.story.state().stepId).toBe('c1-deux'); // la vue n'a pas encore été observée : un seul abri connu
     r.tick();
     expect(r.story.state().stepId).toBe('c1-nuit');
-    r.w.deliveries = 15; r.tick();
+    r.w.deliveries = 5; r.tick();
+    expect(r.story.state().stepId).toBe('c1-nuit');
+    r.w.deliveries = 6; r.tick();
     expect(r.story.state().stepId).toBe('c1-trois');
   });
 });

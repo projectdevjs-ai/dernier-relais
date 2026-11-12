@@ -59,6 +59,8 @@ export class Game implements GameEngine {
   private idleMs: number = SPEED.idleMs;
   /** Déplacement en véhicule : secondes passées trop vite, secondes passées de nouveau à pied. */
   private vehicle = false;
+  /** Le joueur a confirmé être passager pour ce trajet : le jeu n'est pas bridé. */
+  private passenger = false;
   private fastS = 0;
   private slowS = 0;
   private level = 1;
@@ -296,10 +298,11 @@ export class Game implements GameEngine {
           this.fastS += dtS; this.slowS = 0;
           if (!this.vehicle && this.fastS >= SPEED.vehicleS) {
             this.vehicle = true;
-            this.emit({ type: 'toast', text: 'Tu vas trop vite pour un porteur : en véhicule, ni distance, ni ramassage, ni livraison.', tone: 'warn' });
+            this.passenger = false;
+            this.emit({ type: 'vehicle', phase: 'début' });
           }
-          // Les colis portés retiennent le chemin fait en véhicule.
-          for (const o of this.carried()) o.rideM = (o.rideM ?? 0) + d;
+          // Les colis portés retiennent le chemin fait en véhicule, sauf si le joueur a confirmé être passager.
+          if (!this.passenger) for (const o of this.carried()) o.rideM = (o.rideM ?? 0) + d;
         } else if (!this.vehicle) {
           this.distanceM += d;
           this.progress({ type: 'marche', meters: d });
@@ -332,7 +335,11 @@ export class Game implements GameEngine {
       this.slowS += dt;
       if (this.slowS >= SPEED.vehicleCoolS) {
         this.fastS = 0;
-        if (this.vehicle) { this.vehicle = false; this.emit({ type: 'toast', text: 'De nouveau à pied : le compteur reprend.', tone: 'info' }); }
+        if (this.vehicle) {
+          this.vehicle = false; this.passenger = false;
+          this.emit({ type: 'vehicle', phase: 'fin' });
+          this.emit({ type: 'toast', text: 'De nouveau à pied : le compteur de marche reprend.', tone: 'info' });
+        }
       }
     } else this.slowS = 0;
     // En véhicule le porteur ne marche pas : ni fatigue, ni balancement, ni course.
@@ -423,7 +430,7 @@ export class Game implements GameEngine {
     if (!o || o.state === 'caché') return no('Colis introuvable.');
     if (o.state === 'porté') return no('Ce colis est déjà dans le sac.');
     if (!this.pos) return no('Position inconnue.');
-    if (this.vehicle) return no('Tu vas trop vite : arrête-toi et descends pour ramasser.');
+    if (this.vehicle && !this.passenger) return no('Tu vas vite : confirme que tu es passager pour ramasser.');
     if (dist(o.at, this.pos) > this.pickupRange()) return no('Trop loin du colis.');
     if (this.carriedKg(this.carried()) + o.weightKg > this.mods.capacityKg) return no('Sac trop lourd : pose d’abord un colis.');
     o.state = 'porté';
@@ -461,7 +468,7 @@ export class Game implements GameEngine {
     const sh = this.shelterById.get(shelterId) ?? this.ghostShelter(shelterId);
     if (!sh) return no('Abri introuvable.');
     if (!this.pos) return no('Position inconnue.');
-    if (this.vehicle) return no('Tu vas trop vite : arrête-toi et descends pour livrer.');
+    if (this.vehicle && !this.passenger) return no('Tu vas vite : confirme que tu es passager pour livrer.');
     if (dist(sh.at, this.pos) > RANGE.deliver) return no('Trop loin de l’abri.');
     const mine = this.carried().filter(o => o.destId === shelterId);
     if (!mine.length) return no('Aucun colis pour cet abri.');
@@ -513,6 +520,14 @@ export class Game implements GameEngine {
     if (!this.carried().length) { this.balance = 0; this.unbalancedS = 0; }
     this.saveNow();
     return OK;
+  }
+
+  /** Passager confirmé : plus de blocage jusqu'au retour à pied. La distance en véhicule ne compte toujours pas comme de la marche. */
+  confirmPassenger(): ActionResult {
+    if (!this.vehicle) return { ok: false, why: 'Tu es à pied.' };
+    this.passenger = true;
+    this.emit({ type: 'toast', text: 'Mode passager : tu peux ramasser et livrer. La marche ne compte pas en véhicule.', tone: 'info' });
+    return { ok: true };
   }
 
   steady(): void { this.balance = 0; this.unbalancedS = 0; }
@@ -791,7 +806,7 @@ export class Game implements GameEngine {
     }
     return {
       player: {
-        at: p, headingDeg: this.heading, speedMps: this.speed, moving: !this.vehicle && this.speed > SPEED.moving, mode: this.mode,
+        at: p, headingDeg: this.heading, speedMps: this.speed, moving: !this.vehicle && this.speed > SPEED.moving, mode: this.mode, vehicle: this.vehicle, passenger: this.passenger,
         level: this.level, xp: this.xp, xpNext: xpNeeded(this.level), stamina: this.stamina, skillPoints: this.skillPoints,
         carriedKg, capacityKg: this.mods.capacityKg, balance: this.balance, score: this.score, deliveries: this.deliveries,
         distanceKm: Math.round(this.distanceM / 10) / 100,

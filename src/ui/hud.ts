@@ -11,6 +11,7 @@ import { icon, type IconName } from './icons';
 import { OrderPanel } from './order';
 import { setPanelSound } from './panel';
 import { PorterPanel, type PorterTab } from './porter';
+import { PassengerPrompt } from './passenger';
 import { PseudoPrompt } from './pseudo';
 import { Sheet } from './sheet';
 import { ShelterPanel } from './shelter';
@@ -35,6 +36,7 @@ export class Hud implements HudApi {
   private near: NearAction;
   private events: HudEvents;
   private pseudo: PseudoPrompt;
+  private passenger: PassengerPrompt;
   /** Le choix du nom n'est proposé qu'une fois par séance à l'ouverture de la carte du réseau. */
   private pseudoAsked = false;
   private netDot = h('i', 'dr-menu-dot');
@@ -125,6 +127,7 @@ export class Hud implements HudApi {
       settings: opts?.settings ?? {},
     });
     this.pseudo = new PseudoPrompt(root, ctx);
+    this.passenger = new PassengerPrompt(root, ctx);
     this.porter.showAmbiance(this.ambiance);
     this.grade = new GradeScreen(root, (id) => events.actions.proof(id));
     this.grade.onShow = () => this.closePanels();
@@ -205,6 +208,7 @@ export class Hud implements HudApi {
         break;
       case 'danger': this.toasts.push(e.entered ? 'Zone dangereuse : ne traîne pas' : 'Tu es sorti de la zone', e.entered ? 'warn' : 'info'); break;
       case 'toast': this.toasts.push(e.text, e.tone ?? 'info'); break;
+      case 'vehicle': if (e.phase === 'début') this.passenger.open(); else this.passenger.close(); break;
       // ----- Systèmes secondaires -----
       case 'special': if (e.order.special) this.toasts.push(`${e.order.special.label}. ${e.order.special.rule}`, 'warn', 'special', 5500); break;
       case 'inspect': {

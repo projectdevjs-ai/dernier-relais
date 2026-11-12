@@ -626,3 +626,6 @@
 /* L'aide et l'action de proximité partagent le même coin : quand les deux sont là, l'aide monte au-dessus. */
 .dr-hud:has(.dr-near:not([hidden])) .dr-help { bottom: calc(var(--sab) + 8px + 64px + 14px + 108px); }
 .dr-hud:has(.dr-near:not([hidden])) .dr-help::after { display: none; }
+
+/* Confirmation passager : deux boutons empilés */
+.dr-passenger .dr-panel-foot { display: grid; gap: 8px; }
