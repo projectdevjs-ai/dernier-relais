@@ -72,7 +72,7 @@ export function emptyGameSave(day = ''): GameSave {
   return {
     version: 1, savedAt: 0, level: 1, xp: 0, skillPoints: 0, score: 0, reputation: 0, deliveries: 0, distanceM: 0, stamina: 1,
     skills: {}, shelters: {}, discovered: [], visited: [], day, orders: [], done: [], contracts: [], last: null,
-    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [], relays: {},
+    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [], relays: {}, missions: {},
   };
 }
 
