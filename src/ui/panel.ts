@@ -13,6 +13,7 @@ export class Panel {
   readonly body: HTMLElement;
   readonly foot: HTMLElement;
   isOpen = false;
+  private openedAt = 0;
   onClose: (() => void) | null = null;
   private closeBtn: HTMLButtonElement;
   private box: HTMLElement;
@@ -35,7 +36,8 @@ export class Panel {
     box.setAttribute('aria-label', label);
     this.el = h('div', 'dr-modal', scrim, box);
     this.el.hidden = true;
-    scrim.addEventListener('click', () => this.close());
+    // Ignore le clic fantôme du toucher qui vient d'ouvrir le panneau sur mobile.
+    scrim.addEventListener('click', () => { if (performance.now() - this.openedAt > 400) this.close(); });
     this.closeBtn.addEventListener('click', () => this.close());
     this.el.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
     parent.append(this.el);
@@ -65,6 +67,7 @@ export class Panel {
   open(): void {
     if (this.isOpen) return;
     this.isOpen = true;
+    this.openedAt = performance.now();
     if (this.hideTimer) { clearTimeout(this.hideTimer); this.hideTimer = null; }
     this.el.classList.remove('is-closing');
     this.box.style.transform = '';
