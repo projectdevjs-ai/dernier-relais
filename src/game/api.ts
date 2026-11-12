@@ -464,6 +464,7 @@ export interface HudEvents {
   onHaptics?(on: boolean): void;
   /** Volume général, de 0 à 1. */
   onVolume?(v: number): void;
+  onAmbientVolume?(v: number): void;
   onReplayIntro?(): void;
   onLab?(): void;
   /** Lancer l'installation de l'application (le bouton n'apparaît que si `settings.canInstall` ou `Hud.setCanInstall(true)`). */
@@ -481,7 +482,7 @@ export interface HudEvents {
 }
 export type UiKind = 'tap' | 'open' | 'close' | 'error' | 'confirm';
 /** État initial des réglages affichés par le HUD (la mémorisation est faite par l'appelant). */
-export interface HudSettings { sound?: boolean; voices?: boolean; haptics?: boolean; volume?: number; canInstall?: boolean; /** « Ramassage rapide » : saute le repérage et le sanglage (désactivé par défaut). */ quickPickup?: boolean }
+export interface HudSettings { sound?: boolean; voices?: boolean; haptics?: boolean; volume?: number; ambientVolume?: number; canInstall?: boolean; /** « Ramassage rapide » : saute le repérage et le sanglage (désactivé par défaut). */ quickPickup?: boolean }
 export interface HudOptions { ambiance?: Ambiance; settings?: HudSettings; /** Vue de la carte au départ : inclinée (3D, par défaut) ou à plat. Sert au libellé du bouton « Vue 2D / 3D ». */ tilted?: boolean }
 /** Niveau collectif d'un abri (0 à 5), partagé entre tous les joueurs. */
 export interface CollectiveView {
