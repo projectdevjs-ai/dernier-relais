@@ -11,6 +11,7 @@
 }
 .rb-trigger:active { transform: scale(.95); }
 .rb-trigger.rb-in-combat { border-color: #ff9a77; color: #ffc2a8; animation: rb-pulse 2s infinite; }
+.rb-trigger.rb-radio-pending:not(.rb-in-combat) { border-color:#e3c77f; color:#fae6ab; }
 .rb-trigger-alert { color: #ff6e56; }
 .rb-veil { position: fixed; inset: 0; z-index: 11000;
   display: flex; align-items: flex-end; justify-content: center;
@@ -50,9 +51,9 @@
 .rb-track {height:6px;display:block;border-radius:10px;background:#304040;overflow:hidden;}
 .rb-track .rb-fill {display:block;height:100%;width:0;background:linear-gradient(90deg,#5fbd9c,#b4f7bd);border-radius:10px;transition:width .25s;}
 .rb-track.rb-integrity {position:absolute;bottom:0;left:0;right:0;border-radius:0;height:5px;}
-.rb-tabs {display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:20px 0 22px;
+.rb-tabs {display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:20px 0 22px;
   padding:4px;border:1px solid #344946;background:#152328;border-radius:11px;}
-.rb-tab {padding:11px 4px;min-width:0;color:#8fa6a3;font-weight:800;letter-spacing:.05em;font-size:10px;
+.rb-tab {padding:11px 2px;min-width:0;color:#8fa6a3;font-weight:800;letter-spacing:.03em;font-size:10px;
   background:transparent;border:0;border-radius:8px;}
 .rb-tab.is-active {background:#36564e;color:#e9fff4;box-shadow:inset 0 1px #6ca08e;}
 .rb-section-label {margin:18px 0 11px; color:#9ebdaf;font:800 10px/1.5 system-ui;letter-spacing:.15em;}
@@ -131,3 +132,14 @@
 @media(max-width:380px) {.rb-panel{padding-left:11px;padding-right:11px}.rb-recipe{flex-wrap:wrap}.rb-resource{padding:10px 1px}.rb-resource-name{font-size:9px}.rb-action{font-size:10px}}
 @media(min-width:700px) {.rb-veil{align-items:center}.rb-panel{border-radius:20px;max-height:90dvh;border-bottom:1px solid rgba(187,222,209,.25)}}
 @media(prefers-reduced-motion:reduce) {.rb-panel,.rb-trigger,.rb-silhouette{animation:none!important;transition:none!important}}
+
+/* Transmissions procédurales : dossier crypté et journal de décisions. */
+.rb-radio-card {position:relative;padding:20px 16px;background:linear-gradient(135deg,#213737,#14282c);
+  border:1px solid #69877e;border-radius:13px;overflow:hidden;}
+.rb-radio-card::before {content:'';position:absolute;left:0;top:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#bcdba9,transparent);}
+.rb-radio-scan {color:#9acbb9;font-size:10px;letter-spacing:.13em;font-weight:800;}
+.rb-radio-title {font-size:20px;line-height:1.2;letter-spacing:.1em;margin:17px 0;color:#eef8e9;}
+.rb-radio-text {color:#d4e5df;font-size:13px;line-height:1.8;margin:0 0 20px;}
+.rb-radio-log {display:grid;gap:7px;}
+.rb-radio-log p {font-size:12px;line-height:1.6;color:#b7cfc3;padding:12px;margin:0;background:#1d2c2f;
+  border-left:2px solid #8cae93;border-radius:0 7px 7px 0;}
