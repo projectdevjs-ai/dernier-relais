@@ -77,6 +77,7 @@ export class PorterPanel {
   private weekEmpty = h('p', 'dr-empty', 'Pas de contrat cette semaine.');
   private log: Record<'score' | 'deliveries' | 'distance' | 'level' | 'xp', HTMLElement>;
   private xpBar = h('span', 'dr-bar-fill');
+  private reputationVal = h('span', 'dr-log-val');
   private ambBtns = new Map<'auto' | Ambiance, HTMLButtonElement>();
   private seg!: HTMLElement;
   private ambHint!: HTMLElement;
@@ -162,10 +163,11 @@ export class PorterPanel {
       const val = h('span', 'dr-log-val');
       return { el: h('div', 'dr-log-row', icon(ic), h('span', 'dr-log-label', label), h('span', 'dr-log-dots'), val), val };
     };
-    const sc = line('star', 'Score'), dl = line('crate', 'Livraisons'), di = line('route', 'Distance à pied'), lv = line('xp', 'Niveau');
+    const sc = line('star', 'Score'), rep = line('heart', 'Réputation'), dl = line('crate', 'Livraisons'), di = line('route', 'Distance à pied'), lv = line('xp', 'Niveau');
+    this.reputationVal = rep.val;
     const xp = h('span', 'dr-log-xp');
     this.log = { score: sc.val, deliveries: dl.val, distance: di.val, level: lv.val, xp };
-    this.pages.get('carnet')!.append(h('div', 'dr-log', sc.el, dl.el, di.el, lv.el), h('div', 'dr-log-xpwrap', h('span', 'dr-bar', this.xpBar), xp));
+    this.pages.get('carnet')!.append(h('div', 'dr-log', sc.el, rep.el, dl.el, di.el, lv.el), h('div', 'dr-log-xpwrap', h('span', 'dr-bar', this.xpBar), xp));
 
     // Réglages
     const seg = h('div', 'dr-seg');
@@ -230,6 +232,17 @@ export class PorterPanel {
       range.addEventListener('change', () => ctx.ui('tap'));
       paint();
       sound.push(h('div', 'dr-set-row dr-set-static', h('span', 'dr-set-label', 'Volume'), range, val));
+    }
+    if (ev.onAmbientVolume) {
+      const ambient = h('input', 'dr-range') as HTMLInputElement;
+      ambient.type = 'range'; ambient.min = '0'; ambient.max = '100'; ambient.step = '5';
+      ambient.value = String(Math.round((st.ambientVolume ?? 0.35) * 20) * 5);
+      ambient.setAttribute('aria-label', 'Volume de l’ambiance');
+      const val = h('span', 'dr-set-num');
+      const paint = (): void => { setText(val, `${ambient.value} %`); setVar(ambient, '--p', String(Number(ambient.value) / 100)); };
+      ambient.addEventListener('input', () => { paint(); ev.onAmbientVolume?.(Number(ambient.value) / 100); });
+      paint();
+      sound.push(h('div', 'dr-set-row dr-set-static', h('span', 'dr-set-label', 'Ambiance (vent, pluie, fond)'), ambient, val));
     }
     if (ev.onVoices) sound.push(toggle('voice', 'Voix du narrateur', st.voices !== false, (on) => { ev.onVoices?.(on); ctx.ui('tap'); }));
     if (ev.onHaptics) sound.push(toggle('vibrate', 'Vibrations', st.haptics !== false, (on) => { ev.onHaptics?.(on); ctx.ui(on ? 'confirm' : 'tap'); }));
@@ -321,6 +334,7 @@ export class PorterPanel {
       show(this.dayEmpty, day.length === 0); show(this.weekEmpty, week.length === 0);
     } else if (this.tab === 'carnet') {
       rollNumber(this.log.score, Math.round(p.score), (n) => `${fmtInt(n)} pts`);
+      setText(this.reputationVal, String(p.reputation ?? 0));
       rollNumber(this.log.deliveries, Math.round(p.deliveries), fmtInt);
       setText(this.log.distance, `${p.distanceKm.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km`);
       setText(this.log.level, String(p.level));

@@ -173,6 +173,8 @@ export interface LostInput {
   condition?: number;
 }
 
+export interface RelayMissionView { label: string; progress: number; goal: number; reward: number; active: boolean; done: boolean }
+
 export interface ShelterView {
   id: string;
   name: string;
@@ -194,6 +196,8 @@ export interface ShelterView {
   inRange: boolean;
   /** Colis portés destinés à cet abri. */
   deliverable: string[];
+  /** Mission répétable et permanente du responsable du relais. */
+  mission?: RelayMissionView;
   /** Réplique du PNJ adaptée à la situation. */
   line: string;
 }
@@ -221,6 +225,8 @@ export interface PlayerView {
   /** Total de points gagnés. */
   score: number;
   deliveries: number;
+  /** Réputation gagnée en aidant les relais, sans points ni XP. */
+  reputation?: number;
   distanceKm: number;
   // ── Ajouts (rangement) : facultatifs, une vue sans eux reste valide.
   /** Les cinq emplacements de chargement, verrouillés ou non. `capacityKg` est la somme des emplacements débloqués. */
@@ -253,7 +259,7 @@ export interface ContractView {
   id: string; period: 'jour' | 'semaine'; label: string;
   progress: number; goal: number; reward: number; done: boolean; claimed: boolean;
 }
-export interface DangerView { id: string; at: LngLat; radiusM: number; /** vrai si le joueur est dedans */ inside: boolean }
+export interface DangerView { id: string; at: LngLat; radiusM: number; /** vrai si le joueur est dedans */ inside: boolean; enemy?: string; resolved?: boolean }
 
 export interface GameView {
   player: PlayerView;
@@ -372,6 +378,12 @@ export interface GameActions {
    * Le colis quitte le sac et le joueur touche une avance. `dryRun` : vérifie et calcule sans rien changer.
    */
   giveToRelay?(orderId: string, shelterId?: string, dryRun?: boolean): RelayGiveResult;
+  /** Dépôt solidaire dans n'importe quel abri : réputation seulement, même hors ligne. */
+  handoff?(orderId: string, shelterId: string): ActionResult;
+  /** Accepte la mission permanente du relais, ou réclame la récompense si achevée. */
+  relayMission?(shelterId: string): ActionResult;
+  /** Rencontre tactique, uniquement à l'arrêt, dans une zone de danger. */
+  resolveThreat?(zoneId: string, choice: 'eviter' | 'negocier'): ActionResult;
   /** Met dans le sac un colis pris à la chaîne de relais (il faut être à un abri). `dryRun` : vérifie sans rien changer. */
   takeFromRelay?(relay: { id: string; parcel: RelayCrate }, dryRun?: boolean): ActionResult;
 }
@@ -452,6 +464,7 @@ export interface HudEvents {
   onHaptics?(on: boolean): void;
   /** Volume général, de 0 à 1. */
   onVolume?(v: number): void;
+  onAmbientVolume?(v: number): void;
   onReplayIntro?(): void;
   onLab?(): void;
   /** Lancer l'installation de l'application (le bouton n'apparaît que si `settings.canInstall` ou `Hud.setCanInstall(true)`). */
@@ -469,7 +482,7 @@ export interface HudEvents {
 }
 export type UiKind = 'tap' | 'open' | 'close' | 'error' | 'confirm';
 /** État initial des réglages affichés par le HUD (la mémorisation est faite par l'appelant). */
-export interface HudSettings { sound?: boolean; voices?: boolean; haptics?: boolean; volume?: number; canInstall?: boolean; /** « Ramassage rapide » : saute le repérage et le sanglage (désactivé par défaut). */ quickPickup?: boolean }
+export interface HudSettings { sound?: boolean; voices?: boolean; haptics?: boolean; volume?: number; ambientVolume?: number; canInstall?: boolean; /** « Ramassage rapide » : saute le repérage et le sanglage (désactivé par défaut). */ quickPickup?: boolean }
 export interface HudOptions { ambiance?: Ambiance; settings?: HudSettings; /** Vue de la carte au départ : inclinée (3D, par défaut) ou à plat. Sert au libellé du bouton « Vue 2D / 3D ». */ tilted?: boolean }
 /** Niveau collectif d'un abri (0 à 5), partagé entre tous les joueurs. */
 export interface CollectiveView {

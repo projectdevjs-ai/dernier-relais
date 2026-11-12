@@ -1,7 +1,7 @@
 // Le moteur de jeu. Aucun accès à l'écran ni au réseau : il reçoit le monde, la météo et la position,
 // et produit un GameView. Les règles sont dans les petits modules voisins (fonctions pures).
 import { crateDef } from './crates';
-import { type LngLat, cellAt, dist } from '../core/geo';
+import { type LngLat, cellAt, dist, hash } from '../core/geo';
 import type { Fix } from '../player/gps';
 import type { CellContent, Shelter } from '../world/types';
 import {
@@ -71,6 +71,8 @@ export class Game implements GameEngine {
   private xp = 0;
   private skillPoints = 0;
   private score = 0;
+  private reputation = 0;
+  private missions = new Map<string, { cycle: number; progress: number; active: boolean }>();
   private deliveries = 0;
   private distanceM = 0;
   private stamina = 1;
@@ -93,6 +95,7 @@ export class Game implements GameEngine {
   private lateWarned = new Set<string>();
   private dangers: Danger[] = [];
   private inDanger = false;
+  private threatsResolved = new Set<string>();
   private nearShelter: string | null = null;
   private visited = new Set<string>();
   private visitedList: string[] = [];
@@ -163,7 +166,8 @@ export class Game implements GameEngine {
       this.nextDay = nextDayMs(Date.parse(save.day));
     }
     this.level = save.level; this.xp = save.xp; this.skillPoints = save.skillPoints;
-    this.score = save.score; this.deliveries = save.deliveries; this.distanceM = save.distanceM; this.stamina = save.stamina;
+    this.score = save.score; this.reputation = save.reputation ?? 0; this.deliveries = save.deliveries;
+    this.missions = new Map(Object.entries(save.missions ?? {}).map(([k, v]) => [k, { ...v }])); this.distanceM = save.distanceM; this.stamina = save.stamina;
     this.ranks = { ...save.skills };
     this.mods = modsFor(this.ranks);
     this.shelterSave = new Map(Object.entries(save.shelters).map(([k, v]) => [k, { ...v }]));
@@ -175,6 +179,7 @@ export class Game implements GameEngine {
     // Un colis porté reste dans le sac d'un jour à l'autre ; les colis seulement révélés ne valent que pour leur jour.
     for (const o of save.orders) if (sameDay || o.state === 'porté') this.orders.set(o.id, { ...o });
     this.done = new Set(sameDay ? save.done : []);
+    this.threatsResolved = new Set(sameDay ? save.threatsResolved ?? [] : []);
     this.cachesFound = new Set(sameDay ? save.cachesFound : []);
     this.cachesOpened = new Set(sameDay ? save.cachesOpened : []);
     this.met = new Set(sameDay ? save.met : []);
@@ -193,10 +198,11 @@ export class Game implements GameEngine {
     const orders: OrderSave[] = [];
     for (const o of this.orders.values()) if (o.state !== 'caché') orders.push({ ...o, state: o.state });
     return {
-      version: 1, savedAt: this.now(), level: this.level, xp: this.xp, skillPoints: this.skillPoints, score: this.score,
+      version: 1, savedAt: this.now(), level: this.level, xp: this.xp, skillPoints: this.skillPoints, score: this.score, reputation: this.reputation,
+      missions: Object.fromEntries(this.missions),
       deliveries: this.deliveries, distanceM: this.distanceM, stamina: this.stamina, skills: { ...this.ranks },
       shelters: Object.fromEntries(this.shelterSave), discovered: [...this.discovered], visited: [...this.visitedList],
-      day: this.day, orders, done: [...this.done],
+      day: this.day, orders, done: [...this.done], threatsResolved: [...this.threatsResolved],
       contracts: this.contracts.map(c => ({ id: c.id, progress: c.progress, claimed: c.claimed })),
       last: this.pos,
       rev: SAVE_REV, cachesFound: [...this.cachesFound], cachesOpened: [...this.cachesOpened], met: [...this.met],
@@ -238,7 +244,7 @@ export class Game implements GameEngine {
     // ils sont oubliés, sinon l'interface guiderait vers un colis à des centaines de kilomètres. Ils seront à rescanner au retour.
     const loaded = new Set(this.loadedCells);
     for (const [id, o] of this.orders) {
-      if (o.state === 'révélé' && o.pickedAt === null && o.cell && !o.jam && !o.lost?.net && !loaded.has(o.cell)) this.orders.delete(id);
+      if (o.state === 'révélé' && o.pickedAt === null && o.cell && !o.jam && !o.lost?.net && !loaded.has(o.cell) && this.pos !== null && dist(o.at, this.pos) > 1500) this.orders.delete(id);
     }
     for (const c of cells) for (const spot of c.parcels) {
       if (this.orders.has(spot.id) || this.done.has(spot.id)) continue;
@@ -320,6 +326,11 @@ export class Game implements GameEngine {
       }
     }
     this.pos = p;
+    // Une téléportation peut suivre le chargement des tuiles ; ne conserve pas de vieux colis à des kilomètres.
+    const loadedNow = new Set(this.loadedCells);
+    for (const [id, o] of this.orders) {
+      if (o.state === 'révélé' && o.pickedAt === null && o.cell && !o.jam && !o.lost?.net && !loadedNow.has(o.cell) && dist(o.at, p) > 1500) this.orders.delete(id);
+    }
     const here = cellAt(p[0], p[1]).id;
     if (!this.visited.has(here)) { this.visited.add(here); this.visitedList.push(here); this.dirty = true; }
     this.refreshPlace();
@@ -468,12 +479,13 @@ export class Game implements GameEngine {
     o.slot = r.slot;
     // Distance à faire à pied, retenue pour reconnaître un trajet fait en véhicule.
     o.legM = this.pos ? Math.round(dist(this.pos, o.destAt)) : 0;
-    const t = this.now(), wasKnown = o.inspected === true;
+    const t = this.now(), wasKnown = o.inspected === true, firstPickup = o.pickedAt === null;
     if (o.pickedAt === null) o.pickedAt = t;
     o.inspected = true;
     this.strapUntil.set(o.id, t + GESTURE.strapWindowS * 1000);
     const v = this.orderView(o, t);
     this.emit({ type: 'pickup', order: v });
+    if (firstPickup) this.advanceRelayMissions('pickup', 1);
     // Un colis spécial pris sans l'avoir écouté : on annonce sa contrainte.
     if (o.special && !wasKnown) this.emit({ type: 'special', order: v });
     this.saveNow();
@@ -549,6 +561,7 @@ export class Game implements GameEngine {
       for (const level of levels) this.emit({ type: 'levelUp', level });
       if (o.jam) this.jamDelivered(o.jam, t);
       this.progress({ type: 'livraison', grade: g.grade, fragile: o.fragile, condition: o.condition, timed: o.deadlineMin !== null, onTime: g.onTime, night: this.weather.night, wet: isWet(this.weather.kind) });
+      this.advanceRelayMissions('livraison', 1);
       // Le PNJ réagit au fait le plus marquant de la livraison.
       const s: Situation = starsBefore === 0 ? 'première' : starsAfter > starsBefore ? (starsAfter >= 5 ? 'cinq' : 'étoile')
         : !g.onTime ? 'retard' : o.condition < DAMAGED ? 'abîmé' : 'merci';
@@ -556,6 +569,88 @@ export class Game implements GameEngine {
     }
     this.outcomes.set(shelterId, { situation, until: t + OUTCOME_MS });
     if (!this.carried().length) { this.balance = 0; this.unbalancedS = 0; }
+    this.saveNow();
+    return OK;
+  }
+
+  /** Mission de relais renouvelée dès que la récompense est réclamée. */
+  private missionView(shelterId: string): { label: string; progress: number; goal: number; reward: number; active: boolean; done: boolean } {
+    const m = this.missions.get(shelterId) ?? { cycle: 0, progress: 0, active: false };
+    const mode = m.cycle % 3;
+    const goal = mode === 0 ? 250 : mode === 1 ? 1 : 2;
+    const label = mode === 0 ? 'Parcourir 250 m à pied' : mode === 1 ? 'Livrer 1 colis' : 'Ramasser 2 colis';
+    return { label, progress: Math.min(goal, Math.floor(m.progress)), goal, reward: 80 + (m.cycle % 5) * 20, active: m.active, done: m.active && m.progress >= goal };
+  }
+
+  relayMission(shelterId: string): ActionResult {
+    const sh = this.shelterById.get(shelterId);
+    if (!sh || !this.pos || dist(sh.at, this.pos) > RANGE.deliver) return no('Il faut être sur place pour parler au responsable.');
+    const m = this.missions.get(shelterId) ?? { cycle: 0, progress: 0, active: false };
+    const v = this.missionView(shelterId);
+    if (!m.active) {
+      m.active = true;
+      this.missions.set(shelterId, m);
+      this.emit({ type: 'toast', text: `Mission acceptée : ${v.label}`, tone: 'info' });
+    } else if (v.done) {
+      this.score += v.reward;
+      const levels = this.gainXp(Math.round(v.reward * XP.contractShare));
+      m.cycle++; m.progress = 0; m.active = false;
+      this.emit({ type: 'toast', text: `Mission accomplie : +${v.reward} points. Nouvelle mission disponible !`, tone: 'good' });
+      for (const level of levels) this.emit({ type: 'levelUp', level });
+    } else return no('La mission est encore en cours.');
+    this.saveNow();
+    return OK;
+  }
+
+  private advanceRelayMissions(kind: 'pickup' | 'livraison' | 'marche', quantity: number): void {
+    for (const m of this.missions.values()) {
+      if (!m.active) continue;
+      const mode = m.cycle % 3;
+      if ((mode === 0 && kind !== 'marche') || (mode === 1 && kind !== 'livraison') || (mode === 2 && kind !== 'pickup')) continue;
+      const goal = mode === 0 ? 250 : mode === 1 ? 1 : 2;
+      m.progress = Math.min(goal, m.progress + quantity);
+      this.dirty = true;
+    }
+  }
+
+  /** Rencontres dans les zones dangereuses : choix tactique seulement à l'arrêt. */
+  resolveThreat(zoneId: string, choice: 'eviter' | 'negocier'): ActionResult {
+    const d = this.dangers.find(x => x.id === zoneId);
+    if (!d || !this.pos || !insideDanger(d, this.pos)) return no('Aucune menace à proximité.');
+    if (this.threatsResolved.has(zoneId)) return no('Cette menace a déjà été résolue.');
+    if (this.speed > SPEED.moving || this.vehicle) return no('Arrête-toi dans un endroit sûr pour prendre une décision.');
+    if (choice !== 'eviter' && choice !== 'negocier') return no('Choix inconnu.');
+    if (choice === 'negocier' && this.score < 20) return no('Il faut 20 points pour négocier un passage sécurisé.');
+    const kind = ['Récupérateur', 'Drone de surveillance', 'Errant'][hash(zoneId) % 3];
+    if (choice === 'negocier') {
+      this.score -= 20;
+      this.emit({ type: 'toast', text: `${kind} : passage négocié (-20 pts).`, tone: 'info' });
+    } else if (hash(zoneId + this.day) % 4 === 0) {
+      this.stamina = Math.max(0.1, this.stamina - 0.12);
+      this.emit({ type: 'toast', text: `${kind} : fuite difficile, endurance diminuée.`, tone: 'warn' });
+    } else this.emit({ type: 'toast', text: `${kind} évité avec succès.`, tone: 'good' });
+    this.threatsResolved.add(zoneId);
+    this.saveNow();
+    return OK;
+  }
+
+  /** Dépôt solidaire : tous les colis peuvent être remis à un autre relais sans points ni XP. */
+  handoff(orderId: string, shelterId: string): ActionResult {
+    const o = this.orders.get(orderId);
+    if (!o || o.state !== 'porté') return no('Ce colis n’est pas dans ton sac.');
+    if (o.destId === shelterId) return no('C’est le bon relais : livre ce colis normalement.');
+    const sh = this.shelterById.get(shelterId);
+    if (!sh || !this.pos || dist(sh.at, this.pos) > RANGE.deliver) return no('Rapproche-toi du relais.');
+    if (this.vehicle && !this.passenger) return no('Confirme le mode passager avant de déposer.');
+    this.orders.delete(orderId);
+    this.done.add(orderId);
+    this.relayIds.delete(orderId);
+    this.lateWarned.delete(orderId);
+    this.strapUntil.delete(orderId);
+    this.frontS.delete(orderId);
+    if (!this.carried().length) { this.balance = 0; this.unbalancedS = 0; }
+    this.reputation += 10;
+    this.emit({ type: 'toast', text: 'Dépôt solidaire : +10 réputation, aucun point ni XP.', tone: 'good' });
     this.saveNow();
     return OK;
   }
@@ -850,7 +945,7 @@ export class Game implements GameEngine {
       return {
         id: s.id, name: s.name, kind: s.kind, at: s.at, site: s.site, facing: s.facing, npc: npcFor(s.id), stars, points,
         nextStarAt: nextStarAt(stars), nextUnlock: nextUnlock(stars), distanceM: d, inRange: p !== null && d <= RANGE.deliver,
-        deliverable: mine.map(o => o.id), line: this.line(s.id, stars, st?.deliveries ?? 0, mine, t),
+        deliverable: mine.map(o => o.id), mission: this.missionView(s.id), line: this.line(s.id, stars, st?.deliveries ?? 0, mine, t),
       };
     });
     // Colis portés dont l'abri n'est pas dans les cases chargées : l'abri reste affiché et livrable.
@@ -866,7 +961,7 @@ export class Game implements GameEngine {
     }
     shelters.sort(byDist);
 
-    const dangers: DangerView[] = this.dangers.map(z => ({ id: z.id, at: z.at, radiusM: z.radiusM, inside: p !== null && insideDanger(z, p) }));
+    const dangers: DangerView[] = this.dangers.map(z => ({ id: z.id, at: z.at, radiusM: z.radiusM, inside: p !== null && insideDanger(z, p), enemy: ['Récupérateur', 'Drone de surveillance', 'Errant'][hash(z.id) % 3], resolved: this.threatsResolved.has(z.id) }));
     this.skillsCache ??= skillViews(this.ranks, this.skillPoints, this.level);
     this.contractsCache ??= this.contracts.map(c => contractView(c, this.mods.contractMult));
 
@@ -910,7 +1005,7 @@ export class Game implements GameEngine {
       player: {
         at: p, headingDeg: this.heading, speedMps: this.speed, moving: !this.vehicle && this.speed > SPEED.moving, mode: this.mode, vehicle: this.vehicle, passenger: this.passenger,
         level: this.level, xp: this.xp, xpNext: xpNeeded(this.level), stamina: this.stamina, skillPoints: this.skillPoints,
-        carriedKg, capacityKg: capacityKg(rig), balance: this.balance, score: this.score, deliveries: this.deliveries,
+        carriedKg, capacityKg: capacityKg(rig), balance: this.balance, score: this.score, reputation: this.reputation, deliveries: this.deliveries,
         distanceKm: Math.round(this.distanceM / 10) / 100,
         slots, exoTier: rig.tier,
         exo: EXO.map((e, i) => ({ tier: i, name: e.name, desc: e.desc, installed: i <= rig.tier, level: e.level })),
@@ -956,7 +1051,7 @@ export class Game implements GameEngine {
     const st = this.shelterSave.get(shelterId);
     return st ? starsFor(st.points, st.deliveries) : 0;
   }
-  private pickupRange(): number { return RANGE.pickup + this.mods.pickupBonusM; }
+  private pickupRange(): number { return RANGE.pickup + this.mods.pickupBonusM + 4; }
   /** Portée du scanner : base, compétences, et avantage des abris à 4 étoiles autour du joueur. */
   private scanRange(): number {
     let r = RANGE.scan + this.mods.scanRangeM;
@@ -1009,6 +1104,7 @@ export class Game implements GameEngine {
   }
 
   private progress(e: ProgressEvent): void {
+    if (e.type === 'marche') this.advanceRelayMissions('marche', e.meters);
     for (const c of this.contracts) {
       const before = c.progress;
       const justDone = advance(c, e);
@@ -1118,7 +1214,7 @@ export class Game implements GameEngine {
     this.nextDay = nextDayMs(t);
     for (const [id, o] of this.orders) if (o.state !== 'porté') this.orders.delete(id);
     this.done.clear();
-    this.cachesFound.clear(); this.cachesOpened.clear(); this.met.clear(); this.frontWarned.clear();
+    this.cachesFound.clear(); this.cachesOpened.clear(); this.met.clear(); this.frontWarned.clear(); this.threatsResolved.clear();
     for (const [id, j] of this.jams) if (j.state !== 'en cours') this.jams.delete(id);
     this.contracts = this.drawAll(this.contracts);
     this.contractsCache = null;

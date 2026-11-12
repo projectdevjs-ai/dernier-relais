@@ -198,13 +198,13 @@ export class CameraRig {
     const dx = e.clientX - g.x, dy = e.clientY - g.y;
     if (!g.axis) {
       if (Math.hypot(dx, dy) < TAP_SLOP) return;
-      // Le geste est verrouillé sur son axe dominant : tourner OU incliner, jamais les deux par accident.
-      g.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
-      g.tap = false; g.x = e.clientX; g.y = e.clientY;
-      return;
+      // Départ progressif : rotation et inclinaison peuvent se combiner naturellement.
+      g.axis = 'x';
+      g.tap = false;
     }
-    if (g.axis === 'x') { this.tBearing = g.bearing + dx * ROTATE_PER_PX; this.followHeading = false; }
-    else if (this.mode === '3d') this.tPitch = clamp(g.pitch - dy * PITCH_PER_PX, 0, this.o.maxPitch);
+    this.tBearing = wrap(g.bearing + dx * ROTATE_PER_PX);
+    if (Math.abs(dx) > TAP_SLOP) this.followHeading = false;
+    if (this.mode === '3d') this.tPitch = clamp(g.pitch - dy * PITCH_PER_PX, 0, this.o.maxPitch);
   };
 
   private readonly up = (e: PointerEvent): void => {

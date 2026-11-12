@@ -104,6 +104,7 @@ export class Sound {
         this.ctx = new AC();
         this.rig = new Rig(this.ctx, { volume: 0 });
         this.amb = new Ambience(this.rig);
+        this.amb.setLevel(this.ambientVolume);
       }
       this.power();
     } catch { this.ctx = null; this.rig = null; this.amb = null; this.mus = null; /* pas de son sur cet appareil : le jeu continue */ }
@@ -251,6 +252,10 @@ export class Sound {
       this.mus?.stop(this.audible() ? 1.2 : 0.2);
     }
   }
+
+  /** Contrôle indépendant des nappes (les effets de jeu restent audibles). */
+  setAmbientVolume(v: number): void { this.amb?.setLevel(v); this.ambientVolume = Math.min(1, Math.max(0, v)); }
+  private ambientVolume = 0.35;
 
   /** Volume général de 0 à 1. À 0, la nappe est détruite et le contexte audio mis en veille. */
   setVolume(v: number): void { this.volume = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0)); this.power(); }

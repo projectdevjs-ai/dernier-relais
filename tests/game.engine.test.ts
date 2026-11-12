@@ -622,7 +622,9 @@ describe('zones dangereuses', () => {
     r.game.setWorld(world([S1, S2], [s], [zoneCell]));
     place(r, edge);
     const z = r.game.view().dangers.find(d => d.id === zone.id)!;
-    expect(z).toEqual({ ...zone, inside: false });
+    expect(z).toMatchObject({ ...zone, inside: false });
+    expect(['Récupérateur', 'Drone de surveillance', 'Errant']).toContain(z.enemy);
+    expect(z.resolved).toBe(false);
     for (const sh of [S1, S2]) expect(dist(sh.at, z.at)).toBeGreaterThan(z.radiusM + 60);
     r.game.scan(); expect(r.game.pickup(s.id).ok).toBe(true);
     expect(ofType(r.events, 'danger')).toEqual([]);

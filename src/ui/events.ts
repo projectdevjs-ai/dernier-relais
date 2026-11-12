@@ -20,14 +20,22 @@ export class EventsBar {
   private front: HTMLElement; private frontTxt = h('span', '');
   private jam: HTMLButtonElement; private jamTxt = h('span', '');
   private jamShelter = '';
+  private threatId = '';
+  private threat = h('div', 'dr-evt dr-threat');
+  private threatLabel = h('span', 'dr-near-sub');
+  private avoid = btn('dr-btn dr-btn-sm', null, 'Éviter');
+  private negotiate = btn('dr-btn dr-btn-sm', null, 'Négocier');
 
   constructor(private root: HTMLElement, ctx: Ctx) {
     this.front = h('div', 'dr-chip dr-evt dr-evt-front', icon('front'), this.frontTxt);
     this.front.setAttribute('role', 'status');
     this.jam = btn('dr-chip dr-evt dr-evt-jam', null, icon('stack'), this.jamTxt);
     this.jam.addEventListener('click', () => { if (this.jamShelter) ctx.openShelter(this.jamShelter); });
-    this.front.hidden = this.jam.hidden = true;
-    this.el = h('div', 'dr-top-row dr-events', this.front, this.jam);
+    this.threat.append(icon('shield'), this.threatLabel, this.avoid, this.negotiate);
+    this.avoid.addEventListener('click', () => { if (this.threatId) ctx.run(ctx.events.actions.resolveThreat?.(this.threatId, 'eviter') ?? { ok: false, why: 'Rencontre indisponible' }); });
+    this.negotiate.addEventListener('click', () => { if (this.threatId) ctx.run(ctx.events.actions.resolveThreat?.(this.threatId, 'negocier') ?? { ok: false, why: 'Rencontre indisponible' }); });
+    this.front.hidden = this.jam.hidden = this.threat.hidden = true;
+    this.el = h('div', 'dr-top-row dr-events', this.front, this.jam, this.threat);
     this.el.hidden = true;
   }
 
@@ -60,7 +68,17 @@ export class EventsBar {
         ? `Colis groupés : ${j.delivered} sur ${j.count} livrés, ${Math.max(0, left)} minutes restantes. Voir l’abri`
         : `${j.shelterName} est débordé, à ${fmtDist(j.distanceM)}. Voir l’abri`);
     }
-    const any = !!f || !!j;
+    // Une rencontre ne demande aucune interaction tant que le joueur marche.
+    const enemy = v.dangers.find(z => z.inside && !z.resolved);
+    show(this.threat, !!enemy);
+    if (enemy) {
+      this.threatId = enemy.id;
+      const stopped = !v.player.moving && !v.player.vehicle;
+      setText(this.threatLabel, `${enemy.enemy ?? 'Menace'} · ${stopped ? 'Choisis une action' : 'Arrête-toi pour agir'}`);
+      this.avoid.disabled = !stopped;
+      this.negotiate.disabled = !stopped || v.player.score < 20;
+    } else this.threatId = '';
+    const any = !!f || !!j || !!enemy;
     show(this.el, any);
     this.root.classList.toggle('dr-has-events', any);
   }

@@ -304,7 +304,43 @@ export class Celebration {
   }
 }
 
-interface DangerItem { group: THREE.Group; r: number; at: [number, number] }
+/** Repère 3D léger pour identifier les ennemis sans interrompre l'exploration. */
+function threatMarker(kind: string): THREE.Group {
+  const group = new THREE.Group();
+  const drone = kind === 'Drone de surveillance', stray = kind === 'Errant';
+  const body = new THREE.MeshBasicMaterial({ color: drone ? 0x8796a4 : stray ? 0x857b68 : 0x664b45 });
+  const head = new THREE.MeshBasicMaterial({ color: drone ? 0xc4d7e4 : 0xb3aaa0 });
+  const signal = new THREE.MeshBasicMaterial({ color: drone ? 0xff7955 : 0xf1b26d });
+  const podium = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 0.6, 16), new THREE.MeshBasicMaterial({ color: 0x5e4840, transparent: true, opacity: 0.75 }));
+  podium.position.y = 0.4;
+  group.add(podium);
+  if (drone) {
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(6, 1.7, 3), body);
+    hull.position.y = 10;
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.8, 10, 8), signal);
+    lens.position.set(0, 10, -1.7);
+    group.add(hull, lens);
+    for (const x of [-4.3, 4.3]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.35, 0.5), head);
+      arm.position.set(x, 10.2, 0);
+      const rotor = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.15, 12), body);
+      rotor.position.set(x * 1.3, 10.5, 0);
+      group.add(arm, rotor);
+    }
+  } else {
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 5.5, 9), body);
+    torso.position.y = 5.2;
+    const face = new THREE.Mesh(new THREE.SphereGeometry(1.35, 12, 9), head);
+    face.position.y = 9.4;
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 0.4), signal);
+    visor.position.set(0, 9.6, -1.1);
+    group.add(torso, face, visor);
+  }
+  group.name = 'menace-3d';
+  return group;
+}
+
+interface DangerItem { group: THREE.Group; marker: THREE.Group; r: number; at: [number, number] }
 
 /** Zones dangereuses : disque translucide au sol, bord net, paroi basse qui s'estompe. */
 export class Dangers {
@@ -329,12 +365,14 @@ export class Dangers {
         disc.scale.set(d.radiusM, 1, d.radiusM); disc.position.y = 0.25; disc.renderOrder = 5;
         const wall = new THREE.Mesh(this.kit.beam, this.kit.wallDanger);
         wall.scale.set(d.radiusM * 0.985, 16, d.radiusM * 0.985); wall.renderOrder = 6;
-        group.add(disc, wall);
+        const marker = threatMarker(d.enemy ?? 'Récupérateur');
+        group.add(disc, wall, marker);
         group.traverse(o => o.layers.set(WORLD));
         this.scene.add(group);
-        it = { group, r: d.radiusM, at: [d.at[0], d.at[1]] };
+        it = { group, marker, r: d.radiusM, at: [d.at[0], d.at[1]] };
         this.items.set(d.id, it);
       }
+      it.marker.visible = !d.resolved;
       it.at[0] = d.at[0]; it.at[1] = d.at[1];
       this.layer.toLocal(d.at, it.group.position);
     }
@@ -346,6 +384,7 @@ export class Dangers {
     if (!this.items.size) return;
     const base = this.kit.isDark ? 1.15 : 1.5;
     this.kit.discDanger.uniforms.uBoost.value = this.anyInside ? base * (1.25 + 0.35 * Math.sin(timeS * 5)) : base;
+    for (const it of this.items.values()) it.marker.position.y = Math.sin(timeS * 1.4) * 0.35;
   }
 
   reposition(): void { for (const it of this.items.values()) this.layer.toLocal(it.at, it.group.position); }

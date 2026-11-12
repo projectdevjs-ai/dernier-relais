@@ -114,7 +114,8 @@ export class Stage implements StageApi {
       // Aucun geste natif de MapLibre : le suivi du porteur recale la carte à chaque image (jumpTo), ce qui
       // annulait tout pincement ou rotation en cours. Les gestes sont gérés par CameraRig.
       interactive: false,
-      pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      // Sur les appareils modestes, la densité native très élevée coûte cher en GPU.
+      pixelRatio: Math.min(window.devicePixelRatio || 1, (navigator as Navigator & { deviceMemory?: number }).deviceMemory !== undefined && (navigator as Navigator & { deviceMemory?: number }).deviceMemory! <= 3 ? 1.5 : 2),
       canvasContextAttributes: { antialias: true },
       attributionControl: false,
       fadeDuration: 150,

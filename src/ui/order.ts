@@ -44,6 +44,7 @@ export class OrderPanel {
   private actText = h('span', '');
   private state = '';
   private destId = '';
+  private missingSince = 0;
 
   constructor(parent: HTMLElement, ctx: Ctx) {
     this.panel = new Panel(parent, 'dr-panel-auto', 'Colis');
@@ -87,6 +88,7 @@ export class OrderPanel {
 
   open(id: string, v: GameView | null): void {
     this.id = id;
+    this.missingSince = 0;
     if (v) this.render(v);
     if (this.id) this.panel.open();
   }
@@ -94,7 +96,14 @@ export class OrderPanel {
   render(v: GameView): void {
     if (!this.id) return;
     const o = v.orders.find((x) => x.id === this.id);
-    if (!o) { this.panel.close(); this.id = null; return; } // livré, posé hors de vue ou perdu
+    // Les cellules GPS et les données réseau se renouvellent pendant le rendu.
+    // Ne ferme pas une fiche sélectionnée au premier instant où le colis manque dans la vue.
+    if (!o) {
+      if (!this.missingSince) this.missingSince = performance.now();
+      if (performance.now() - this.missingSince > 2500) { this.panel.close(); this.id = null; }
+      return;
+    }
+    this.missingSince = 0;
     const carried = o.state === 'porté';
     setText(this.crate, o.special && !o.special.known ? 'Colis scellé' : crateLabel(o.crate));
     setText(this.name, o.name);
