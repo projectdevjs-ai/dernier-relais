@@ -20,7 +20,7 @@ export interface JamSave {
   state: 'en cours' | 'réussi' | 'raté';
 }
 /** Révision du format à l'intérieur de la version 1 : les champs ajoutés sont facultatifs, une sauvegarde plus ancienne se charge telle quelle. */
-export const SAVE_REV = 3;
+export const SAVE_REV = 4;
 
 export interface GameSave {
   version: 1;
@@ -31,6 +31,8 @@ export interface GameSave {
   xp: number;
   skillPoints: number;
   score: number;
+  /** Réputation des dépôts solidaires, sans conversion en points ou XP. */
+  reputation?: number;
   deliveries: number;
   distanceM: number;
   stamina: number;
@@ -67,7 +69,7 @@ export interface GameStore { load(): Promise<GameSave | null>; save(s: GameSave)
 
 export function emptyGameSave(day = ''): GameSave {
   return {
-    version: 1, savedAt: 0, level: 1, xp: 0, skillPoints: 0, score: 0, deliveries: 0, distanceM: 0, stamina: 1,
+    version: 1, savedAt: 0, level: 1, xp: 0, skillPoints: 0, score: 0, reputation: 0, deliveries: 0, distanceM: 0, stamina: 1,
     skills: {}, shelters: {}, discovered: [], visited: [], day, orders: [], done: [], contracts: [], last: null,
     rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [], relays: {},
   };
@@ -146,7 +148,7 @@ export function parseGameSave(raw: unknown): GameSave | null {
   for (const [k, v] of Object.entries(obj(o.relays) ?? {})) if (typeof v === 'string' && v) relays[k] = v;
   return {
     version: 1, savedAt: num(o.savedAt, 0), level: Math.max(1, Math.floor(num(o.level, 1))), xp: num(o.xp, 0),
-    skillPoints: Math.floor(num(o.skillPoints, 0)), score: num(o.score, 0), deliveries: Math.floor(num(o.deliveries, 0)),
+    skillPoints: Math.floor(num(o.skillPoints, 0)), score: num(o.score, 0), reputation: Math.floor(num(o.reputation, 0)), deliveries: Math.floor(num(o.deliveries, 0)),
     distanceM: num(o.distanceM, 0), stamina: num(o.stamina, 1, 0, 1), skills, shelters,
     discovered: strs(o.discovered), visited: strs(o.visited), day: typeof o.day === 'string' ? o.day : '',
     orders: (Array.isArray(o.orders) ? o.orders : []).map(order).filter((x): x is OrderSave => x !== null),
