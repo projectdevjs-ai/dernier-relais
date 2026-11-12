@@ -628,6 +628,16 @@ export class Game implements GameEngine {
     }
   }
 
+  /** Simulateur de Lumen, disponible sans attendre une zone hostile et sans enjeu. */
+  startTraining(): ActionResult {
+    if (this.rebirth.encounter) return no('Une rencontre est déjà en cours.');
+    if (this.vehicle || this.speed > SPEED.moving) return no('Immobilise-toi en sécurité pour lancer une simulation.');
+    this.rebirth.encounter = spawnEncounter('training:sentinel');
+    this.emit({ type: 'combat', phase: 'start' });
+    this.saveNow();
+    return OK;
+  }
+
   /** Démarre une bataille tactique uniquement quand le joueur est immobile. */
   engageThreat(zoneId: string): ActionResult {
     const zone = this.dangers.find(d => d.id === zoneId);
@@ -647,19 +657,28 @@ export class Game implements GameEngine {
     if (!this.rebirth.encounter) return no('Aucun combat en cours.');
     if (this.vehicle || this.speed > SPEED.moving) return no('Arrête-toi pour jouer un tour.');
     const id = this.rebirth.encounter.id;
+    const training = id.startsWith('training:');
+    const before = training ? cleanRebirth(this.rebirth) : null;
     const result = combat(this.rebirth, move);
     if (result.outcome === 'invalid') return no(result.message);
     this.rebirth = result.state;
+    if (before) {
+      this.rebirth.resources = { ...before.resources };
+      this.rebirth.factions = { ...before.factions };
+      this.rebirth.integrity = before.integrity;
+      this.rebirth.victories = before.victories;
+    }
     this.emit({ type: 'combat', phase: result.outcome === 'victory' ? 'victory' : result.outcome === 'defeat' ? 'defeat' : move });
-    if (result.outcome === 'victory') {
+    if (result.outcome === 'victory' && !training) {
       this.threatsResolved.add(id);
       this.reputation += 3;
       const levels = this.gainXp(20);
       for (const level of levels) this.emit({ type: 'levelUp', level });
-    } else if (result.outcome === 'defeat') {
+    } else if (result.outcome === 'defeat' && !training) {
       this.threatsResolved.add(id);
     }
-    this.emit({ type: 'toast', text: result.message, tone: result.outcome === 'victory' ? 'good' : result.outcome === 'defeat' ? 'warn' : 'info' });
+    this.emit({ type: 'toast', text: training ? 'Simulation Lumen : ' + result.message : result.message,
+      tone: result.outcome === 'victory' ? 'good' : result.outcome === 'defeat' ? 'warn' : 'info' });
     this.saveNow();
     return OK;
   }
