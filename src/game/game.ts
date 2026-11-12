@@ -1,7 +1,7 @@
 // Le moteur de jeu. Aucun accès à l'écran ni au réseau : il reçoit le monde, la météo et la position,
 // et produit un GameView. Les règles sont dans les petits modules voisins (fonctions pures).
 import { crateDef } from './crates';
-import { type LngLat, cellAt, dist } from '../core/geo';
+import { type LngLat, cellAt, dist, hash } from '../core/geo';
 import type { Fix } from '../player/gps';
 import type { CellContent, Shelter } from '../world/types';
 import {
@@ -95,6 +95,7 @@ export class Game implements GameEngine {
   private lateWarned = new Set<string>();
   private dangers: Danger[] = [];
   private inDanger = false;
+  private threatsResolved = new Set<string>();
   private nearShelter: string | null = null;
   private visited = new Set<string>();
   private visitedList: string[] = [];
@@ -178,6 +179,7 @@ export class Game implements GameEngine {
     // Un colis porté reste dans le sac d'un jour à l'autre ; les colis seulement révélés ne valent que pour leur jour.
     for (const o of save.orders) if (sameDay || o.state === 'porté') this.orders.set(o.id, { ...o });
     this.done = new Set(sameDay ? save.done : []);
+    this.threatsResolved = new Set(sameDay ? save.threatsResolved ?? [] : []);
     this.cachesFound = new Set(sameDay ? save.cachesFound : []);
     this.cachesOpened = new Set(sameDay ? save.cachesOpened : []);
     this.met = new Set(sameDay ? save.met : []);
@@ -200,7 +202,7 @@ export class Game implements GameEngine {
       missions: Object.fromEntries(this.missions),
       deliveries: this.deliveries, distanceM: this.distanceM, stamina: this.stamina, skills: { ...this.ranks },
       shelters: Object.fromEntries(this.shelterSave), discovered: [...this.discovered], visited: [...this.visitedList],
-      day: this.day, orders, done: [...this.done],
+      day: this.day, orders, done: [...this.done], threatsResolved: [...this.threatsResolved],
       contracts: this.contracts.map(c => ({ id: c.id, progress: c.progress, claimed: c.claimed })),
       last: this.pos,
       rev: SAVE_REV, cachesFound: [...this.cachesFound], cachesOpened: [...this.cachesOpened], met: [...this.met],
@@ -606,6 +608,27 @@ export class Game implements GameEngine {
     }
   }
 
+  /** Rencontres dans les zones dangereuses : choix tactique seulement à l'arrêt. */
+  resolveThreat(zoneId: string, choice: 'eviter' | 'negocier'): ActionResult {
+    const d = this.dangers.find(x => x.id === zoneId);
+    if (!d || !this.pos || !insideDanger(d, this.pos)) return no('Aucune menace à proximité.');
+    if (this.threatsResolved.has(zoneId)) return no('Cette menace a déjà été résolue.');
+    if (this.speed > SPEED.moving || this.vehicle) return no('Arrête-toi dans un endroit sûr pour prendre une décision.');
+    if (choice !== 'eviter' && choice !== 'negocier') return no('Choix inconnu.');
+    if (choice === 'negocier' && this.score < 20) return no('Il faut 20 points pour négocier un passage sécurisé.');
+    const kind = ['Récupérateur', 'Drone de surveillance', 'Errant'][hash(zoneId) % 3];
+    if (choice === 'negocier') {
+      this.score -= 20;
+      this.emit({ type: 'toast', text: `${kind} : passage négocié (-20 pts).`, tone: 'info' });
+    } else if (hash(zoneId + this.day) % 4 === 0) {
+      this.stamina = Math.max(0.1, this.stamina - 0.12);
+      this.emit({ type: 'toast', text: `${kind} : fuite difficile, endurance diminuée.`, tone: 'warn' });
+    } else this.emit({ type: 'toast', text: `${kind} évité avec succès.`, tone: 'good' });
+    this.threatsResolved.add(zoneId);
+    this.saveNow();
+    return OK;
+  }
+
   /** Dépôt solidaire : tous les colis peuvent être remis à un autre relais sans points ni XP. */
   handoff(orderId: string, shelterId: string): ActionResult {
     const o = this.orders.get(orderId);
@@ -933,7 +956,7 @@ export class Game implements GameEngine {
     }
     shelters.sort(byDist);
 
-    const dangers: DangerView[] = this.dangers.map(z => ({ id: z.id, at: z.at, radiusM: z.radiusM, inside: p !== null && insideDanger(z, p) }));
+    const dangers: DangerView[] = this.dangers.map(z => ({ id: z.id, at: z.at, radiusM: z.radiusM, inside: p !== null && insideDanger(z, p), enemy: ['Récupérateur', 'Drone de surveillance', 'Errant'][hash(z.id) % 3], resolved: this.threatsResolved.has(z.id) }));
     this.skillsCache ??= skillViews(this.ranks, this.skillPoints, this.level);
     this.contractsCache ??= this.contracts.map(c => contractView(c, this.mods.contractMult));
 
@@ -1186,7 +1209,7 @@ export class Game implements GameEngine {
     this.nextDay = nextDayMs(t);
     for (const [id, o] of this.orders) if (o.state !== 'porté') this.orders.delete(id);
     this.done.clear();
-    this.cachesFound.clear(); this.cachesOpened.clear(); this.met.clear(); this.frontWarned.clear();
+    this.cachesFound.clear(); this.cachesOpened.clear(); this.met.clear(); this.frontWarned.clear(); this.threatsResolved.clear();
     for (const [id, j] of this.jams) if (j.state !== 'en cours') this.jams.delete(id);
     this.contracts = this.drawAll(this.contracts);
     this.contractsCache = null;
