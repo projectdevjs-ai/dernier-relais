@@ -289,7 +289,7 @@ export class CinematicBattle {
     if(kind!=='drone')jobs.push(add(kind==='scavenger'?'porteur_civil':'porteur_intro','perso',
       3.85,this.enemy,[0,0,0],Math.PI,true,2.7));
     // Ces modèles sont déjà présents dans le dossier public/models, sans appel API.
-    const props:[
+    const props=[
       {name:'ruine_1',height:15,x:-12,z:-11,angle:.22},
       {name:'ruine_2',height:12,x:13,z:-14,angle:-.4},
       {name:'deco_voiture',height:2.5,x:6.8,z:1,angle:.9},
