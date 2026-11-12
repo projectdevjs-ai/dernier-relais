@@ -173,6 +173,8 @@ export interface LostInput {
   condition?: number;
 }
 
+export interface RelayMissionView { label: string; progress: number; goal: number; reward: number; active: boolean; done: boolean }
+
 export interface ShelterView {
   id: string;
   name: string;
@@ -194,6 +196,8 @@ export interface ShelterView {
   inRange: boolean;
   /** Colis portés destinés à cet abri. */
   deliverable: string[];
+  /** Mission répétable et permanente du responsable du relais. */
+  mission?: RelayMissionView;
   /** Réplique du PNJ adaptée à la situation. */
   line: string;
 }
@@ -376,6 +380,8 @@ export interface GameActions {
   giveToRelay?(orderId: string, shelterId?: string, dryRun?: boolean): RelayGiveResult;
   /** Dépôt solidaire dans n'importe quel abri : réputation seulement, même hors ligne. */
   handoff?(orderId: string, shelterId: string): ActionResult;
+  /** Accepte la mission permanente du relais, ou réclame la récompense si achevée. */
+  relayMission?(shelterId: string): ActionResult;
   /** Met dans le sac un colis pris à la chaîne de relais (il faut être à un abri). `dryRun` : vérifie sans rien changer. */
   takeFromRelay?(relay: { id: string; parcel: RelayCrate }, dryRun?: boolean): ActionResult;
 }
