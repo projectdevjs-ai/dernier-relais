@@ -72,6 +72,7 @@ export class Game implements GameEngine {
   private skillPoints = 0;
   private score = 0;
   private reputation = 0;
+  private missions = new Map<string, { cycle: number; progress: number; active: boolean }>();
   private deliveries = 0;
   private distanceM = 0;
   private stamina = 1;
@@ -164,7 +165,8 @@ export class Game implements GameEngine {
       this.nextDay = nextDayMs(Date.parse(save.day));
     }
     this.level = save.level; this.xp = save.xp; this.skillPoints = save.skillPoints;
-    this.score = save.score; this.reputation = save.reputation ?? 0; this.deliveries = save.deliveries; this.distanceM = save.distanceM; this.stamina = save.stamina;
+    this.score = save.score; this.reputation = save.reputation ?? 0; this.deliveries = save.deliveries;
+    this.missions = new Map(Object.entries(save.missions ?? {}).map(([k, v]) => [k, { ...v }])); this.distanceM = save.distanceM; this.stamina = save.stamina;
     this.ranks = { ...save.skills };
     this.mods = modsFor(this.ranks);
     this.shelterSave = new Map(Object.entries(save.shelters).map(([k, v]) => [k, { ...v }]));
@@ -195,6 +197,7 @@ export class Game implements GameEngine {
     for (const o of this.orders.values()) if (o.state !== 'caché') orders.push({ ...o, state: o.state });
     return {
       version: 1, savedAt: this.now(), level: this.level, xp: this.xp, skillPoints: this.skillPoints, score: this.score, reputation: this.reputation,
+      missions: Object.fromEntries(this.missions),
       deliveries: this.deliveries, distanceM: this.distanceM, stamina: this.stamina, skills: { ...this.ranks },
       shelters: Object.fromEntries(this.shelterSave), discovered: [...this.discovered], visited: [...this.visitedList],
       day: this.day, orders, done: [...this.done],
@@ -475,6 +478,7 @@ export class Game implements GameEngine {
     this.strapUntil.set(o.id, t + GESTURE.strapWindowS * 1000);
     const v = this.orderView(o, t);
     this.emit({ type: 'pickup', order: v });
+    this.advanceRelayMissions('pickup', 1);
     // Un colis spécial pris sans l'avoir écouté : on annonce sa contrainte.
     if (o.special && !wasKnown) this.emit({ type: 'special', order: v });
     this.saveNow();
@@ -550,6 +554,7 @@ export class Game implements GameEngine {
       for (const level of levels) this.emit({ type: 'levelUp', level });
       if (o.jam) this.jamDelivered(o.jam, t);
       this.progress({ type: 'livraison', grade: g.grade, fragile: o.fragile, condition: o.condition, timed: o.deadlineMin !== null, onTime: g.onTime, night: this.weather.night, wet: isWet(this.weather.kind) });
+      this.advanceRelayMissions('livraison', 1);
       // Le PNJ réagit au fait le plus marquant de la livraison.
       const s: Situation = starsBefore === 0 ? 'première' : starsAfter > starsBefore ? (starsAfter >= 5 ? 'cinq' : 'étoile')
         : !g.onTime ? 'retard' : o.condition < DAMAGED ? 'abîmé' : 'merci';
@@ -559,6 +564,46 @@ export class Game implements GameEngine {
     if (!this.carried().length) { this.balance = 0; this.unbalancedS = 0; }
     this.saveNow();
     return OK;
+  }
+
+  /** Mission de relais renouvelée dès que la récompense est réclamée. */
+  private missionView(shelterId: string): { label: string; progress: number; goal: number; reward: number; active: boolean; done: boolean } {
+    const m = this.missions.get(shelterId) ?? { cycle: 0, progress: 0, active: false };
+    const mode = m.cycle % 3;
+    const goal = mode === 0 ? 250 : mode === 1 ? 1 : 2;
+    const label = mode === 0 ? 'Parcourir 250 m à pied' : mode === 1 ? 'Livrer 1 colis' : 'Ramasser 2 colis';
+    return { label, progress: Math.min(goal, Math.floor(m.progress)), goal, reward: 80 + (m.cycle % 5) * 20, active: m.active, done: m.active && m.progress >= goal };
+  }
+
+  relayMission(shelterId: string): ActionResult {
+    const sh = this.shelterById.get(shelterId);
+    if (!sh || !this.pos || dist(sh.at, this.pos) > RANGE.deliver) return no('Il faut être sur place pour parler au responsable.');
+    const m = this.missions.get(shelterId) ?? { cycle: 0, progress: 0, active: false };
+    const v = this.missionView(shelterId);
+    if (!m.active) {
+      m.active = true;
+      this.missions.set(shelterId, m);
+      this.emit({ type: 'toast', text: `Mission acceptée : ${v.label}`, tone: 'info' });
+    } else if (v.done) {
+      this.score += v.reward;
+      const levels = this.gainXp(Math.round(v.reward * XP.contractShare));
+      m.cycle++; m.progress = 0; m.active = false;
+      this.emit({ type: 'toast', text: `Mission accomplie : +${v.reward} points. Nouvelle mission disponible !`, tone: 'good' });
+      for (const level of levels) this.emit({ type: 'levelUp', level });
+    } else return no('La mission est encore en cours.');
+    this.saveNow();
+    return OK;
+  }
+
+  private advanceRelayMissions(kind: 'pickup' | 'livraison' | 'marche', quantity: number): void {
+    for (const m of this.missions.values()) {
+      if (!m.active) continue;
+      const mode = m.cycle % 3;
+      if ((mode === 0 && kind !== 'marche') || (mode === 1 && kind !== 'livraison') || (mode === 2 && kind !== 'pickup')) continue;
+      const goal = mode === 0 ? 250 : mode === 1 ? 1 : 2;
+      m.progress = Math.min(goal, m.progress + quantity);
+      this.dirty = true;
+    }
   }
 
   /** Dépôt solidaire : tous les colis peuvent être remis à un autre relais sans points ni XP. */
@@ -872,7 +917,7 @@ export class Game implements GameEngine {
       return {
         id: s.id, name: s.name, kind: s.kind, at: s.at, site: s.site, facing: s.facing, npc: npcFor(s.id), stars, points,
         nextStarAt: nextStarAt(stars), nextUnlock: nextUnlock(stars), distanceM: d, inRange: p !== null && d <= RANGE.deliver,
-        deliverable: mine.map(o => o.id), line: this.line(s.id, stars, st?.deliveries ?? 0, mine, t),
+        deliverable: mine.map(o => o.id), mission: this.missionView(s.id), line: this.line(s.id, stars, st?.deliveries ?? 0, mine, t),
       };
     });
     // Colis portés dont l'abri n'est pas dans les cases chargées : l'abri reste affiché et livrable.
@@ -1031,6 +1076,7 @@ export class Game implements GameEngine {
   }
 
   private progress(e: ProgressEvent): void {
+    if (e.type === 'marche') this.advanceRelayMissions('marche', e.meters);
     for (const c of this.contracts) {
       const before = c.progress;
       const justDone = advance(c, e);
