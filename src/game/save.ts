@@ -57,6 +57,8 @@ export interface GameSave {
   /** Rôdeurs déjà rencontrés (l'identifiant contient la tranche horaire). */
   met?: string[];
   jams?: JamSave[];
+  /** Colis portés venus de la chaîne de relais : identifiant du colis → identifiant du relais en ligne. */
+  relays?: Record<string, string>;
 }
 
 export interface GameStore { load(): Promise<GameSave | null>; save(s: GameSave): Promise<void> }
@@ -65,7 +67,7 @@ export function emptyGameSave(day = ''): GameSave {
   return {
     version: 1, savedAt: 0, level: 1, xp: 0, skillPoints: 0, score: 0, deliveries: 0, distanceM: 0, stamina: 1,
     skills: {}, shelters: {}, discovered: [], visited: [], day, orders: [], done: [], contracts: [], last: null,
-    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [],
+    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [], relays: {},
   };
 }
 
@@ -131,6 +133,8 @@ export function parseGameSave(raw: unknown): GameSave | null {
     const c = obj(v);
     if (c && typeof c.id === 'string') contracts.push({ id: c.id, progress: num(c.progress, 0), claimed: c.claimed === true });
   }
+  const relays: Record<string, string> = {};
+  for (const [k, v] of Object.entries(obj(o.relays) ?? {})) if (typeof v === 'string' && v) relays[k] = v;
   return {
     version: 1, savedAt: num(o.savedAt, 0), level: Math.max(1, Math.floor(num(o.level, 1))), xp: num(o.xp, 0),
     skillPoints: Math.floor(num(o.skillPoints, 0)), score: num(o.score, 0), deliveries: Math.floor(num(o.deliveries, 0)),
@@ -140,6 +144,7 @@ export function parseGameSave(raw: unknown): GameSave | null {
     done: strs(o.done), contracts, last: pt(o.last),
     rev: SAVE_REV, cachesFound: strs(o.cachesFound), cachesOpened: strs(o.cachesOpened), met: strs(o.met),
     jams: (Array.isArray(o.jams) ? o.jams : []).map(jam).filter((x): x is JamSave => x !== null),
+    relays,
   };
 }
 

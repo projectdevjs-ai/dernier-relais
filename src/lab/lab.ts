@@ -47,7 +47,7 @@ export class Lab {
   private readonly bubble: HTMLDivElement;
   private readonly goBtn: HTMLButtonElement;
   private readonly stats: HTMLDivElement;
-  private readonly tags = new Map<string, { el: HTMLButtonElement; at: THREE.Vector3; badge: HTMLSpanElement | null; x: number; y: number }>();
+  private readonly tags = new Map<string, { el: HTMLButtonElement; at: THREE.Vector3; badge: HTMLSpanElement | null; x: number; y: number; w: number }>();
   private vp: Viewport | null = null;
   private loader: Loader3D | null = null;
   private lab: LabScene | null = null;
@@ -263,7 +263,7 @@ export class Lab {
     }
     const vp = this.vp;
     this.host.prepend(vp.canvas);
-    vp.setLook({ ...labLook(this.ambiance), bloomThreshold: 0.95, bloomRadius: 0.7, vignette: 0.5, grain: 0.028 });
+    vp.setLook({ ...labLook(this.ambiance), bloomThreshold: 1.0, bloomRadius: 0.65, vignette: 0.55, grain: 0.028 });
     this.loader = new Loader3D(k => this.veil.progress(k));
     this.lab = await buildLab(vp, this.loader, this.ambiance);
     if (this.dead) { this.lab.dispose(); return; }
@@ -291,10 +291,11 @@ export class Lab {
       badge = el('span', 'lab-tag-badge');
       badge.hidden = true;
       b.append(dot, el('span', 'lab-tag-name', label), badge);
+      b.setAttribute('aria-label', label);
     }
     b.addEventListener('click', onTap);
     this.tagsEl.appendChild(b);
-    this.tags.set(id, { el: b, at, badge, x: -1, y: -1 });
+    this.tags.set(id, { el: b, at, badge, x: -1, y: -1, w: 0 });
   }
 
   private setBadge(id: string, n: number): void {
@@ -474,7 +475,7 @@ export class Lab {
     const pos = s.cam.clone();
     // En paysage, on se rapproche du poste ; en vertical, l'image est décalée vers le haut pour laisser la place à la fiche.
     if (wide) pos.lerp(s.look, 0.28);
-    return { pos, look: s.look.clone(), fov: wide ? 36 : 46, off: wide ? 0 : 0.13 };
+    return { pos, look: s.look.clone(), fov: wide ? 36 : 46, off: wide ? 0 : 0.15 };
   }
 
   private applyCamera(dt: number): void {
@@ -515,11 +516,14 @@ export class Lab {
   private placeTags(): void {
     const vp = this.vp;
     if (!vp) return;
-    const place = (e: HTMLElement, at: THREE.Vector3, store: { x: number; y: number }): boolean => {
+    const place = (e: HTMLElement, at: THREE.Vector3, store: { x: number; y: number; w: number }): boolean => {
       _v.copy(at).project(this.camera);
       const ok = _v.z < 1 && Math.abs(_v.x) < 1.15 && Math.abs(_v.y) < 1.15;
-      const x = Math.round((_v.x * 0.5 + 0.5) * vp.width), y = Math.round((-_v.y * 0.5 + 0.5) * vp.height);
-      if (ok && (x !== store.x || y !== store.y)) { store.x = x; store.y = y; e.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`; }
+      // L'étiquette reste entière à l'écran, même si son objet touche le bord.
+      if (!store.w) store.w = e.offsetWidth;
+      const half = store.w / 2 + 6;
+      const x = Math.round(Math.max(half, Math.min(vp.width - half, (_v.x * 0.5 + 0.5) * vp.width))), y = Math.round((-_v.y * 0.5 + 0.5) * vp.height);
+      if (ok && (x !== store.x || y !== store.y)) { store.x = x; store.y = y; e.style.transform = `translate(${x}px, ${y}px) translate(-50%, -22px)`; }
       return ok;
     };
     for (const tg of this.tags.values()) tg.el.classList.toggle('is-off', !place(tg.el, tg.at, tg));

@@ -11,7 +11,7 @@
 .lab-brand { display: grid; gap: 7px; min-width: 0; }
 .lab-kicker { font: 600 11px/1 var(--f-title); font-stretch: condensed; letter-spacing: .3em; text-transform: uppercase; color: var(--amber); }
 .lab-title {
-  font: 700 clamp(21px, 6.4vw, 28px)/1 var(--f-title); font-stretch: condensed; letter-spacing: .22em; text-transform: uppercase;
+  font: 700 clamp(17px, 4.8vw, 24px)/1 var(--f-title); font-stretch: condensed; letter-spacing: .2em; text-transform: uppercase;
   color: var(--text); text-shadow: 0 1px 14px rgba(0, 0, 0, .45); white-space: nowrap;
 }
 .s3-lab[data-ambiance="clair"] .lab-title { text-shadow: 0 1px 10px rgba(255, 255, 255, .6); }
@@ -22,39 +22,42 @@
 }
 .lab-lvl-badge { width: 28px; height: 28px; margin: 0 4px; flex: none; display: grid; place-items: center; background: var(--amber-fill); border-radius: 6px; transform: rotate(45deg); }
 .lab-lvl-badge b { transform: rotate(-45deg); font: 700 17px/1 var(--f-title); color: var(--on-amber); }
-.lab-lvl-text { display: grid; gap: 6px; width: 78px; }
+.lab-lvl-text { display: grid; gap: 6px; width: 66px; }
 .lab-lvl-text small { font: 600 11px/1 var(--f-title); font-stretch: condensed; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .lab-bar { display: block; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; min-width: 0; }
 .lab-bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--amber-fill); transform-origin: left center; transition: transform .4s ease-out; }
 
-/* ---------- Étiquettes flottantes des postes ---------- */
+/* ---------- Étiquettes flottantes des postes : une pastille et son nom, posées au-dessus de l'objet ---------- */
 .lab-tags { position: absolute; inset: 0; z-index: 1; pointer-events: none; transition: opacity .3s ease; }
 .lab-tag {
   position: absolute; left: 0; top: 0; will-change: transform; pointer-events: auto;
-  min-height: 44px; padding: 0 14px 0 6px; border-radius: 22px; display: inline-flex; align-items: center; gap: 8px;
-  background: var(--panel); border: 1px solid var(--line-strong); box-shadow: var(--shadow); color: var(--text);
-  font: 700 13px/1 var(--f-title); font-stretch: condensed; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap;
+  min-width: 48px; min-height: 48px; padding: 0 2px; display: grid; justify-items: center; align-content: start; gap: 5px;
 }
-.s3 .lab-tag { color: var(--text); font: 700 13px/1 var(--f-title); }
-.lab-tag::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 16px; background: linear-gradient(var(--line-strong), transparent); }
-.lab-tag:active { filter: brightness(1.15); }
+.lab-tag:active { filter: brightness(1.2); }
 .lab-tag.is-off { visibility: hidden; }
-.lab-tag-ic { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--raise); color: var(--amber); }
-.lab-tag-ic .s3-ic { width: 19px; height: 19px; }
-.lab-tag[data-id="teleporteur"] .lab-tag-ic { background: var(--amber-fill); color: var(--on-amber); }
-.lab-tag-badge {
-  min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; display: grid; place-items: center; margin-right: -6px;
-  background: var(--amber-fill); color: var(--on-amber); font: 700 12px/1 var(--f-ui); letter-spacing: 0;
+.lab-tag-ic {
+  position: relative; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--panel); border: 1px solid var(--line-strong); color: var(--amber); box-shadow: var(--shadow);
 }
+.lab-tag-ic .s3-ic { width: 20px; height: 20px; }
+.lab-tag[data-id="teleporteur"] .lab-tag-ic { background: var(--amber-fill); border-color: transparent; color: var(--on-amber); }
+.lab-tag-name {
+  padding: 4px 7px 3px; border-radius: 6px; background: var(--scrim); color: var(--text); white-space: nowrap;
+  font: 700 11px/1 var(--f-title); font-stretch: condensed; letter-spacing: .16em; text-transform: uppercase;
+}
+.s3-lab[data-ambiance="clair"] .lab-tag-name { background: var(--panel); }
+.lab-tag-badge {
+  position: absolute; left: 50%; top: -5px; margin-left: 9px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px;
+  display: grid; place-items: center; background: var(--amber-fill); color: var(--on-amber); font: 700 12px/1 var(--f-ui);
+  box-shadow: 0 0 0 2px var(--panel-solid);
+}
+.lab-tag[data-id="teleporteur"] .lab-tag-badge { background: var(--blue-fill); color: var(--on-blue); }
 /* Scientifiques : une pastille « parler » au-dessus de la tête (zone de toucher de 44 px). */
-.lab-tag-sci { width: 44px; min-height: 44px; padding: 0; justify-content: center; background: none; border: 0; box-shadow: none; }
-.s3 .lab-tag-sci { background: none; }
-.lab-tag-sci::after { display: none; }
-.lab-tag-sci .lab-tag-ic { width: 30px; height: 30px; background: var(--panel); border: 1px solid var(--line-strong); color: var(--text); box-shadow: var(--shadow); }
-.lab-tag-sci .lab-tag-ic .s3-ic { width: 16px; height: 16px; }
+.lab-tag-sci { width: 44px; min-width: 44px; min-height: 44px; height: 44px; padding: 0; align-content: center; }
+.lab-tag-sci .lab-tag-ic { width: 28px; height: 28px; color: var(--text); }
+.lab-tag-sci .lab-tag-ic .s3-ic { width: 15px; height: 15px; }
 .lab-tag-sci.has-news .lab-tag-ic { border-color: var(--amber); color: var(--amber); }
-.lab-tag-sci.has-news .lab-tag-ic::after { content: ""; position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--amber-fill); margin: -24px -24px 0 0; align-self: center; justify-self: center; transform: translate(11px, -11px); }
-.lab-tag-sci .lab-tag-ic { position: relative; }
+.lab-tag-sci.has-news .lab-tag-ic::after { content: ""; position: absolute; right: -2px; top: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--amber-fill); box-shadow: 0 0 0 2px var(--panel-solid); }
 .s3-lab.is-focus .lab-tags, .s3-lab.is-leaving .lab-tags { opacity: 0; }
 .s3-lab.is-focus .lab-tag, .s3-lab.is-leaving .lab-tag { pointer-events: none; }
 .s3-lab.is-focus .lab-top { opacity: .0; }

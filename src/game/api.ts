@@ -64,7 +64,31 @@ export interface OrderView {
   strap?: number | null;
   /** Secondes restantes pour faire le geste d'arrimage (0 : trop tard, déjà fait ou colis au sol). */
   strapLeftS?: number;
+  /** Colis de la chaîne de relais (pris dans un abri-relais) : identifiant du relais en ligne. */
+  relay?: { id: string } | null;
 }
+
+/** Chaîne de relais : part des points de base versée au dépôt (au prorata du chemin fait), et part des points de livraison versée à chaque porteur de la chaîne. */
+export const RELAY = { dropShare: 0.4, chainShare: 0.6, minProgress: 0.1 } as const;
+/** Un colis tel qu'il voyage dans la chaîne de relais (même forme que RelayParcel côté réseau). */
+export interface RelayCrate {
+  name: string; crate: CrateKind; weightKg: number; fragile: boolean;
+  /** Points de base à la livraison (avant les avantages de l'abri et la note). */
+  reward: number;
+  destId: string; destName: string; destAt: LngLat;
+  /** État du colis, 0 à 1 (1 par défaut). */
+  condition?: number;
+}
+/** Résultat d'un dépôt en relais : le colis à confier au réseau et l'avance gagnée. */
+export type RelayGiveResult = ActionResult & {
+  parcel?: RelayCrate;
+  /** Abri où le colis est déposé. */
+  shelterId?: string;
+  /** Avance de points versée au dépôt. */
+  points?: number;
+  /** Présent si le colis venait déjà de la chaîne : le relais à reposer. */
+  relayId?: string;
+};
 
 /** Cache repérée au scanner (à courte portée), à ouvrir sur place. Une fois par jour chacune. */
 export interface CacheView { id: string; at: LngLat; distanceM: number; inRange: boolean }
@@ -219,6 +243,8 @@ export interface DeliveryResult {
   lostBy?: string | null;
   /** Points offerts pour une photo-preuve (action `proof`), 0 ou absent si rien à gagner. */
   proofBonus?: number;
+  /** Colis de la chaîne de relais : identifiant du relais à déclarer livré (net.deliverRelay). */
+  relayId?: string | null;
 }
 
 export type GameEvent =
@@ -266,6 +292,14 @@ export interface GameActions {
   strap(orderId: string, quality: number): ActionResult;
   /** Photo-preuve prise pour une livraison qui vient d'avoir lieu : petit bonus de points. */
   proof(orderId: string): ActionResult;
+  // ── Chaîne de relais (facultatif : un jeu sans relais reste valide). Le réseau est appelé par l'appelant, pas par le jeu.
+  /**
+   * Laisse un colis porté dans l'abri-relais où se trouve le joueur (`shelterId`, par défaut l'abri le plus proche à portée).
+   * Le colis quitte le sac et le joueur touche une avance. `dryRun` : vérifie et calcule sans rien changer.
+   */
+  giveToRelay?(orderId: string, shelterId?: string, dryRun?: boolean): RelayGiveResult;
+  /** Met dans le sac un colis pris à la chaîne de relais (il faut être à un abri). `dryRun` : vérifie sans rien changer. */
+  takeFromRelay?(relay: { id: string; parcel: RelayCrate }, dryRun?: boolean): ActionResult;
 }
 
 /** Le moteur de jeu, implémenté dans src/game/game.ts (export class Game implements GameEngine). */
@@ -281,6 +315,8 @@ export interface GameEngine extends GameActions {
   view(): GameView;
   /** S'abonne aux événements. Renvoie la fonction de désabonnement. */
   on(fn: (e: GameEvent) => void): () => void;
+  /** Ajout facultatif : crédite des points venus d'ailleurs (récompense de relais). `reason` est affiché au joueur. */
+  credit?(points: number, reason?: string): void;
 }
 
 /** La scène 3D, implémentée dans src/render/stage.ts (export class Stage implements StageApi). */
@@ -319,6 +355,8 @@ export interface HudApi {
   /** Ajouts facultatifs : réaction au toucher d'une cache ou d'un rôdeur dans la scène. */
   openCache?(id: string): void;
   openWanderer?(id: string): void;
+  /** Ajout facultatif : l'état en ligne a changé (niveau collectif, relais) : le panneau d'abri ouvert relit ses données. */
+  refreshOnline?(): void;
 }
 export interface HudEvents {
   actions: GameActions;
@@ -328,4 +366,60 @@ export interface HudEvents {
   onAmbiance(a: Ambiance): void;
   /** Aller à un lieu de test en position simulée. */
   onGoto(at: LngLat, label: string): void;
+  // ── Ajouts facultatifs : un bouton ou une section n'apparaît que si ce qu'il lui faut est fourni.
+  /** Ouvrir la carte du réseau (le HUD n'importe pas le réseau : c'est l'appelant qui ouvre le panneau). */
+  onNetwork?(): void;
+  /** Le jeu en ligne vu par l'interface : état, abris collectifs, chaîne de relais. */
+  online?: HudOnline;
+  /** Le nom de porteur du joueur. */
+  pseudo?: HudPseudo;
+  onSound?(on: boolean): void;
+  onVoices?(on: boolean): void;
+  onHaptics?(on: boolean): void;
+  /** Volume général, de 0 à 1. */
+  onVolume?(v: number): void;
+  onReplayIntro?(): void;
+  onLab?(): void;
+  /** Lancer l'installation de l'application (le bouton n'apparaît que si `settings.canInstall` ou `Hud.setCanInstall(true)`). */
+  onInstall?(): void;
+  /** Sons d'interface : ouverture et fermeture de panneau, appui, action refusée, action confirmée. */
+  onUi?(kind: UiKind): void;
+}
+export type UiKind = 'tap' | 'open' | 'close' | 'error' | 'confirm';
+/** État initial des réglages affichés par le HUD (la mémorisation est faite par l'appelant). */
+export interface HudSettings { sound?: boolean; voices?: boolean; haptics?: boolean; volume?: number; canInstall?: boolean }
+export interface HudOptions { ambiance?: Ambiance; settings?: HudSettings }
+/** Niveau collectif d'un abri (0 à 5), partagé entre tous les joueurs. */
+export interface CollectiveView {
+  level: number; points: number;
+  /** Points du niveau suivant, null au niveau 5. */
+  nextAt: number | null;
+  /** Avancement vers le niveau suivant, 0 à 1. */
+  progress: number;
+}
+/** Colis qui attend dans un abri-relais. */
+export interface RelayOffer {
+  id: string; parcel: RelayCrate;
+  /** Nombre de porteurs qui se sont déjà relayés. */
+  hops: number;
+  /** Vrai si le joueur fait déjà partie de la chaîne (il ne peut pas reprendre son propre relais). */
+  mine: boolean;
+}
+/** Fourni par l'appelant (voir src/net/link.ts). Aucune méthode ne lève d'exception ; hors ligne, tout renvoie une valeur neutre. */
+export interface HudOnline {
+  /** Lecture immédiate, sans appel réseau. */
+  isOnline(): boolean;
+  /** Niveau collectif de l'abri, null s'il est inconnu (hors ligne). */
+  shelterLevel(shelterId: string): Promise<CollectiveView | null>;
+  relaysAt(shelterId: string): Promise<RelayOffer[]>;
+  /** Dépose un colis porté dans l'abri-relais. `points` : l'avance gagnée. */
+  giveRelay(orderId: string, shelterId: string): Promise<ActionResult & { points?: number }>;
+  takeRelay(offer: RelayOffer): Promise<ActionResult>;
+}
+export interface HudPseudo {
+  get(): string;
+  /** Faux tant que le joueur garde le nom généré sans l'avoir confirmé. */
+  chosen(): boolean;
+  /** Renvoie faux si le nom est refusé (2 à 20 caractères). */
+  set(name: string): Promise<boolean>;
 }

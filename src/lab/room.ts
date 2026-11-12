@@ -22,23 +22,25 @@ export interface StationDef {
   /** Boîte de toucher : centre et dimensions. */
   hit: [THREE.Vector3, THREE.Vector3];
 }
+const AT = { exo: V(-2.15, 0, -2.0), holo: V(2.15, 0, -1.1), console: V(-2.1, 0, 3.2), lit: V(2.1, 0, 4.0) } as const;
 export const STATIONS: StationDef[] = [
-  { id: 'teleporteur', look: V(0, 1.5, -3.9), cam: V(0.5, 2.3, 4.4), tag: V(0, 3.25, -3.9), hit: [V(0, 1.5, -3.9), V(3.4, 3, 1.6)] },
-  { id: 'exo', look: V(-2.0, 1.2, -1.2), cam: V(-0.7, 1.7, 3.6), tag: V(-2.0, 2.55, -1.2), hit: [V(-2.0, 1.15, -1.2), V(1.7, 2.3, 1.2)] },
-  { id: 'holo', look: V(1.85, 1.45, -0.6), cam: V(0.5, 2.5, 4.3), tag: V(1.85, 2.75, -0.6), hit: [V(1.85, 1.2, -0.6), V(1.8, 2.4, 1.8)] },
-  { id: 'console', look: V(-1.85, 1.15, 2.4), cam: V(-0.3, 1.9, 6.6), tag: V(-1.85, 2.35, 2.4), hit: [V(-1.85, 0.9, 2.4), V(2.2, 1.9, 1.3)] },
-  { id: 'lit', look: V(1.85, 0.85, 3.2), cam: V(0.2, 1.8, 7.3), tag: V(1.85, 2.0, 3.2), hit: [V(1.85, 0.9, 3.2), V(2.1, 1.8, 1.9)] },
+  { id: 'teleporteur', look: V(0, 1.4, -3.9), cam: V(0.9, 2.8, 3.6), tag: V(0, 3.1, -3.9), hit: [V(0, 1.5, -3.9), V(3.4, 3, 1.6)] },
+  { id: 'exo', look: V(-2.15, 1.05, -2.0), cam: V(-0.6, 2.7, 3.3), tag: V(-2.15, 2.6, -2.0), hit: [V(-2.15, 1.15, -2.0), V(1.7, 2.3, 1.2)] },
+  { id: 'holo', look: V(2.15, 1.45, -1.1), cam: V(0.5, 3.2, 4.1), tag: V(2.15, 2.75, -1.1), hit: [V(2.15, 1.2, -1.1), V(1.8, 2.4, 1.8)] },
+  { id: 'console', look: V(-2.1, 1.25, 3.2), cam: V(-0.3, 2.7, 8.2), tag: V(-2.1, 2.85, 3.2), hit: [V(-2.1, 0.9, 3.2), V(2.2, 1.9, 1.3)] },
+  { id: 'lit', look: V(2.0, 0.85, 4.0), cam: V(0.3, 2.5, 8.8), tag: V(2.1, 2.1, 4.0), hit: [V(2.1, 0.9, 4.0), V(2.1, 1.8, 1.9)] },
 ];
-export const OVERVIEW = { cam: V(0, 5.6, 15.6), look: V(0, 1.45, -1.2), fov: 36 } as const;
+/** Vue d'ensemble, format vertical : en plongée, comme une maquette, pour que toute la profondeur de la salle tienne dans la hauteur. */
+export const OVERVIEW = { cam: V(0, 11.2, 14.6), look: V(0, 0.7, 0.1), fov: 42 } as const;
 /** Format paysage : la caméra descend dans la salle. */
-export const OVERVIEW_WIDE = { cam: V(0, 2.9, 9.4), look: V(0, 1.35, -1.5), fov: 38 } as const;
+export const OVERVIEW_WIDE = { cam: V(0, 3.4, 9.6), look: V(0, 1.2, -1.5), fov: 40 } as const;
 
 const SCI_AT: Record<SciId, { at: THREE.Vector3; ry: number }> = {
-  noe: { at: V(-0.95, 0, -2.3), ry: 0.45 },
-  iris: { at: V(0.72, 0, -0.25), ry: 0.75 },
-  selma: { at: V(2.35, 0, -3.3), ry: -0.35 },
+  noe: { at: V(-0.95, 0, -1.3), ry: 0.5 },
+  iris: { at: V(0.95, 0, -0.5), ry: 0.6 },
+  selma: { at: V(0.95, 0, 3.3), ry: 0.35 },
 };
-export const PORTER_AT = V(-0.25, 0, 1.15);
+export const PORTER_AT = V(-0.5, 0, 1.3);
 export const PAD_AT = PAD;
 
 // ---------- Palettes ----------
@@ -49,12 +51,12 @@ interface Pal {
 }
 const PALS: Record<Ambiance, Pal> = {
   'crépuscule': {
-    bg: 0x070d0d, fogNear: 14, fogFar: 44, wall: 0x1d2b2a, floor: 0x131c1c, floorRough: 0.3,
-    hemiSky: 0x5d8a92, hemiGround: 0x140f0a, hemi: 0.55, window: 0xff9a4d, windowPower: 2.6, key: 0xbfd9e2, keyPower: 0.85,
-    exposure: 1.12, bloom: 0.55, env: 0.3, backdrop: 1.9, points: 1, strips: 1,
+    bg: 0x070d0d, fogNear: 22, fogFar: 62, wall: 0x24353a, floor: 0x2a3838, floorRough: 0.5,
+    hemiSky: 0x5d8a92, hemiGround: 0x140f0a, hemi: 0.5, window: 0xff9a4d, windowPower: 1.25, key: 0xbfd9e2, keyPower: 0.7,
+    exposure: 1.0, bloom: 0.4, env: 0.22, backdrop: 1.9, points: 1, strips: 1,
   },
   'clair': {
-    bg: 0xcfd3cc, fogNear: 22, fogFar: 70, wall: 0xb9b8ab, floor: 0x767a76, floorRough: 0.38,
+    bg: 0xcfd3cc, fogNear: 26, fogFar: 80, wall: 0xb9b8ab, floor: 0x767a76, floorRough: 0.38,
     hemiSky: 0xe9f1f4, hemiGround: 0x8a8272, hemi: 1.9, window: 0xfff1d6, windowPower: 2.4, key: 0xffffff, keyPower: 1.5,
     exposure: 1.0, bloom: 0.3, env: 0.55, backdrop: 1.5, points: 0.45, strips: 0.8,
   },
@@ -128,18 +130,18 @@ function floorTextures(): { map: THREE.CanvasTexture; rough: THREE.CanvasTexture
   const cells: number[] = [];
   for (let i = 0; i < 16; i++) cells.push(rnd());
   const map = canvasTexture(512, 512, (g, w) => {
-    g.fillStyle = '#6f7774'; g.fillRect(0, 0, w, w);
+    g.fillStyle = '#9aa29f'; g.fillRect(0, 0, w, w);
     for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
-      const v = 150 + cells[y * 4 + x] * 46;
+      const v = 196 + cells[y * 4 + x] * 22;
       g.fillStyle = `rgb(${v},${v + 5},${v + 4})`; g.fillRect(x * 128 + 2, y * 128 + 2, 124, 124);
       g.fillStyle = 'rgba(0,0,0,.35)';
       for (const [a, b] of [[10, 10], [112, 10], [10, 112], [112, 112]]) g.fillRect(x * 128 + a, y * 128 + b, 5, 5);
     }
   });
   const rough = canvasTexture(512, 512, (g, w) => {
-    g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, w);
+    g.fillStyle = '#d0d0d0'; g.fillRect(0, 0, w, w);
     for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
-      const v = 70 + cells[(y * 4 + x + 5) % 16] * 90;
+      const v = 120 + cells[(y * 4 + x + 5) % 16] * 60;
       g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(x * 128 + 2, y * 128 + 2, 124, 124);
     }
     // traces d'usure
@@ -180,7 +182,7 @@ function drawBackdrop(g: CanvasRenderingContext2D, w: number, h: number, a: Ambi
 /** Panneau des contrats au-dessus de la console. */
 function drawContracts(g: CanvasRenderingContext2D, w: number, h: number, v: GameView | null): void {
   g.clearRect(0, 0, w, h);
-  g.fillStyle = 'rgba(8,22,26,.55)'; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(6,18,22,.86)'; g.fillRect(0, 0, w, h);
   g.strokeStyle = 'rgba(127,199,217,.85)'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, w - 3, h - 3);
   const font = '"Roboto Condensed", "Arial Narrow", "DejaVu Sans Condensed", sans-serif';
   g.fillStyle = '#7fc7d9'; g.font = `700 30px ${font}`; g.textBaseline = 'middle';
@@ -239,17 +241,17 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     points.push({ l, base: power });
     return l;
   };
-  const padLight = point(0x8fe3f5, 16, 9, 0, 1.7, -3.2);
-  point(0xffa448, 9, 6, -1.4, 1.55, 3.3);    // console
-  point(0x7fc7d9, 7, 5.5, 1.5, 2.3, 0.1);    // table holographique
-  point(0xffc690, 5, 4.5, 1.7, 1.25, 3.3);   // couchette
-  point(0xffe2b8, 9, 6, -1.3, 2.9, -0.2);    // râtelier
-  point(0xb6ffad, 5, 4.5, 2.9, 1.5, -4.2);   // hydroponie
+  const padLight = point(0x8fe3f5, 5, 9, 0, 1.7, -3.0);
+  point(0xffa448, 4, 6, -1.8, 1.6, 3.4);     // console
+  point(0x7fc7d9, 3, 5.5, 2.0, 2.4, -0.5);   // table holographique
+  point(0xffc690, 2.5, 4.5, 2.2, 1.3, 3.2);  // couchette
+  point(0xffe2b8, 2.6, 6, -2.0, 3.0, -1.0);  // râtelier
+  point(0xb6ffad, 2.5, 4.5, 3.2, 1.5, 1.3);  // hydroponie
 
   // ---------- Salle ----------
   const W = ROOM.halfW, depth = ROOM.front - ROOM.back, zMid = (ROOM.front + ROOM.back) / 2;
   const ft = floorTextures();
-  const floorMat = new THREE.MeshStandardMaterial({ color: pal.floor, map: ft.map, roughnessMap: ft.rough, roughness: pal.floorRough * 2, metalness: 0.55 });
+  const floorMat = new THREE.MeshStandardMaterial({ color: pal.floor, map: ft.map, roughnessMap: ft.rough, roughness: pal.floorRough * 1.6, metalness: 0.35 });
   const floor = add(new THREE.Mesh(new THREE.PlaneGeometry(W * 2, depth), floorMat));
   floor.rotation.x = -Math.PI / 2; floor.position.z = zMid;
   const pt = panelTexture();
@@ -274,7 +276,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   const backdrop = add(new THREE.Mesh(new THREE.PlaneGeometry(WIN_W + 1.6, (WIN_W + 1.6) / 2), backdropMat));
   backdrop.position.set(0, (WIN_Y0 + WIN_Y1) / 2 + 0.1, ROOM.back - 0.9);
   // reflet de la baie sur le sol : une nappe de lumière qui s'étire vers la caméra
-  const spillMat = glowMat(pal.window, 0.3, ramp);
+  const spillMat = glowMat(pal.window, 0.1, ramp);
   const spill = add(new THREE.Mesh(new THREE.PlaneGeometry(WIN_W * 0.95, 9), spillMat));
   spill.rotation.x = -Math.PI / 2; spill.position.set(0.2, 0.014, ROOM.back + 4.5);
   // bandeaux lumineux : cyan en hauteur, ambre au ras du sol
@@ -290,15 +292,14 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   guide.wrapT = THREE.RepeatWrapping; guide.repeat.set(1, 8);
   const guideMesh = add(new THREE.Mesh(new THREE.PlaneGeometry(0.5, 11), new THREE.MeshBasicMaterial({ map: guide, color: 0xe8a24a, transparent: true, opacity: 0.55, depthWrite: false })));
   guideMesh.rotation.x = -Math.PI / 2; guideMesh.position.set(0, 0.016, 3.2);
-  // poutre et rampes d'éclairage au fond, avec leurs cônes de lumière
-  box(W * 2, 0.22, 0.5, darkMat, 0, ROOM.height - 0.25, -3.2);
+  // rampes d'éclairage sur le mur du fond, avec leurs cônes de lumière
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff1dc });
   lampMat.color.multiplyScalar(2.2);
   const cones: THREE.Mesh[] = [];
-  for (const x of [-2.6, 2.6]) {
-    box(1.2, 0.05, 0.22, lampMat, x, ROOM.height - 0.4, -3.2);
-    const c = add(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 1.9, 4.6, 24, 1, true), glowMat(0xffe6c2, 0.07, ramp)));
-    c.position.set(x, ROOM.height - 0.4 - 2.3, -3.2);
+  for (const x of [-3.45, 3.45]) {
+    box(1.1, 0.05, 0.16, lampMat, x, 4.6, ROOM.back + 0.12);
+    const c = add(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 1.7, 4.4, 24, 1, true), glowMat(0xffe6c2, 0.07, ramp)));
+    c.position.set(x, 4.6 - 2.2, ROOM.back + 0.5);
     cones.push(c);
   }
   // poussière en suspension
@@ -327,13 +328,16 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     return add(g);
   };
   place(tele, PAD.x, PAD.z, 0, 0.5);
-  const exoG = place(exoM, -2.0, -1.2, 0.5);
-  place(holoM, 1.85, -0.6, -0.5);
-  place(consoleM, -1.85, 2.4, 0.62);
-  place(litM, 1.85, 3.2, -0.62);
-  place(racks, -2.75, -4.9, 0.25);
-  place(caisses, -3.0, 5.4, 0.5);
-  place(hydro, 3.0, -4.6, -0.35);
+  const exoG = place(exoM, AT.exo.x, AT.exo.z, 0.5);
+  place(holoM, AT.holo.x, AT.holo.z, -0.5);
+  place(consoleM, AT.console.x, AT.console.z, 0.7);
+  place(litM, AT.lit.x, AT.lit.z, -0.7);
+  place(racks, -3.0, -5.3, 0.2);
+  // un second jeu de baies, de l'autre côté : même géométrie, même matériau
+  const racks2 = place({ ...racks, root: racks.root.clone(true) as THREE.Group }, 3.0, -5.3, -0.2);
+  void racks2;
+  place(caisses, -3.3, 5.6, 0.5);
+  place(hydro, 3.55, 1.3, -Math.PI / 2);
 
   // Le Passeur : disque au sol, colonne de lumière, halo dans l'anneau
   const padDisc = add(new THREE.Mesh(new THREE.CircleGeometry(1.25, 48), glowMat(0x7fc7d9, 0.3, disc)));
@@ -372,11 +376,11 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
         .replace('#include <color_fragment>', `#include <color_fragment>
           float exoLv; vec3 exoTint; exoZone(exoLv, exoTint);
           float exoOn = step(0.001, exoLv);
-          diffuseColor.rgb = mix(vec3(0.012, 0.03, 0.036), diffuseColor.rgb * (0.7 + 0.9 * exoLv), exoOn);`)
+          diffuseColor.rgb = mix(vec3(0.01, 0.026, 0.032), diffuseColor.rgb * mix(vec3(1.0), exoTint * 1.5, 0.3) * (0.5 + 0.5 * exoLv), exoOn);`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           float exoScan = pow(0.5 + 0.5 * sin(vRack.y * 46.0 - uT * 1.6), 10.0);
-          totalEmissiveRadiance += (1.0 - exoOn) * vec3(0.1, 0.42, 0.52) * (0.1 + 0.9 * exoScan);
-          totalEmissiveRadiance += exoOn * exoTint * (0.05 + 0.3 * exoLv) * (1.0 + 0.25 * sin(uT * 2.0 + vRack.y * 3.0)) + exoOn * exoTint * uPulse;`);
+          totalEmissiveRadiance += (1.0 - exoOn) * vec3(0.08, 0.36, 0.46) * (0.08 + 0.8 * exoScan);
+          totalEmissiveRadiance += exoOn * exoTint * (0.03 + 0.14 * exoLv) * (1.0 + 0.25 * sin(uT * 2.0 + vRack.y * 3.0)) + exoOn * exoTint * uPulse;`);
     };
     mat.customProgramCacheKey = () => 'exo-zones';
   });
@@ -391,7 +395,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
 
   // ---------- Table holographique : la France et le réseau ----------
   const holo = add(new THREE.Group());
-  holo.position.set(1.85, 2.02, -0.6);
+  holo.position.set(AT.holo.x, 2.02, AT.holo.z);
   const lineMat = new THREE.LineBasicMaterial({ color: 0x7fc7d9, transparent: true, opacity: 0.95, fog: false });
   lineMat.color.multiplyScalar(1.7);
   const map3d = new THREE.Group();
@@ -419,17 +423,17 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   const nodes = new THREE.Points(nodesGeo, new THREE.PointsMaterial({ map: disc, color: 0xffc27a, size: 0.075, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   map3d.add(beacon, ring, links, nodes);
   const holoCone = add(new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.12, 1.15, 28, 1, true), glowMat(0x7fc7d9, 0.07, ramp)));
-  holoCone.position.set(1.85, 1.42, -0.6);
+  holoCone.position.set(AT.holo.x, 1.42, AT.holo.z);
 
   // ---------- Console : panneau des contrats ----------
   const contractTex = canvasTexture(512, 320, (g, w, h) => drawContracts(g, w, h, null));
   const contractMat = new THREE.MeshBasicMaterial({ map: contractTex, transparent: true, opacity: 0.96, depthWrite: false, fog: false, side: THREE.DoubleSide });
   contractMat.color.setScalar(1.25);
   const contractPanel = add(new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.94), contractMat));
-  contractPanel.position.set(-1.9, 2.05, 2.3); contractPanel.rotation.y = 0.62; contractPanel.rotation.x = -0.08;
+  contractPanel.position.set(AT.console.x - 0.1, 2.1, AT.console.z - 0.15); contractPanel.rotation.y = 0.7; contractPanel.rotation.x = -0.08;
   // lampe de la couchette
   const litGlow = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: disc, color: 0xffc690, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })));
-  litGlow.position.set(1.8, 1.25, 3.3); litGlow.scale.setScalar(1.5);
+  litGlow.position.set(AT.lit.x - 0.1, 1.25, AT.lit.z + 0.1); litGlow.scale.setScalar(1.5);
 
   // ---------- Personnages ----------
   const porter = new Actor(porterM);
@@ -473,7 +477,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     key.color.set(pal.key); key.intensity = pal.keyPower;
     for (const p of points) p.l.intensity = p.base * pal.points;
     for (const m of wallMats) m.color.set(pal.wall);
-    floorMat.color.set(pal.floor); floorMat.roughness = pal.floorRough * 2;
+    floorMat.color.set(pal.floor); floorMat.roughness = pal.floorRough * 1.6;
     spillMat.color.set(pal.window);
     stripC.color.set(0x7fc7d9).multiplyScalar(1.5 * pal.strips); stripA.color.set(0xe8a24a).multiplyScalar(1.4 * pal.strips);
     const g = (backdropTex.image as HTMLCanvasElement).getContext('2d');
@@ -541,7 +545,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     (column.material as THREE.MeshBasicMaterial).opacity = depart * 0.75;
     column.scale.set(1 - depart * 0.35, 1, 1 - depart * 0.35);
     ringGlow.material.opacity = 0.2 + breathe * 0.08 + depart * 0.6;
-    padLight.intensity = (16 + breathe * 3 + depart * 60) * pal.points;
+    padLight.intensity = (5 + breathe * 1 + depart * 30) * pal.points;
     for (let i = 0; i < dpos.count; i++) {
       let y = dpos.getY(i) + dt * (0.02 + hash(i) * 0.03);
       if (y > 4.9) y = 0.2;

@@ -5,7 +5,7 @@ import type { Fix } from '../player/gps';
 import type { CellContent, Shelter } from '../world/types';
 import {
   type ActionResult, type CacheView, type ContractView, type DangerView, type DeliveryResult, type FrontView, type GameEngine, type GameEvent,
-  type GameView, type JamView, type LostInput, type OrderView, RANGE, type ShelterView, type SkillView, type WandererView, type Weather,
+  type GameView, type JamView, type LostInput, type OrderView, RANGE, RELAY, type RelayCrate, type RelayGiveResult, type ShelterView, type SkillView, type WandererView, type Weather,
 } from './api';
 import { type Cache, cachesFor } from './caches';
 import { driftBalance, isUnbalanced, nextStamina, wearPerSecond } from './carry';
@@ -107,6 +107,8 @@ export class Game implements GameEngine {
   private strapUntil = new Map<string, number>();
   /** Photos-preuves encore possibles, par colis livré. Jamais sauvegardé. */
   private proofs = new Map<string, { bonus: number; shelterId: string; until: number }>();
+  /** Colis portés venus de la chaîne de relais : identifiant du colis → identifiant du relais en ligne. */
+  private relayIds = new Map<string, string>();
 
   // Temps, contrats, sauvegarde
   private day: string;
@@ -154,6 +156,7 @@ export class Game implements GameEngine {
     this.met = new Set(sameDay ? save.met : []);
     this.jams = new Map((save.jams ?? []).filter(j => sameDay || j.state === 'en cours').map(j => [j.id, { ...j }]));
     this.strapUntil.clear(); this.proofs.clear(); this.frontS.clear();
+    this.relayIds = new Map(Object.entries(save.relays ?? {}).filter(([id]) => this.orders.get(id)?.state === 'porté'));
     this.contracts = this.drawAll(t, save.contracts);
     this.skillsCache = this.contractsCache = null;
     this.lastSaveT = t;
@@ -174,6 +177,7 @@ export class Game implements GameEngine {
       last: this.pos,
       rev: SAVE_REV, cachesFound: [...this.cachesFound], cachesOpened: [...this.cachesOpened], met: [...this.met],
       jams: [...this.jams.values()].map(j => ({ ...j })),
+      relays: Object.fromEntries(this.relayIds),
     };
   }
 
@@ -366,6 +370,8 @@ export class Game implements GameEngine {
     const o = this.orders.get(orderId);
     if (!o || o.state !== 'porté') return no('Ce colis n’est pas dans le sac.');
     if (!this.pos) return no('Position inconnue.');
+    // Un colis de relais est suivi en ligne : il ne se pose pas par terre, il se livre ou se redépose dans un abri.
+    if (this.relayIds.has(o.id)) return no('Un colis de relais se dépose dans un abri, pas par terre.');
     o.state = 'révélé';
     o.at = [this.pos[0], this.pos[1]];
     delete o.strap;
@@ -391,6 +397,8 @@ export class Game implements GameEngine {
       const g = gradeDelivery({ condition: o.condition, deadlineMin: o.deadlineMin, elapsedMin: elapsedMin(o, t), weather: this.weather.kind, night: this.weather.night, front: o.front === true || this.inFront });
       if (o.special) g.notes.push('Colis spécial');
       if (o.lost) g.notes.push(`Colis de ${o.lost.by} retrouvé`);
+      const relayId = this.relayIds.get(o.id) ?? null;
+      if (relayId) { g.notes.push('Colis de relais'); this.relayIds.delete(o.id); }
       const points = Math.round(orderReward(o, starsBefore) * g.mult * this.mods.pointsMult);
       const xp = Math.round((XP.perDelivery + points * XP.perPoint) * this.mods.xpMult);
       st.points += points; st.deliveries++;
@@ -409,7 +417,7 @@ export class Game implements GameEngine {
         orderId: o.id, orderName: orderName(o, starsBefore), shelterId, shelterName: sh.name, npc,
         grade: g.grade, condition: o.condition, onTime: g.onTime, points, xp, notes: g.notes,
         starsBefore, starsAfter, unlock: unlocks.length ? unlocks.join(' · ') : null, levelUp: levels.length > 0,
-        special: o.special ?? null, lostBy: o.lost?.by ?? null, proofBonus: bonus,
+        special: o.special ?? null, lostBy: o.lost?.by ?? null, proofBonus: bonus, relayId,
       };
       this.emit({ type: 'delivery', result });
       for (const level of levels) this.emit({ type: 'levelUp', level });
@@ -554,6 +562,80 @@ export class Game implements GameEngine {
     return OK;
   }
 
+  // ───────────────────────── chaîne de relais (le réseau est appelé par src/net/link.ts, jamais d'ici)
+
+  giveToRelay(orderId: string, shelterId?: string, dryRun = false): RelayGiveResult {
+    const o = this.orders.get(orderId);
+    if (!o || o.state !== 'porté') return no('Ce colis n’est pas dans le sac.');
+    if (!this.pos) return no('Position inconnue.');
+    const sh = this.shelterById.get(shelterId ?? this.nearShelter ?? '');
+    if (!sh) return no('Il faut être dans un abri pour laisser un relais.');
+    if (dist(sh.at, this.pos) > RANGE.deliver) return no('Trop loin de l’abri.');
+    if (o.destId === sh.id) return no('Ce colis est attendu ici : livre-le.');
+    if (o.special) return no('Un colis spécial ne se confie pas : livre-le toi-même.');
+    if (o.jam) return no('Ce colis fait partie d’un lot : livre-le toi-même.');
+    // L'avance paie le chemin déjà fait : l'abri-relais doit rapprocher le colis de sa destination.
+    const total = dist(o.at, o.destAt), left = dist(sh.at, o.destAt);
+    const progress = total > 0 ? Math.min(1, Math.max(0, 1 - left / total)) : 0;
+    if (progress < RELAY.minProgress) return no('Cet abri ne rapproche pas le colis de sa destination.');
+    const points = Math.max(1, Math.round(orderReward(o, this.starsOf(o.destId)) * RELAY.dropShare * progress));
+    const parcel: RelayCrate = {
+      name: o.name, crate: o.crate, weightKg: o.weightKg, fragile: o.fragile, reward: o.baseReward,
+      destId: o.destId, destName: o.destName, destAt: [o.destAt[0], o.destAt[1]], condition: Math.round(o.condition * 1000) / 1000,
+    };
+    const relayId = this.relayIds.get(o.id);
+    const out: RelayGiveResult = relayId ? { ok: true, parcel, shelterId: sh.id, points, relayId } : { ok: true, parcel, shelterId: sh.id, points };
+    if (dryRun) return out;
+    this.orders.delete(o.id);
+    this.done.add(o.id);
+    this.relayIds.delete(o.id);
+    this.lateWarned.delete(o.id); this.strapUntil.delete(o.id); this.frontS.delete(o.id);
+    if (!this.carried().length) { this.balance = 0; this.unbalancedS = 0; }
+    this.score += points;
+    const levels = this.gainXp(Math.round(points * XP.perPoint * this.mods.xpMult));
+    this.emit({ type: 'toast', text: `Colis laissé en relais : +${points} points`, tone: 'good' });
+    for (const level of levels) this.emit({ type: 'levelUp', level });
+    this.saveNow();
+    return out;
+  }
+
+  takeFromRelay(relay: { id: string; parcel: RelayCrate }, dryRun = false): ActionResult {
+    if (!this.pos) return no('Position inconnue.');
+    const sh = this.shelterById.get(this.nearShelter ?? '');
+    if (!sh) return no('Il faut être dans un abri pour prendre un relais.');
+    const p = relay.parcel, id = `relais|${relay.id}`;
+    if (!relay.id || this.orders.has(id) || this.done.has(id)) return no('Ce relais est déjà passé par toi.');
+    if (!p || !Array.isArray(p.destAt) || !Number.isFinite(p.destAt[0]) || !Number.isFinite(p.destAt[1]) || !p.destId) return no('Ce relais est illisible.');
+    // Le contenu vient d'un autre joueur : valeurs bornées.
+    const weightKg = Math.min(30, Math.max(0.5, Number.isFinite(p.weightKg) ? p.weightKg : 1));
+    if (this.carriedKg(this.carried()) + weightKg > this.mods.capacityKg) return no('Sac trop lourd : pose d’abord un colis.');
+    if (dryRun) return OK;
+    const t = this.now();
+    const o: Order = {
+      id, cell: '', name: String(p.name || 'Colis').slice(0, 40), rareName: null, crate: p.crate, weightKg, fragile: p.fragile === true,
+      at: [sh.at[0], sh.at[1]], destId: p.destId, destName: String(p.destName || 'Abri').slice(0, 80), destAt: [p.destAt[0], p.destAt[1]],
+      deadlineMin: null, baseReward: Math.min(400, Math.max(5, Number.isFinite(p.reward) ? Math.round(p.reward) : 5)),
+      state: 'porté', condition: Math.min(1, Math.max(0, Number.isFinite(p.condition) ? p.condition! : 1)), pickedAt: t, inspected: true,
+    };
+    this.orders.set(id, o);
+    this.relayIds.set(id, relay.id);
+    this.strapUntil.set(id, t + GESTURE.strapWindowS * 1000);
+    this.emit({ type: 'pickup', order: this.orderView(o, t) });
+    this.saveNow();
+    return OK;
+  }
+
+  /** Points venus d'ailleurs (récompense de relais). `reason` est montré au joueur. */
+  credit(points: number, reason?: string): void {
+    const n = Math.round(points);
+    if (!(n > 0)) return;
+    this.score += n;
+    const levels = this.gainXp(Math.round(n * XP.perPoint));
+    if (reason) this.emit({ type: 'toast', text: reason, tone: 'good' });
+    for (const level of levels) this.emit({ type: 'levelUp', level });
+    this.saveNow();
+  }
+
   // ───────────────────────── vue
 
   view(): GameView {
@@ -667,7 +749,7 @@ export class Game implements GameEngine {
       special: sp ? { kind: sp.kind, label: sp.label, rule: sp.rule, known } : null,
       lost: o.lost ? { by: o.lost.by } : null, jamId: o.jam ?? null,
       inspected: known, canInspect: !carried && !known && this.pos !== null && d <= GESTURE.inspectM,
-      strap: o.strap ?? null,
+      strap: o.strap ?? null, relay: this.relayIds.has(o.id) ? { id: this.relayIds.get(o.id)! } : null,
       strapLeftS: carried && o.strap === undefined ? Math.max(0, ((this.strapUntil.get(o.id) ?? 0) - t) / 1000) : 0,
     };
   }

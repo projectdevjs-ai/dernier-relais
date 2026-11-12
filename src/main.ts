@@ -136,3 +136,8 @@ addEventListener('pagehide', flush);
 
 // Accès pour les essais automatiques (console du navigateur) : sans effet sur le jeu.
 Object.assign(window, { __dr: { game, stage, hud, world, sound, france, net: online.net, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
+
+// Version web : cache des fichiers lourds pour les lancements suivants (inutile dans l'APK, où tout est déjà sur le téléphone).
+if ('serviceWorker' in navigator && location.protocol === 'https:' && !('Capacitor' in window)) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* sans cache, le jeu marche quand même */ });
+}

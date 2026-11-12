@@ -10,35 +10,41 @@ export const SOURCE = 'openmaptiles';
 export interface Palette {
   land: string; urban: string; park: string; wood: string; water: string; sand: string;
   road: string; roadMajor: string; roadEdge: string; path: string; rail: string;
-  bLow: string; bHigh: string; text: string; halo: string; veil: string;
+  bLow: string; bHigh: string; roofLow: string; roofHigh: string; text: string; halo: string; veil: string;
+  /** Ciel : zénith, horizon, et teinte du voile atmosphérique au loin. */
+  sky: string; horizon: string; haze: string;
 }
 type Key = keyof Palette;
-const KEYS: Key[] = ['land', 'urban', 'park', 'wood', 'water', 'sand', 'road', 'roadMajor', 'roadEdge', 'path', 'rail', 'bLow', 'bHigh', 'text', 'halo', 'veil'];
+const KEYS: Key[] = ['land', 'urban', 'park', 'wood', 'water', 'sand', 'road', 'roadMajor', 'roadEdge', 'path', 'rail', 'bLow', 'bHigh', 'roofLow', 'roofHigh', 'text', 'halo', 'veil', 'sky', 'horizon', 'haze'];
 
-/** Palettes de jour. « crépuscule » est la référence historique du jeu (vert nuit + ambre). */
+/** Palettes de jour. « crépuscule » : heure bleue, sol ardoise, toits froids, horizon encore chaud. */
 const DAY: Record<Ambiance, Palette> = {
   'crépuscule': {
-    land: '#14201f', urban: '#172624', park: '#183227', wood: '#15301f', water: '#0e2c37', sand: '#2a2c21',
-    road: '#2f4440', roadMajor: '#3b5650', roadEdge: '#0f1918', path: '#6b5a36', rail: '#5a4a2c',
-    bLow: '#243b3c', bHigh: '#3a5a56', text: '#e6e1d3', halo: '#14201f', veil: '#080d0d',
+    land: '#1e2c30', urban: '#223237', park: '#22483a', wood: '#1c4030', water: '#1b5a78', sand: '#454330',
+    road: '#3b5058', roadMajor: '#4d6772', roadEdge: '#6c8a92', path: '#a08548', rail: '#7a6540',
+    bLow: '#3d555c', bHigh: '#6a8f98', roofLow: '#56737a', roofHigh: '#8fb4ba', text: '#f0ead8', halo: '#1e2c30', veil: '#4a5d66',
+    sky: '#22325a', horizon: '#e79a6a', haze: '#5c6f8a',
   },
   clair: {
-    land: '#efe8d6', urban: '#e9e1cd', park: '#cbe0a8', wood: '#b4d394', water: '#9fd6e0', sand: '#f3e4b3',
-    road: '#fffdf7', roadMajor: '#ffeec6', roadEdge: '#d6ccb6', path: '#e0c998', rail: '#c2b7a3',
-    bLow: '#f4ecdc', bHigh: '#dccfb6', text: '#7b705b', halo: '#efe8d6', veil: '#8d99a0',
+    land: '#f3ecda', urban: '#ede4cf', park: '#bfe09a', wood: '#a3d188', water: '#86cdea', sand: '#f6e3a8',
+    road: '#ffffff', roadMajor: '#ffe7b0', roadEdge: '#c9b996', path: '#e6c98c', rail: '#b9ad98',
+    bLow: '#fbeedb', bHigh: '#f0d9c0', roofLow: '#e9a27c', roofHigh: '#c2d0d6', text: '#7b6c52', halo: '#f3ecda', veil: '#c4cfd4',
+    sky: '#8fc7ee', horizon: '#fff3da', haze: '#dcebf2',
   },
 };
-/** Palettes de pleine nuit. */
+/** Palettes de pleine nuit : bleu profond, rues encore lisibles sous la lune. */
 const NIGHT: Record<Ambiance, Palette> = {
   'crépuscule': {
-    land: '#0a1113', urban: '#0c1517', park: '#0c1a16', wood: '#0a1812', water: '#07161e', sand: '#151812',
-    road: '#1a282a', roadMajor: '#22363a', roadEdge: '#070c0d', path: '#3d3421', rail: '#33291a',
-    bLow: '#152226', bHigh: '#203438', text: '#a9b3ae', halo: '#0a1113', veil: '#030606',
+    land: '#101a22', urban: '#131f28', park: '#12291f', wood: '#0f241b', water: '#0e3048', sand: '#22241c',
+    road: '#25363f', roadMajor: '#30464f', roadEdge: '#45606a', path: '#5c4d2c', rail: '#473b24',
+    bLow: '#22323d', bHigh: '#3a5362', roofLow: '#2e4350', roofHigh: '#4d6b7b', text: '#b9c4c4', halo: '#101a22', veil: '#1b2630',
+    sky: '#070c1c', horizon: '#243a5c', haze: '#131d2e',
   },
   clair: {
-    land: '#172030', urban: '#1a2436', park: '#16302e', wood: '#132b28', water: '#0d1a2e', sand: '#2a2c33',
-    road: '#2c3b55', roadMajor: '#384b6b', roadEdge: '#101724', path: '#5a5545', rail: '#4a4a52',
-    bLow: '#263450', bHigh: '#34476a', text: '#c5d0e6', halo: '#172030', veil: '#0a0f18',
+    land: '#18223a', urban: '#1b2640', park: '#17363a', wood: '#143132', water: '#123660', sand: '#2c2f3c',
+    road: '#30415f', roadMajor: '#3d5278', roadEdge: '#556c96', path: '#665f48', rail: '#4c4d5a',
+    bLow: '#2b3b5c', bHigh: '#41587f', roofLow: '#3a4f76', roofHigh: '#5a75a0', text: '#cfd9ee', halo: '#18223a', veil: '#222d44',
+    sky: '#0a1230', horizon: '#34508a', haze: '#1a2644',
   },
 };
 
@@ -74,8 +80,30 @@ function heightExpr(prop: 'render_height' | 'render_min_height'): unknown {
   return ['*', 0.8, ['coalesce', ['get', prop], prop === 'render_height' ? 6 : 0]];
 }
 
-function buildingColor(p: Palette): unknown {
-  return ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6], 3, p.bLow, 30, p.bHigh];
+/** Vrai pour les bâtiments masqués (au pied d'un abri) : état posé par Stage.hideUnderShelters. */
+const HIDDEN = ['boolean', ['feature-state', 'hide'], false];
+const byHeight = (low: string, high: string): unknown => ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6], 3, low, 14, ['literal', mixHex(low, high, 0.55)], 34, high];
+function mixHex(a: string, b: string, k: number): string { return '#' + ca.set(a).lerp(cb.set(b), k).getHexString(); }
+
+export const BUILDING_LAYERS = ['building-3d', 'building-win', 'building-roof'];
+/** Épaisseur de la dalle de toit, en mètres. */
+const ROOF = 0.45;
+
+/** Motif des fenêtres allumées (transparent ailleurs), plaqué sur les murs à la tombée du jour. */
+export function windowPattern(): { width: number; height: number; data: Uint8Array } {
+  const n = 64, data = new Uint8Array(n * n * 4);
+  // Grille de 4 x 4 fenêtres ; tirage fixe pour un rendu identique partout.
+  const lit = [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0];
+  const warm = [[255, 206, 128], [255, 180, 96], [255, 226, 170], [190, 226, 240]];
+  for (let k = 0; k < 16; k++) {
+    if (!lit[k]) continue;
+    const cx = (k % 4) * 16 + 5, cy = Math.floor(k / 4) * 16 + 4, col = warm[(k * 7) % warm.length];
+    for (let y = cy; y < cy + 8; y++) for (let x = cx; x < cx + 5; x++) {
+      const i = (y * n + x) * 4;
+      data[i] = col[0]; data[i + 1] = col[1]; data[i + 2] = col[2]; data[i + 3] = 255;
+    }
+  }
+  return { width: n, height: n, data };
 }
 
 /** Transforme le style « liberty » : ne garde que les couches utiles et note quelle couleur va où. */
@@ -116,13 +144,18 @@ export function buildGameStyle(src: StyleSpecification): GameStyle {
       binds.push([id, 'text-color', 'text'], [id, 'text-halo-color', 'halo']);
     }
   }
-  // Bâtiments extrudés en 3D, reconstruits à notre façon.
+  // Bâtiments extrudés en 3D, reconstruits à notre façon : murs en dégradé vertical, fenêtres allumées
+  // le soir, et une fine dalle de toit d'une autre teinte qui découpe chaque volume.
+  const h = heightExpr('render_height'), base = heightExpr('render_min_height');
+  const wall = { 'fill-extrusion-height': ['case', HIDDEN, 0, h], 'fill-extrusion-base': ['case', HIDDEN, 0, base] };
+  const common = { type: 'fill-extrusion', source: SOURCE, 'source-layer': 'building', filter: ['!', ['has', 'hide_3d']] };
+  layers.push({ ...common, id: 'building-3d', minzoom: 14, paint: { 'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true, ...wall } } as unknown as LayerSpecification);
+  layers.push({ ...common, id: 'building-win', minzoom: 16.5, layout: { visibility: 'none' }, paint: { 'fill-extrusion-pattern': 'fenetres', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': false, ...wall } } as unknown as LayerSpecification);
   layers.push({
-    id: 'building-3d', type: 'fill-extrusion', source: SOURCE, 'source-layer': 'building', minzoom: 14,
-    filter: ['!', ['has', 'hide_3d']],
+    ...common, id: 'building-roof', minzoom: 15,
     paint: {
-      'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true,
-      'fill-extrusion-height': heightExpr('render_height'), 'fill-extrusion-base': heightExpr('render_min_height'),
+      'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': false,
+      'fill-extrusion-height': ['case', HIDDEN, 0, ['+', h, ROOF]], 'fill-extrusion-base': ['case', HIDDEN, 0, h],
     },
   } as unknown as LayerSpecification);
   const sources: StyleSpecification['sources'] = {};
@@ -136,5 +169,7 @@ export function applyPalette(map: MlMap, style: GameStyle | null, p: Palette): v
   if (map.getLayer('veil')) map.setPaintProperty('veil', 'fill-color', p.veil);
   if (!style) return;
   for (const [layer, prop, key] of style.binds) if (map.getLayer(layer)) map.setPaintProperty(layer, prop, p[key]);
-  if (map.getLayer('building-3d')) map.setPaintProperty('building-3d', 'fill-extrusion-color', buildingColor(p));
+  // Bâtiments masqués (au pied d'un abri) : aplatis et fondus dans le sol.
+  if (map.getLayer('building-3d')) map.setPaintProperty('building-3d', 'fill-extrusion-color', ['case', HIDDEN, p.urban, byHeight(p.bLow, p.bHigh)]);
+  if (map.getLayer('building-roof')) map.setPaintProperty('building-roof', 'fill-extrusion-color', ['case', HIDDEN, p.urban, byHeight(p.roofLow, p.roofHigh)]);
 }
