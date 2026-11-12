@@ -62,6 +62,8 @@ const stage = new Stage('stage', {
     if (sh && sh.stars > 0) voice.say(sh.npc, sh.line);
   },
   onTapOrder: id => hud.openOrder(id),
+  onTapCache: id => hud.openCache?.(id),
+  onTapWanderer: id => hud.openWanderer?.(id),
 }, { center: START, ambiance });
 
 const hud = new Hud(document.getElementById('hud')!, {
@@ -86,6 +88,7 @@ game.on(e => {
   hud.handle(e);
   sound.handle(e);
   if (e.type === 'scan' && view) stage.pulseScan(view.scanner.rangeM);
+  if (e.type === 'jam' && e.phase === 'réussi') stage.celebrate(e.jam.shelterId);
   if (e.type === 'delivery') {
     stage.celebrate(e.result.shelterId);
     const sh = view?.shelters.find(x => x.id === e.result.shelterId);

@@ -1,0 +1,17 @@
+{
+  "name": "Dernier Relais",
+  "short_name": "Dernier Relais",
+  "description": "Marche dans ta ville, livre des colis, rallume le réseau.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#14201f",
+  "theme_color": "#14201f",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
