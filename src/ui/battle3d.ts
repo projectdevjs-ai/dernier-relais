@@ -15,7 +15,8 @@ const metal = mat(0x657079,.72,.36), dark = mat(0x18252c,.6,.4);
 const armor = mat(0x424e4d,.46,.47), cloth = mat(0x393f3f,.05,.93);
 const red = mat(0xff6755,.15,.45,0xe54737), cyan = mat(0x8dd4c2,.08,.35,0x359c93);
 const gold = mat(0xb9a785,.55,.46), black = mat(0x131a20,.6,.6);
-const materials: THREE.Material[] = [...stone,metal,dark,armor,cloth,red,cyan,gold,black];
+const scavSuit = mat(0x6b5950), straySuit = mat(0x5c6260), floorMat = mat(0x2d3537,.08,.93);
+const materials: THREE.Material[] = [...stone,metal,dark,armor,cloth,red,cyan,gold,black,scavSuit,straySuit,floorMat];
 const boxGeo = new THREE.BoxGeometry(1,1,1);
 const sphereGeo = new THREE.IcosahedronGeometry(1,1);
 const cylinderGeo = new THREE.CylinderGeometry(1,1,1,8);
@@ -44,8 +45,7 @@ function pseudo(seed: number): () => number {
 }
 function humanoid(kind: EnemyKind): {root:THREE.Group; head:THREE.Group; armL:THREE.Group; armR:THREE.Group;} {
   const root=new THREE.Group(), head=new THREE.Group(), armL=new THREE.Group(), armR=new THREE.Group();
-  const scav=kind==='scavenger', suit=scav?mat(0x6b5950):kind==='stray'?mat(0x5c6260):armor;
-  if(!materials.includes(suit))materials.push(suit);
+  const scav=kind==='scavenger', suit=scav?scavSuit:kind==='stray'?straySuit:armor;
   const trim=scav?gold:cyan;
   root.add(head,armL,armR);
   // Bottes, tibias, genouillères, hanche, torse et harnais visibles depuis la caméra.
@@ -205,9 +205,7 @@ export class CinematicBattle {
     const rim=new THREE.PointLight(0x96c2c2,75,20,2);rim.position.set(7,9,-6);this.scene.add(rim);
     this.glow=new THREE.PointLight(0xf96554,5,10,2);this.scene.add(this.glow);
     // Dalle de station et scène de l'ancien monde.
-    const groundMat=mat(0x2d3537,.08,.93);
-    materials.push(groundMat);
-    const ground=new THREE.Mesh(new THREE.PlaneGeometry(160,160),groundMat);
+    const ground=new THREE.Mesh(new THREE.PlaneGeometry(160,160),floorMat);
     ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;this.scene.add(ground);
     ruins(this.scene);
     const rand=pseudo(7);
