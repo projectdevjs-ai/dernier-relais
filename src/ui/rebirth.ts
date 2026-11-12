@@ -1,5 +1,6 @@
 // PROJECT REBIRTH — console de survie et arène tactique mobile, sans ressources externes.
 import './rebirth.css';
+import { CinematicBattle } from './battle3d';
 import type { GameActions, GameView, ActionResult } from '../game/api';
 import { RECIPES, type CombatMove, type Recipe, type Resource, type Rebirth, type Faction } from '../game/rebirth';
 
@@ -36,6 +37,7 @@ export class RebirthConsole {
   private readonly body = el('div','rb-body');
   private readonly status = el('span','rb-trigger-alert');
   private last = '';
+  private battle: CinematicBattle | null = null;
   private opened = false;
   /** Ne montre pas à nouveau une confrontation que le joueur a volontairement réduite. */
   private announcedEncounter: string | null = null;
@@ -60,7 +62,7 @@ export class RebirthConsole {
     if (this.opened) return;
     this.opened = true; this.veil.hidden = false; this.last = ''; this.overlay?.(true); this.draw();
   }
-  close(): void { if (!this.opened) return; this.opened = false; this.veil.hidden = true; this.overlay?.(false); }
+  close(): void { if (!this.opened) return; this.opened = false; this.veil.hidden = true; this.battle?.dispose(); this.battle = null; this.overlay?.(false); }
   render(v: GameView): void {
     this.view = v;
     const s = v.player.rebirth, threat = s?.encounter;
@@ -85,6 +87,7 @@ export class RebirthConsole {
   private draw(): void {
     const v = this.view, state = v?.player.rebirth;
     if (!v || !state) return;
+    this.battle?.dispose(); this.battle = null;
     this.body.replaceChildren();
     const top = el('header','rb-head');
     const title = el('div','rb-head-title');
@@ -200,11 +203,16 @@ export class RebirthConsole {
     const e=s.encounter!;
     const stopped=!v.player.moving&&!v.player.vehicle;
     const arena=el('div','rb-arena rb-enemy-'+e.kind);
-    arena.append(el('div','rb-arena-grid'),el('div','rb-signal','CONTACT HOSTILE  //  '+String(e.turn+1).padStart(2,'0')));
-    const silhouette=el('div','rb-silhouette');
-    silhouette.append(el('span','rb-enemy-core'),el('span','rb-enemy-head'),el('span','rb-enemy-eye'));
-    arena.append(silhouette,el('div','rb-arena-horizon'));
     this.body.append(arena);
+    try {
+      this.battle = new CinematicBattle(arena,e);
+      this.battle.setMood(e.last.includes('Impulsion') ? 'pulse' : e.last.includes('Coup') ? 'strike' : e.last.includes('défensive') ? 'guard' : 'intro');
+    } catch {
+      this.battle?.dispose(); this.battle=null;
+      arena.append(el('div','rb-arena-fallback','SIGNAL HOSTILE // '+e.name.toUpperCase()));
+    }
+    arena.append(el('div','rb-signal','CONTACT HOSTILE  //  TOUR '+String(e.turn+1).padStart(2,'0')),
+      el('div','rb-arena-bottom','TACTICAL SURVIVAL · STATION LUMEN'));
     this.body.append(el('div','rb-battle-title',e.title),el('p','rb-hint',e.subtitle));
     const stats=el('div','rb-battle-stats');
     const enemy=el('div','rb-battle-hp');enemy.append(el('span','','MENACE  /  '+e.name),el('strong','',e.hp+' / '+e.maxHp),bar(e.hp,e.maxHp,'rb-enemy-hp'));
