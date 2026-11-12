@@ -33,7 +33,7 @@ export interface SlotView {
 export interface ExoTierView { tier: number; name: string; desc: string; installed: boolean; /** niveau du porteur requis */ level: number }
 
 /** Portées de base, en mètres. Les compétences peuvent les augmenter. */
-export const RANGE = { pickup: 30, deliver: 40, scan: 160 } as const;
+export const RANGE = { pickup: 45, deliver: 55, scan: 160 } as const;
 
 /** Colis spéciaux : rares, une contrainte propre, une grosse récompense. */
 export type SpecialKind = 'batterie' | 'boitenoire' | 'cryo' | 'ruche';

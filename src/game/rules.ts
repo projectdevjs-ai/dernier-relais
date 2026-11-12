@@ -4,8 +4,8 @@ import type { Grade } from './api';
 /** Capacité du sac sans compétence, en kg. */
 export const BAG_KG = 20;
 /** Recharge du scanner sans compétence, en secondes. */
-export const SCAN_COOLDOWN_S = 8;
-export const SCAN_COOLDOWN_MIN_S = 3;
+export const SCAN_COOLDOWN_S = 15;
+export const SCAN_COOLDOWN_MIN_S = 7;
 
 /** Vitesses, en m/s. */
 export const SPEED = {
