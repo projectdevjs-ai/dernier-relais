@@ -189,6 +189,7 @@ export class CinematicBattle {
   private readonly reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly onVisibility=():void=>{this.visible=!document.hidden; if(this.visible&&!this.frame) this.frame=requestAnimationFrame(this.tick);};
   constructor(private container:HTMLElement, encounter:Encounter) {
+    this.container.dataset.assetsReady = 'false';
     this.isDrone=encounter.kind==='drone';
     this.scene.background=new THREE.Color(encounter.kind==='drone'?0x101b29:encounter.kind==='stray'?0x191a1f:0x161e21);
     this.scene.fog=new THREE.FogExp2(this.scene.background as THREE.Color,.025);
