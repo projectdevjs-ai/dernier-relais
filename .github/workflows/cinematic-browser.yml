@@ -1,0 +1,39 @@
+name: Cinematic Combat — Mobile Browser
+on:
+  push:
+    branches:
+      - feature/dernier-relais-cinematic-combat-v1
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - name: Test battle in mobile Chromium
+        shell: bash
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/rebirth-vite.log 2>&1 &
+          PID=$!
+          trap 'kill $PID || true' EXIT
+          for i in $(seq 1 25); do
+            if curl -fsS http://127.0.0.1:4173/cinematic-demo.html > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/cinematic-smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rebirth-cinematic-mobile
+          path: /tmp/rebirth-test/*.png
+          if-no-files-found: ignore
