@@ -390,6 +390,8 @@ export interface GameActions {
   resolveThreat?(zoneId: string, choice: 'eviter' | 'negocier'): ActionResult;
   /** Engager une rencontre tactique depuis une zone, seulement à l'arrêt. */
   engageThreat?(zoneId: string): ActionResult;
+  /** Simulateur tactique sans récompenses ni conséquences sur la sauvegarde. */
+  startTraining?(): ActionResult;
   /** Un tour de combat tactique avec riposte ennemie. */
   combatMove?(move: CombatMove): ActionResult;
   /** Fabriquer un objet ou réparer l'armure depuis les matériaux récoltés. */
