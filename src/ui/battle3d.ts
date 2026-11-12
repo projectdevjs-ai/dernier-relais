@@ -3,6 +3,7 @@
 // Les formes sont construites par assemblage de géométries légères pour le Web mobile.
 import * as THREE from 'three';
 import type { Encounter } from '../game/rebirth';
+import { spawn, disposeInstance, type Instance } from '../render/assets';
 
 type EnemyKind = Encounter['kind'];
 type CombatMood = 'intro' | 'strike' | 'guard' | 'pulse' | 'evade' | 'victory' | 'defeat';
@@ -14,6 +15,8 @@ const stone = [mat(0x29333b), mat(0x394346), mat(0x252e34), mat(0x465047)];
 const metal = mat(0x657079,.72,.36), dark = mat(0x18252c,.6,.4);
 const armor = mat(0x424e4d,.46,.47), cloth = mat(0x393f3f,.05,.93);
 const red = mat(0xff6755,.15,.45,0xe54737), cyan = mat(0x8dd4c2,.08,.35,0x359c93);
+red.emissiveIntensity = 2.1;
+cyan.emissiveIntensity = 1.1;
 const gold = mat(0xb9a785,.55,.46), black = mat(0x131a20,.6,.6);
 const scavSuit = mat(0x6b5950), straySuit = mat(0x5c6260), floorMat = mat(0x2d3537,.08,.93);
 const materials: THREE.Material[] = [...stone,metal,dark,armor,cloth,red,cyan,gold,black,scavSuit,straySuit,floorMat];
@@ -166,6 +169,8 @@ export class CinematicBattle {
   private armR:THREE.Group|null=null;
   private rotors:THREE.Group[]=[];
   private dust:THREE.Points|null=null;
+  private ownedAssets: Instance[] = [];
+  private mixers: THREE.AnimationMixer[] = [];
   private ring:THREE.Mesh|null=null;
   private glow:THREE.PointLight|null=null;
   private frame=0;
@@ -186,23 +191,23 @@ export class CinematicBattle {
   constructor(private container:HTMLElement, encounter:Encounter) {
     this.isDrone=encounter.kind==='drone';
     this.scene.background=new THREE.Color(encounter.kind==='drone'?0x101b29:encounter.kind==='stray'?0x191a1f:0x161e21);
-    this.scene.fog=new THREE.FogExp2(this.scene.background as THREE.Color,.033);
+    this.scene.fog=new THREE.FogExp2(this.scene.background as THREE.Color,.025);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'low-power'});
     this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.6));
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure=1.24;
+    this.renderer.toneMappingExposure=1.52;
     this.renderer.shadowMap.enabled=true;
     this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     this.renderer.domElement.className='rb-3d-canvas';
     this.renderer.domElement.setAttribute('aria-label','Scène de combat 3D animée');
     this.container.append(this.renderer.domElement);
-    const hemi=new THREE.HemisphereLight(0xc4dde0,0x252b2c,1.5);this.scene.add(hemi);
-    const sun=new THREE.DirectionalLight(0xf9d0a0,3.0);
+    const hemi=new THREE.HemisphereLight(0xd8e6df,0x52605b,2.25);this.scene.add(hemi);
+    const sun=new THREE.DirectionalLight(0xf9d0a0,3.5);
     sun.position.set(-8,15,-13);sun.castShadow=true;sun.shadow.mapSize.set(512,512);
     sun.shadow.camera.left=-19;sun.shadow.camera.right=19;sun.shadow.camera.top=19;sun.shadow.camera.bottom=-19;
     sun.shadow.normalBias=.03;this.scene.add(sun);
-    const rim=new THREE.PointLight(0x96c2c2,75,20,2);rim.position.set(7,9,-6);this.scene.add(rim);
+    const rim=new THREE.PointLight(0x96c2c2,100,22,2);rim.position.set(7,9,-6);this.scene.add(rim);
     this.glow=new THREE.PointLight(0xf96554,5,10,2);this.scene.add(this.glow);
     // Dalle de station et scène de l'ancien monde.
     const ground=new THREE.Mesh(new THREE.PlaneGeometry(160,160),floorMat);
@@ -237,12 +242,14 @@ export class CinematicBattle {
     const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
     this.dust=new THREE.Points(geo,new THREE.PointsMaterial({color:0xd7bb96,size:.058,transparent:true,opacity:.33,depthWrite:false}));
     this.scene.add(this.dust);
-    this.cam.position.set(10,7.5,17);
-    this.cam.lookAt(0,2.9,-1.1);
+    this.cam.position.set(6.5,5.5,11);
+    this.cam.lookAt(-.5,3.1,-1.8);
     this.observed=new ResizeObserver(()=>this.resize());
     this.observed.observe(this.container);
     this.resize();
     this.visible=!document.hidden;
+    // Les assets Meshy sont ceux du jeu original. Remplacent progressivement les prototypes géométriques.
+    void this.loadCinematicModels(encounter.kind);
     document.addEventListener('visibilitychange',this.onVisibility);
     this.container.addEventListener('pointermove',this.move);
     this.container.addEventListener('pointerdown',this.down);
@@ -258,6 +265,43 @@ export class CinematicBattle {
   private readonly up=(e:PointerEvent):void=>{
     if(e.pointerId===this.dragId)this.dragId=null;
   };
+  /** Reuse original textured GLB characters and set dressing; lazy and cancellable. */
+  private async loadCinematicModels(kind:EnemyKind):Promise<void> {
+    const add=async(name:string,category:'perso'|'batiment'|'caisse',height:number,
+      parent:THREE.Group,position:[number,number,number],angle:number,replaceFallback=false,maxWidth?:number):Promise<void>=>{
+      const inst=await spawn(name,category,{height,maxWidth,ownMaterials:true});
+      if(this.stopped){disposeInstance(inst);return;}
+      if(replaceFallback)parent.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=false;});
+      inst.root.position.set(...position);
+      inst.root.rotation.y=angle;
+      parent.add(inst.root);
+      this.ownedAssets.push(inst);
+      if(inst.clips.length){
+        const mixer=new THREE.AnimationMixer(inst.root);
+        const idle=inst.clips.find(c=>/idle|breath|stand/i.test(c.name))??inst.clips[0];
+        if(idle)mixer.clipAction(idle).play();
+        this.mixers.push(mixer);
+      }
+    };
+    const jobs:Promise<void>[]=[];
+    jobs.push(add('porteur','perso',3.7,this.fighter,[0,0,0],0,true,2.8));
+    if(kind!=='drone')jobs.push(add(kind==='scavenger'?'porteur_civil':'porteur_intro','perso',
+      3.85,this.enemy,[0,0,0],0,true,2.7));
+    // Ces modèles sont déjà présents dans le dossier public/models, sans appel API.
+    const props:[
+      {name:'ruine_1',height:15,x:-12,z:-11,angle:.22},
+      {name:'ruine_2',height:12,x:13,z:-14,angle:-.4},
+      {name:'deco_voiture',height:2.5,x:6.8,z:1,angle:.9},
+      {name:'deco_conteneur',height:4.4,x:-9,z:-6,angle:.55},
+      {name:'deco_barricade',height:2.4,x:7,z:-6,angle:-.35},
+      {name:'deco_futs',height:1.9,x:-7,z:0,angle:.23},
+    ];
+    for(const p of props)jobs.push(add(p.name,'batiment',p.height,this.scene as unknown as THREE.Group,
+      [p.x,0,p.z],p.angle,false,p.height*.92));
+    await Promise.allSettled(jobs);
+    if(!this.stopped)this.container.dataset.assetsReady='true';
+  }
+
   private readonly move=(e:PointerEvent):void=>{
     if(this.dragId===e.pointerId){
       const width=Math.max(1,this.container.clientWidth);
@@ -283,18 +327,18 @@ export class CinematicBattle {
     const intro=this.reduce?1:Math.min(1,this.t/2.4);
     const ease=1-(1-intro)**3;
     const angle=.18+this.mouse*.22+Math.sin(t*.12)*.045;
-    const cameraRadius=19.5-(ease*3.5);
-    this.cam.position.set(Math.sin(.58+angle)*cameraRadius,7.2+Math.sin(t*.25)*.2,
+    const cameraRadius=16.7-(ease*4.6);
+    this.cam.position.set(Math.sin(.58+angle)*cameraRadius,5.75+Math.sin(t*.25)*.12,
       Math.cos(.58+angle)*cameraRadius);
     this.cam.position.x-=2.9;
-    this.cam.lookAt(-.5,2.55,-1.8);
+    this.cam.lookAt(-.5,3.15,-1.8);
     if(this.isDrone){
       this.enemy.position.y=4.6+Math.sin(t*2.3)*.24;
-      this.enemy.rotation.y=Math.sin(t*.42)*.14;
+      this.enemy.rotation.y=Math.PI+Math.sin(t*.42)*.14;
       for(const [i,rotor] of this.rotors.entries())rotor.rotation.y+=dt*(i%2?18:-18);
     }else{
       this.enemy.position.y=Math.sin(t*2)*.05;
-      this.enemy.rotation.y=Math.sin(t*.55)*.075;
+      this.enemy.rotation.y=Math.PI+Math.sin(t*.55)*.075;
       if(this.head)this.head.rotation.y=Math.sin(t*.7)*.06;
       if(this.armL)this.armL.rotation.x=Math.sin(t*1.7)*.08;
       if(this.armR)this.armR.rotation.x=-Math.sin(t*1.7)*.08;
@@ -314,6 +358,7 @@ export class CinematicBattle {
       if(this.mood==='strike'&&action>0)this.enemy.position.x=Math.sin(elapsed*35)*.12*action;
       if(this.mood==='pulse'&&action>0)this.enemy.rotation.z=Math.sin(elapsed*23)*.06*action;
     }
+    for(const m of this.mixers)m.update(dt);
     this.renderer.render(this.scene,this.cam);
   };
   dispose():void{
@@ -325,6 +370,8 @@ export class CinematicBattle {
     this.container.removeEventListener('pointerup',this.up);
     this.container.removeEventListener('pointercancel',this.up);
     this.observed?.disconnect();this.observed=null;
+    for(const m of this.mixers)m.stopAllAction();this.mixers=[];
+    for(const i of this.ownedAssets)disposeInstance(i);this.ownedAssets=[];
     this.scene.traverse(o=>{if(o instanceof THREE.Mesh||o instanceof THREE.Points){
       const g=o.geometry as THREE.BufferGeometry;
       if(!sharedGeos.includes(g))g.dispose();
