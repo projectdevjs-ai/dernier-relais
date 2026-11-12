@@ -27,6 +27,8 @@ export interface LabOpts {
   ambiance?: Ambiance;
   /** Démo et captures : pas d'animation continue, la scène n'est redessinée qu'après un changement. */
   still?: boolean;
+  /** Démo et captures : fige la séquence de départ à cette fraction (0 à 1) au lieu de la terminer. */
+  holdDepartAt?: number;
 }
 
 const MET_KEY = 'dernier-relais/labo-rencontres';
@@ -35,7 +37,8 @@ const BRANCH_ICON: Record<SkillBranch, IconName> = { scanner: 'scanner', portage
 const BRANCHES: SkillBranch[] = ['scanner', 'portage', 'endurance', 'réseau'];
 const DEPART_S = 2.7;
 
-interface Shot { pos: THREE.Vector3; look: THREE.Vector3; fov: number; off: number }
+/** off / offX : décalage de l'image (fraction de l'écran) pour laisser la place à la fiche du poste. */
+interface Shot { pos: THREE.Vector3; look: THREE.Vector3; fov: number; off: number; offX: number }
 const _v = new THREE.Vector3();
 
 export class Lab {
@@ -56,6 +59,7 @@ export class Lab {
   private readonly ray = new THREE.Raycaster();
   private ambiance: Ambiance;
   private readonly still: boolean;
+  private readonly holdDepart: number | null;
   private readonly calm = reducedMotion();
   private view: GameView | null = null;
   private sig = '';
@@ -84,10 +88,12 @@ export class Lab {
   // départ
   private departT = -1;
   private departed = false;
+  private held = false;
 
   constructor(root: HTMLElement, private readonly events: LabEvents, opts: LabOpts = {}) {
     this.ambiance = opts.ambiance ?? 'crépuscule';
     this.still = !!opts.still;
+    this.holdDepart = typeof opts.holdDepartAt === 'number' ? opts.holdDepartAt : null;
     const h = this.host = el('div', 's3 s3-lab');
     h.dataset.ambiance = this.ambiance;
     h.hidden = true;
@@ -249,7 +255,7 @@ export class Lab {
     this.bubble.dataset.qui = id;
     this.bubble.hidden = false;
     clearTimeout(this.bubbleTimer);
-    this.bubbleTimer = window.setTimeout(() => this.hush(), dur * 1000);
+    if (!this.still) this.bubbleTimer = window.setTimeout(() => this.hush(), dur * 1000);
     this.dirty = 3;
   }
 
@@ -430,7 +436,9 @@ export class Lab {
     if (!lab || this.departT < 0) return 0;
     const dur = this.calm || this.still ? 0.5 : DEPART_S;
     this.departT += dt;
-    const k = clamp01(this.departT / dur), g = lab.porter.root.parent;
+    let k = clamp01(this.departT / dur);
+    if (this.holdDepart !== null && k >= this.holdDepart) { k = this.holdDepart; this.held = true; }
+    const g = lab.porter.root.parent;
     if (g) {
       // Le porteur rejoint la plateforme, puis se dissout dans la lumière.
       const w = smooth(clamp01(k / 0.72));
@@ -453,6 +461,7 @@ export class Lab {
   private resetVisit(): void {
     this.departT = -1;
     this.departed = false;
+    this.held = false;
     this.said = new Set();
     this.host.classList.remove('is-leaving');
     this.flash.style.opacity = '0';
@@ -469,13 +478,11 @@ export class Lab {
     const wide = this.vp ? this.vp.aspect > 1 : false;
     if (!id) {
       const o = wide ? OVERVIEW_WIDE : OVERVIEW;
-      return { pos: o.cam.clone(), look: o.look.clone(), fov: o.fov, off: 0 };
+      return { pos: o.cam.clone(), look: o.look.clone(), fov: o.fov, off: 0, offX: 0 };
     }
     const s = STATIONS.find(x => x.id === id) as StationDef;
-    const pos = s.cam.clone();
-    // En paysage, on se rapproche du poste ; en vertical, l'image est décalée vers le haut pour laisser la place à la fiche.
-    if (wide) pos.lerp(s.look, 0.28);
-    return { pos, look: s.look.clone(), fov: wide ? 36 : 46, off: wide ? 0 : 0.15 };
+    // En vertical, l'image est décalée vers le haut ; en paysage, vers la droite (la fiche est à gauche).
+    return { pos: s.cam.clone(), look: s.look.clone(), fov: wide ? 34 : 46, off: wide ? 0 : 0.15, offX: wide ? -0.2 : 0 };
   }
 
   private applyCamera(dt: number): void {
@@ -490,8 +497,9 @@ export class Lab {
       this.cur.pos.y += Math.sin(k * Math.PI) * 0.35;
       this.cur.fov = lerp(this.from.fov, this.to.fov, k);
       this.cur.off = lerp(this.from.off, this.to.off, k);
+      this.cur.offX = lerp(this.from.offX, this.to.offX, k);
     } else {
-      this.cur.pos.copy(this.to.pos); this.cur.look.copy(this.to.look); this.cur.fov = this.to.fov; this.cur.off = this.to.off;
+      this.cur.pos.copy(this.to.pos); this.cur.look.copy(this.to.look); this.cur.fov = this.to.fov; this.cur.off = this.to.off; this.cur.offX = this.to.offX;
     }
     if (!this.drag) { const e = Math.min(1, dt * 3); this.yaw -= this.yaw * e; this.pitch -= this.pitch * e; }
     // Rotation légère autour du point visé (glisser le doigt), puis respiration.
@@ -504,10 +512,10 @@ export class Lab {
       cam.position.y += Math.sin(this.t * 0.29 + 2) * amp;
     }
     cam.lookAt(this.cur.look);
-    const off = Math.round(this.cur.off * vp.height);
-    if (cam.fov !== this.cur.fov || (cam.view?.offsetY ?? 0) !== off || cam.aspect !== vp.aspect) {
+    const off = Math.round(this.cur.off * vp.height), offX = Math.round(this.cur.offX * vp.width);
+    if (cam.fov !== this.cur.fov || (cam.view?.offsetY ?? 0) !== off || (cam.view?.offsetX ?? 0) !== offX || cam.aspect !== vp.aspect) {
       cam.fov = this.cur.fov; cam.aspect = vp.aspect;
-      if (off) cam.setViewOffset(vp.width, vp.height, 0, off, vp.width, vp.height); else cam.clearViewOffset();
+      if (off || offX) cam.setViewOffset(vp.width, vp.height, offX, off, vp.width, vp.height); else cam.clearViewOffset();
       cam.updateProjectionMatrix();
     }
     cam.updateMatrixWorld();
@@ -548,7 +556,7 @@ export class Lab {
   private frame(now: number, force: boolean): void {
     const lab = this.lab, vp = this.vp;
     if (!lab || !vp) return;
-    const busy = this.moveT < 1 || !!this.drag || this.departT >= 0 || Math.abs(this.yaw) > 0.002 || this.dirty > 0;
+    const busy = this.moveT < 1 || !!this.drag || (this.departT >= 0 && !this.held) || Math.abs(this.yaw) > 0.002 || this.dirty > 0;
     if (this.still && !busy && !force) return;
     // Au repos, une image sur deux suffit (respiration, poussière) : moitié moins de travail pour la batterie.
     this.skip = !this.skip;

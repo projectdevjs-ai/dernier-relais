@@ -1,20 +1,23 @@
 // La scène du jeu : UN SEUL rendu. La carte MapLibre inclinée, restylée en monde de jeu,
 // et les objets three.js (porteur, abris, colis, effets) dessinés dans la carte.
 import * as THREE from 'three';
-import maplibregl, { type GeoJSONSource, type Map as MlMap, type StyleSpecification } from 'maplibre-gl';
+import maplibregl, { type Map as MlMap, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { cellBounds, type LngLat } from '../core/geo';
+import type { LngLat } from '../core/geo';
 import type { Ambiance, CacheView, FrontView, GameView, JamView, StageApi, StageEvents, WandererView, Weather } from '../game/api';
 import { CACHE_TOP, Caches } from './caches';
+import { ExploreFog } from './fog';
 import { Fronts } from './fronts';
 import { Celebration, Dangers, FxKit, ScanPulse } from './fx';
 import { Jams } from './jams';
 import { LAYER_ID, Layer3D } from './layer';
-import { applyPalette, buildGameStyle, type GameStyle, paletteFor, STYLE_URL } from './mapstyle';
+import { applyPalette, BUILDING_LAYERS, buildGameStyle, buildingFilter, type GameStyle, paletteFor, SOURCE, STYLE_URL, windowPattern } from './mapstyle';
 import { PARCEL_TOP, Parcels, parcelModel } from './parcels';
 import { Porter } from './porter';
+import { Router } from './route';
 import { Shelters } from './shelters';
 import { computeEnv, Sky } from './sky';
+import { Trail, type TrailTone } from './trail';
 import { WANDERER_HEIGHT, Wanderers } from './wanderers';
 
 export interface StageOptions { center?: LngLat; ambiance?: Ambiance }
@@ -26,6 +29,8 @@ const PITCH = 62;
 const TOP_PADDING = 0.46;
 /** Au-delà de cette distance à l'ancre (mètres), on recale le repère local. */
 const REANCHOR_M = 4000;
+/** Rayon (mètres) autour d'un abri dans lequel les immeubles de la carte sont aplatis. */
+const CLEAR_M = 20;
 // Listes vides partagées : une vue sans systèmes secondaires n'alloue rien.
 const NO_CACHES: CacheView[] = [], NO_WANDERERS: WandererView[] = [], NO_FRONTS: FrontView[] = [], NO_JAMS: JamView[] = [];
 
@@ -46,6 +51,20 @@ export class Stage implements StageApi {
   private readonly jams: Jams;
   private readonly scan: ScanPulse;
   private readonly party: Celebration;
+  private readonly fog: ExploreFog;
+  private readonly trail: Trail;
+  private readonly router: Router;
+  /** Cible du fil d'Ariane. */
+  private readonly guideTo: LngLat = [0, 0];
+  private guideTone: TrailTone = 'blue';
+  private guideFar = false;
+  /** Immeubles de la carte aplatis au pied des abris (identifiants des entités). */
+  private readonly hidden = new Set<string | number>();
+  private readonly hiddenNow = new Set<string | number>();
+  private hideTimer = 0;
+  private dark = true;
+  /** Dernier instant où quelque chose a bougé (porteur, carte, effet) : au-delà, le rendu ralentit. */
+  private lastBusy = 0;
 
   private ambiance: Ambiance;
   private envKey = '';
@@ -65,7 +84,6 @@ export class Stage implements StageApi {
   private readonly carried: string[] = [];
   /** Temps affiché quand le joueur est dans un front : le temps réel, forcé en orage. */
   private readonly frontWx: Weather = { kind: 'orage', windKmh: 45, tempC: 10, night: false, sunAltDeg: 20 };
-  private veilKey = '';
   private raf = 0;
   private last = 0;
   private timeS = 0;
@@ -107,10 +125,15 @@ export class Stage implements StageApi {
     this.jams = new Jams(scene, this.kit, this.layer);
     this.scan = new ScanPulse(scene, this.kit);
     this.party = new Celebration(scene, this.kit, Math.min(window.devicePixelRatio || 1, 2));
+    this.fog = new ExploreFog(scene, this.layer);
+    this.trail = new Trail(scene, this.layer);
+    this.router = new Router(() => { if (this.view) this.refreshGuide(this.view); });
 
     this.map.on('load', () => this.onLoad());
     this.map.on('resize', () => this.applyPadding());
     this.map.on('dragstart', () => { this.follow = false; });
+    // Nouvelles tuiles de bâtiments : on revérifie ce qui dépasse au pied des abris.
+    this.map.on('sourcedata', e => { if (e.sourceId === SOURCE && e.isSourceLoaded) this.scheduleHide(); });
     this.map.on('click', e => this.onTap(e.point.x, e.point.y, [e.lngLat.lng, e.lngLat.lat]));
     this.raf = requestAnimationFrame(this.tick);
   }
@@ -165,6 +188,7 @@ export class Stage implements StageApi {
 
   private onLoad(): void {
     const map = this.map;
+    // Calque vide : il sert seulement de repère d'ordre (aplats de la carte dessous, bâtiments dessus).
     map.addSource('veil', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer(this.layer);
     map.addLayer({ id: 'veil', type: 'fill', source: 'veil', paint: { 'fill-color': '#000', 'fill-opacity': 0.32 } }, LAYER_ID);
@@ -185,7 +209,8 @@ export class Stage implements StageApi {
       if (style.glyphs) map.setGlyphs(style.glyphs);
       for (const [id, src] of Object.entries(style.sources)) if (!map.getSource(id)) map.addSource(id, src);
       // Aplats et noms de rues sous le voile d'exploration ; bâtiments extrudés juste sous la scène 3D.
-      for (const l of style.layers) map.addLayer(l, l.id === 'building-3d' ? LAYER_ID : 'veil');
+      if (!map.hasImage('fenetres')) map.addImage('fenetres', windowPattern());
+      for (const l of style.layers) map.addLayer(l, BUILDING_LAYERS.includes(l.id) ? LAYER_ID : 'veil');
       this.style = style;
       this.envKey = '';
       this.refreshEnv();
@@ -212,32 +237,83 @@ export class Stage implements StageApi {
     if (env.key === this.envKey || !this.ready) return;
     this.envKey = env.key;
     const pal = paletteFor(env.ambiance, env.night, env.dull);
+    const clair = env.ambiance === 'clair', n = env.night;
+    this.dark = env.dark;
     applyPalette(this.map, this.style, pal);
-    this.map.setPaintProperty('veil', 'fill-opacity', env.dark ? 0.45 : 0.32);
-    this.map.setLight({ anchor: 'viewport', position: [1.3, 215, 42], color: env.night > 0.5 ? '#d5e4e4' : env.ambiance === 'clair' ? '#fff6e6' : '#ece9da', intensity: env.ambiance === 'clair' ? 0.42 - env.night * 0.2 : 0.3 - env.night * 0.12 });
-    this.map.setSky({ 'sky-color': pal.land, 'horizon-color': pal.urban, 'fog-color': pal.land, 'sky-horizon-blend': 0.7, 'horizon-fog-blend': 0.8, 'fog-ground-blend': 0.4 });
-    this.sky.apply(env, w);
+    // Lumière de la carte : rasante et chaude au crépuscule, haute et franche de jour, froide la nuit.
+    // Plus elle est intense, plus les façades à l'ombre se détachent des façades éclairées.
+    const sunAlt = w ? w.sunAltDeg : clair ? 40 : 12;
+    const polar = n > 0.5 ? 50 : Math.min(80, Math.max(35, 90 - sunAlt));
+    this.map.setLight({
+      anchor: 'map', position: [1.5, clair ? 215 : 250, polar],
+      color: n > 0.5 ? '#c8d6ff' : clair ? '#fff7ea' : '#ffe2c2',
+      intensity: (clair ? 0.42 : 0.5) * (1 - env.dull * 0.4) * (1 - n * 0.25),
+    });
+    this.map.setSky({ 'sky-color': pal.sky, 'horizon-color': pal.horizon, 'fog-color': pal.haze, 'sky-horizon-blend': 0.75, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.5, 'atmosphere-blend': 0 });
+    // Fenêtres allumées dès que le jour baisse.
+    if (this.map.getLayer('building-win')) this.map.setLayoutProperty('building-win', 'visibility', (clair ? n >= 0.5 : true) ? 'visible' : 'none');
+    this.fog.applyColors(pal.veil, pal.haze, clair && n < 0.5 ? 0.78 : 0.84);
+    this.sky.apply(env, w, pal);
     this.kit.applyEnv(env);
     this.shelters.applyEnv(env);
     this.porter.applyEnv(env);
     this.map.triggerRepaint();
   }
 
-  /** Brume d'exploration : voile léger sur les cases chargées qui n'ont pas encore été parcourues. */
-  private refreshVeil(view: GameView): void {
-    const key = `${view.visited.length}|${view.loadedCells.length}|${view.loadedCells[0] ?? ''}|${view.visited[view.visited.length - 1] ?? ''}`;
-    if (key === this.veilKey) return;
-    this.veilKey = key;
-    const seen = new Set(view.visited);
-    const features: GeoJSON.Feature[] = [];
-    for (const id of view.loadedCells) {
-      if (seen.has(id)) continue;
-      const [x, y] = id.split('/').map(Number);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      const b = cellBounds({ x, y, id });
-      features.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[b.w, b.s], [b.e, b.s], [b.e, b.n], [b.w, b.n], [b.w, b.s]]] } });
+  /** Fil d'Ariane : vers l'abri du colis porté le plus urgent, sinon vers le colis révélé le plus proche. */
+  private refreshGuide(view: GameView): void {
+    const at = view.player.at;
+    let best: GameView['orders'][number] | null = null, carried = false;
+    if (at) for (const o of view.orders) {
+      const c = o.state === 'porté';
+      if (c && !carried) { best = o; carried = true; continue; }
+      if (c !== carried || !best) { if (!best) best = o; continue; }
+      if (c) {
+        const a = o.minutesLeft ?? Infinity, b = best.minutesLeft ?? Infinity;
+        if (a < b || (a === b && o.distanceM < best.distanceM)) best = o;
+      } else if (o.distanceM < best.distanceM) best = o;
     }
-    (this.map.getSource('veil') as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features });
+    if (!best || !at) { this.trail.clear(); return; }
+    const to = carried ? best.destAt : best.at;
+    const key = `${to[0].toFixed(5)},${to[1].toFixed(5)}`;
+    this.guideTo[0] = to[0]; this.guideTo[1] = to[1];
+    this.guideTone = carried ? 'blue' : 'amber';
+    // Tout près du but, la ligne n'apporte plus rien.
+    this.guideFar = best.distanceM > 14;
+    this.trail.set(this.router.get(at, this.guideTo, key, performance.now()), this.guideTo, this.guideTone);
+  }
+
+  /** Demande (une fois le calme revenu) de revérifier les immeubles de la carte au pied des abris. */
+  private scheduleHide(): void {
+    if (this.hideTimer) return;
+    this.hideTimer = window.setTimeout(() => { this.hideTimer = 0; this.hideUnderShelters(); }, 350);
+  }
+
+  /**
+   * Retire les immeubles de la carte dont l'emprise touche le pied d'un abri : sans cela ils traversent
+   * le modèle 3D. On parcourt les entités chargées et on les retire des couches par leur identifiant.
+   */
+  private hideUnderShelters(): void {
+    const map = this.map;
+    if (!this.style || !map.getSource(SOURCE)) return;
+    const now = this.hiddenNow;
+    now.clear();
+    let any = false;
+    for (const _ of this.shelters.all) { any = true; break; }
+    if (any) for (const f of map.querySourceFeatures(SOURCE, { sourceLayer: 'building' })) {
+      if (f.id === undefined || now.has(f.id)) continue;
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : null;
+      if (!polys) continue;
+      for (const s of this.shelters.all) if (polys.some(p => touches(p as LngLat[][], s.at, CLEAR_M))) { now.add(f.id); break; }
+    }
+    let same = now.size === this.hidden.size;
+    if (same) for (const id of now) if (!this.hidden.has(id)) { same = false; break; }
+    if (same) return;
+    this.hidden.clear();
+    for (const id of now) this.hidden.add(id);
+    const filter = buildingFilter([...now]) as maplibregl.FilterSpecification;
+    for (const id of BUILDING_LAYERS) if (map.getLayer(id)) map.setFilter(id, filter);
   }
 
   // ---------------------------------------------------------------- Synchronisation
@@ -253,6 +329,7 @@ export class Stage implements StageApi {
         this.layer.setAnchor(at);
         this.shelters.reposition(); this.parcels.reposition(); this.dangers.reposition();
         this.caches.reposition(); this.wanderers.reposition(); this.fronts.reposition(); this.jams.reposition();
+        this.fog.reposition(); this.trail.reposition();
         this.layer.toLocal(at, this.v);
         this.snapNext = true;
         this.camPlaced = false;
@@ -270,13 +347,16 @@ export class Stage implements StageApi {
     this.carried.length = 0;
     for (const o of view.orders) if (o.state === 'porté') this.carried.push(parcelModel(o));
     this.porter.setCarried(this.carried);
+    const shelterCount = this.shelters.count;
     this.shelters.sync(view.shelters);
+    if (this.shelters.count !== shelterCount || this.shelters.moved) this.scheduleHide();
     this.parcels.sync(view.orders);
     this.dangers.sync(view.dangers);
     this.caches.sync(view.caches ?? NO_CACHES);
     this.wanderers.sync(view.wanderers ?? NO_WANDERERS);
     this.jams.sync(view.jams ?? NO_JAMS);
-    this.refreshVeil(view);
+    this.fog.sync(view.player.at, view.visited);
+    this.refreshGuide(view);
     this.map.triggerRepaint();
   }
 
@@ -287,7 +367,9 @@ export class Stage implements StageApi {
     if (!this.ready || document.hidden) { this.last = now; return; }
     // Scène calme (personnages au repos seulement) : 30 images par seconde suffisent.
     const busy = this.porter.moving || this.scan.active || this.party.active || this.sky.animated || this.map.isMoving();
-    if (!busy && now - this.last < 30) return;
+    if (busy) this.lastBusy = now;
+    // Rien ne bouge depuis un moment : les balises pulsent encore, mais 20 images par seconde suffisent.
+    if (!busy && now - this.last < (now - this.lastBusy > 8000 ? 48 : 30)) return;
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.timeS += dt;
@@ -299,7 +381,9 @@ export class Stage implements StageApi {
     this.parcels.update(this.timeS);
     this.dangers.update(this.timeS);
     this.caches.update(this.timeS);
-    this.wanderers.update(dt, this.timeS);
+    this.wanderers.update(dt, this.timeS, this.porter.pos);
+    this.fog.update(this.timeS);
+    this.trail.update(dt, this.timeS, this.porter.pos, this.porter.root.visible && this.guideFar, this.dark);
     this.fronts.update(dt);
     this.jams.update(this.timeS);
     this.shelters.update(dt, this.timeS, this.porter.pos, (this.map.getBearing() * Math.PI) / 180, (this.map.getPitch() * Math.PI) / 180);
@@ -366,4 +450,21 @@ export class Stage implements StageApi {
     else if (kind === 'colis') this.events.onTapOrder(id);
     else this.events.onTapGround(at);
   }
+}
+
+/** Vrai si l'emprise (anneaux de coordonnées) passe à moins de `r` mètres du point, ou le contient. */
+function touches(rings: LngLat[][], at: LngLat, r: number): boolean {
+  const kx = Math.cos((at[1] * Math.PI) / 180) * 111320, ky = 110540;
+  let inside = false;
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const ax = (ring[j][0] - at[0]) * kx, ay = (ring[j][1] - at[1]) * ky, bx = (ring[i][0] - at[0]) * kx, by = (ring[i][1] - at[1]) * ky;
+      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      const t = len > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len)) : 0;
+      if (Math.hypot(ax + dx * t, ay + dy * t) < r) return true;
+      // Lancer de rayon vers l'est depuis le point (origine) : parité des croisements.
+      if ((ay > 0) !== (by > 0) && ax + ((0 - ay) / (by - ay)) * dx > 0) inside = !inside;
+    }
+  }
+  return inside;
 }

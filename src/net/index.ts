@@ -17,6 +17,7 @@ import { Network } from './network';
 export { NetClient } from './client';
 export { CloudGameStore } from './cloudstore';
 export * from './network';
+export { OnlineLink, collectiveView, type LinkGame, type LinkNet, type LinkOptions, type LinkUi } from './link';
 export { REGIONS, regionAt, regionName, type RegionId } from './regions';
 
 /** Crée le client partagé, le réseau et la sauvegarde en ligne qui enveloppe la sauvegarde locale. */

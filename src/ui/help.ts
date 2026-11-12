@@ -1,12 +1,13 @@
-// Aide de première ouverture : trois bulles très courtes, mémorisées, rejouables depuis les réglages.
+// Aide de première ouverture : quatre bulles très courtes, mémorisées, rejouables depuis les réglages.
 import { btn, h } from './dom';
 import { icon, type IconName } from './icons';
 
 const KEY = 'dernier-relais.aide.v1';
 const STEPS: { ic: IconName; title: string; text: string; point: 'scan' | 'sheet' }[] = [
   { ic: 'scan', title: 'Scanne', text: 'Le bouton rond révèle les colis autour de toi.', point: 'scan' },
-  { ic: 'crate', title: 'Ramasse', text: 'Marche jusqu’à un colis, puis touche Ramasser.', point: 'sheet' },
+  { ic: 'crate', title: 'Ramasse', text: 'Marche jusqu’à un colis. Écoute-le pour savoir s’il est fragile, puis touche Ramasser et serre la sangle.', point: 'sheet' },
   { ic: 'pin', title: 'Livre', text: 'Porte-le à son abri. Plus il arrive intact et vite, meilleure est la note.', point: 'sheet' },
+  { ic: 'relay', title: 'Relaie', text: 'Trop loin ? Laisse-le en relais dans un abri sur la route : un autre porteur finira le trajet.', point: 'sheet' },
 ];
 
 function seen(): boolean { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } }

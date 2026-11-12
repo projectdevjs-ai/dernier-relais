@@ -90,7 +90,7 @@ export class Story {
   private rough = false;
   private inFront = false;
   private lastN = -1;
-  private dirty = false;
+  private dirty = true;
   private needSave = false;
 
   constructor(opts: StoryOpts = {}) {
@@ -153,7 +153,7 @@ export class Story {
 
   /** Vue du jeu, cinq fois par seconde : quelques comparaisons, aucune allocation notable. */
   observe(view: GameView): void {
-    const s = this.stats, p = view.player;
+    const p = view.player;
     let linked = 0, three = 0, five = 0;
     for (const sh of view.shelters) {
       if (sh.stars > 0) linked++;

@@ -7,6 +7,8 @@ import { createOnline } from './net/index';
 import { type Fix, Locator } from './player/gps';
 import { Stage } from './render/stage';
 import { fetchWeather } from './services/weather';
+import { Story } from './story/story';
+import { StoryUi } from './story/ui';
 import { FrancePanel } from './ui/france';
 import { Hud } from './ui/hud';
 import { Sound } from './audio/audio';
@@ -83,10 +85,15 @@ const hud = new Hud(document.getElementById('hud')!, {
 const france = new FrancePanel(document.getElementById('hud')!, online.net);
 online.net.start();
 
+// Histoire principale : observe le jeu, donne l'objectif en cours et les messages radio de la Station Lumen.
+const story = new Story();
+const storyUi = new StoryUi(document.getElementById('hud')!, story, { onVoice: (who, text) => voice.say(who, text) });
+
 let view: GameView | null = null;
 game.on(e => {
   hud.handle(e);
   sound.handle(e);
+  story.handle(e);
   if (e.type === 'scan' && view) stage.pulseScan(view.scanner.rangeM);
   if (e.type === 'jam' && e.phase === 'réussi') stage.celebrate(e.jam.shelterId);
   if (e.type === 'delivery') {
@@ -118,6 +125,7 @@ function frame(): void {
   stage.sync(view);
   hud.render(view);
   sound.ambient(view);
+  story.observe(view);
 }
 
 game.load().then(() => {
@@ -135,7 +143,7 @@ document.addEventListener('visibilitychange', () => {
 addEventListener('pagehide', flush);
 
 // Accès pour les essais automatiques (console du navigateur) : sans effet sur le jeu.
-Object.assign(window, { __dr: { game, stage, hud, world, sound, france, net: online.net, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
+Object.assign(window, { __dr: { game, stage, hud, world, sound, france, story, storyUi, net: online.net, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
 
 // Version web : cache des fichiers lourds pour les lancements suivants (inutile dans l'APK, où tout est déjà sur le téléphone).
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !('Capacitor' in window)) {

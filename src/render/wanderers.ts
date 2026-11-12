@@ -103,13 +103,16 @@ export class Wanderers {
     for (const it of this.items.values()) { this.layer.toLocal(it.at, it.target); it.group.position.copy(it.target); }
   }
 
-  update(dt: number, timeS: number): void {
+  update(dt: number, timeS: number, player: THREE.Vector3): void {
     if (!this.items.size) return;
     const k = 1 - Math.exp(-dt * 3.2), phase = this.kit.phase;
     for (const it of this.items.values()) {
       const p = it.group.position;
       p.x += (it.target.x - p.x) * k; p.z += (it.target.z - p.z) * k;
-      let dh = it.targetHeading - it.heading;
+      // À l'arrêt et tout près du porteur : il se tourne vers lui.
+      const px = player.x - p.x, pz = player.z - p.z;
+      const facing = !it.moving && px * px + pz * pz < 30 * 30 ? Math.atan2(px, pz) : it.targetHeading;
+      let dh = facing - it.heading;
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
       it.heading += dh * (1 - Math.exp(-dt * 5));
       if (it.model) it.model.root.rotation.y = it.heading;

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dernier Relais : démo de l’histoire</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #14201f; }
+  /* Fausse carte neutre. */
+  #carte { position: fixed; inset: 0; background:
+    radial-gradient(60% 40% at 30% 30%, #2b4a44 0%, transparent 70%),
+    repeating-linear-gradient(32deg, transparent 0 86px, rgba(230,225,211,.14) 86px 92px),
+    repeating-linear-gradient(118deg, transparent 0 120px, rgba(230,225,211,.1) 120px 124px),
+    #1b2c2a; }
+  body.clair #carte { background:
+    radial-gradient(60% 40% at 30% 30%, #cfe3b8 0%, transparent 70%),
+    repeating-linear-gradient(32deg, transparent 0 86px, rgba(255,255,255,.9) 86px 92px),
+    repeating-linear-gradient(118deg, transparent 0 120px, rgba(255,255,255,.8) 120px 124px),
+    #e4dcc6; }
+  /* Repères : le personnage 3D (tiers bas-centre) et le scanner (bas-droite) doivent rester dégagés. */
+  #perso { position: fixed; left: 50%; top: 66%; width: 46px; height: 92px; margin: -46px 0 0 -23px; border-radius: 23px 23px 10px 10px; background: #e8a24a; opacity: .85; }
+  #perso::before { content: ""; position: absolute; left: 9px; top: -22px; width: 28px; height: 28px; border-radius: 50%; background: #e6e1d3; }
+</style>
+</head>
+<body>
+<div id="carte"></div>
+<div id="perso"></div>
+<div id="hud" class="dr-hud"></div>
+<script type="module" src="/src/story/demo.ts"></script>
+</body>
+</html>

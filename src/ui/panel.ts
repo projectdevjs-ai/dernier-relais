@@ -2,6 +2,10 @@
 import { btn, h } from './dom';
 import { icon } from './icons';
 
+/** Son d'ouverture et de fermeture, commun à tous les panneaux (réglé par le HUD, vaut aussi pour la carte du réseau). */
+let sound: ((kind: 'open' | 'close') => void) | null = null;
+export function setPanelSound(fn: ((kind: 'open' | 'close') => void) | null): void { sound = fn; }
+
 export class Panel {
   readonly el: HTMLElement;
   readonly head: HTMLElement;
@@ -39,12 +43,14 @@ export class Panel {
     this.el.hidden = false;
     this.body.scrollTop = 0;
     this.box.focus({ preventScroll: true }); // le lecteur d'écran annonce le panneau, sans anneau de focus sur un bouton
+    try { sound?.('open'); } catch { /* le son ne doit jamais gêner l'interface */ }
   }
   close(): void {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.el.hidden = true;
     if (this.lastFocus instanceof HTMLElement && this.lastFocus.isConnected) this.lastFocus.focus({ preventScroll: true });
+    try { sound?.('close'); } catch { /* voir open */ }
     this.onClose?.();
   }
 }

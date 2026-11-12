@@ -1,0 +1,127 @@
+/* Interface de l'histoire. Vit dans le calque .dr-hud et n'utilise que ses variables : les deux ambiances suivent toutes seules. */
+
+.st-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.st-layer [hidden] { display: none !important; }
+
+/* Les toasts du HUD commencent sous le bandeau d'objectif (ou sous la carte radio quand elle est affichée). */
+.dr-hud.dr-has-story .dr-toasts { top: calc(var(--sat) + 116px + var(--st-h, 44px)); transition: top .2s ease-out; }
+.dr-hud.dr-has-story.dr-has-events .dr-toasts { top: calc(var(--sat) + 154px + var(--st-h, 44px)); }
+
+/* ---------- (a) Objectif ---------- */
+.st-goal {
+  position: absolute; top: calc(var(--sat) + 114px); left: calc(var(--sal) + 8px); right: calc(var(--sar) + 8px);
+  display: flex; align-items: center; gap: 4px; min-width: 0;
+  transition: opacity .2s, transform .2s;
+}
+.dr-has-events .st-goal { top: calc(var(--sat) + 152px); }
+.st-goal.is-away { opacity: 0; transform: translateY(-6px); visibility: hidden; }
+/* Zone tactile de 44 px, dessin de 30 px. */
+.dr-hud .st-goal-main {
+  min-height: 44px; min-width: 44px; max-width: 100%; flex: 0 1 auto; display: flex; align-items: center; gap: 8px;
+  padding: 7px 0; background-clip: content-box; border-radius: 16px; position: relative; isolation: isolate;
+}
+.st-goal-main::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 7px; bottom: 7px; z-index: -1; border-radius: 15px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.dr-hud[data-ambiance="clair"] .st-goal-main::before { border-color: var(--line-strong); }
+.st-goal-ic { width: 30px; height: 30px; flex: none; display: grid; place-items: center; color: var(--amber); }
+.st-goal-ic .dr-ic { width: 17px; height: 17px; }
+.st-goal-text { flex: 0 1 auto; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: -4px; }
+.st-goal-count { flex: none; font: 700 14px/1 var(--f-title); color: var(--amber); }
+.st-goal-count:empty { display: none; }
+.st-goal-step { flex: none; font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 0 11px 0 7px; border-left: 1px solid var(--line-strong); line-height: 14px; }
+.st-goal-step:empty { display: block; padding: 0 5px 0 0; border: 0; }
+.dr-hud .st-goal-book { width: 44px; height: 44px; flex: none; display: grid; place-items: center; color: var(--muted); position: relative; isolation: isolate; }
+.st-goal-book::before { content: ""; position: absolute; inset: 7px; z-index: -1; border-radius: 15px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.dr-hud[data-ambiance="clair"] .st-goal-book::before { border-color: var(--line-strong); }
+.st-goal-book .dr-ic { width: 17px; height: 17px; }
+.st-goal-main:active::before, .st-goal-book:active::before { transform: scale(.96); }
+/* Replié : il ne reste que l'antenne et le numéro d'étape. */
+.st-goal.is-folded .st-goal-text, .st-goal.is-folded .st-goal-count, .st-goal.is-folded .st-goal-book { display: none; }
+.st-goal.is-folded .st-goal-step { border-left: 0; padding-left: 0; margin-left: -6px; }
+.st-goal.is-new .st-goal-ic { animation: st-ping 1.4s ease-in-out 3; }
+@keyframes st-ping { 50% { opacity: .35; } }
+.st-goal.is-done .st-goal-ic { color: var(--green); }
+
+/* ---------- (b) Message radio ---------- */
+.st-live { position: absolute; top: calc(var(--sat) + 116px); left: calc(var(--sal) + 8px); right: calc(var(--sar) + 8px); display: grid; justify-items: center; z-index: 5; }
+.dr-has-events .st-live { top: calc(var(--sat) + 154px); }
+.dr-hud .st-radio {
+  --who: var(--blue);
+  width: 100%; max-width: 420px; min-height: 64px; display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px 11px 10px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-left: 3px solid var(--who); border-radius: 6px 16px 16px 6px;
+  box-shadow: var(--shadow); text-align: left; animation: st-slide .32s cubic-bezier(.2, .8, .2, 1); transition: opacity .22s, transform .22s;
+}
+@keyframes st-slide { from { opacity: 0; transform: translateY(-18px); } }
+.st-radio.is-out { opacity: 0; transform: translateY(-10px); }
+.st-radio-portrait {
+  position: relative; width: 44px; height: 44px; flex: none; border-radius: 12px; margin-top: 1px;
+  background: color-mix(in srgb, var(--who) 24%, var(--raise)); color: var(--who); border: 1.5px solid var(--who);
+}
+.st-radio-portrait svg { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 10px; }
+.st-radio-badge {
+  position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--who); color: #14201f; font: 700 12px/1 var(--f-title); border: 2px solid var(--panel-solid);
+}
+.st-radio-body { flex: 1 1 0; min-width: 0; display: grid; gap: 4px; }
+.st-radio-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.st-radio-name { font: 700 14px/1.1 var(--f-title); letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
+.st-radio-role { flex: 1 1 0; min-width: 0; font-size: 11.5px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-radio-wave { width: 16px; height: 16px; align-self: center; color: var(--muted); animation: st-ping 1.2s ease-in-out infinite; }
+.st-radio-text { font-size: 14.5px; line-height: 1.38; font-weight: 500; }
+
+/* ---------- (c) Fin de chapitre ---------- */
+.st-card { position: absolute; inset: 0; z-index: 6; }
+.st-card-veil {
+  position: absolute; inset: 0; animation: dr-in .5s ease-out;
+  background: linear-gradient(to bottom, var(--bg) 0%, color-mix(in srgb, var(--bg) 92%, transparent) 38%, color-mix(in srgb, var(--bg) 55%, transparent) 54%, transparent 68%);
+}
+.st-card-box {
+  position: absolute; top: calc(var(--sat) + 11%); left: calc(var(--sal) + 28px); right: calc(var(--sar) + 28px); max-width: 380px; margin: 0 auto;
+  display: grid; justify-items: center; gap: 12px; text-align: center; pointer-events: auto;
+}
+.st-card-box:focus { outline: none; }
+.st-card-box > * { animation: dr-rise .5s ease-out both; }
+.st-card-box > :nth-child(2) { animation-delay: .15s; }
+.st-card-box > :nth-child(3) { animation-delay: .3s; }
+.st-card-box > :nth-child(4) { animation-delay: .6s; }
+.st-card-box > :nth-child(5) { animation-delay: .9s; }
+.st-card-box > :nth-child(6) { animation-delay: 1.2s; }
+.st-card-kicker { font: 700 13px/1 var(--f-title); letter-spacing: .24em; text-transform: uppercase; color: var(--muted); padding-left: .24em; }
+.st-card-rule { display: flex; align-items: center; gap: 12px; width: 150px; color: var(--amber); }
+.st-card-rule::before, .st-card-rule::after { content: ""; flex: 1 1 0; height: 1px; background: var(--line-strong); }
+.st-card-rule .dr-ic { width: 18px; height: 18px; }
+.st-card-title { font: 700 40px/1.02 var(--f-title); font-stretch: condensed; letter-spacing: .03em; text-transform: uppercase; overflow-wrap: anywhere; }
+.st-card-text { text-wrap: balance; font-size: 17px; line-height: 1.45; max-width: 300px; padding-top: 2px; }
+.st-card-next { font-size: 13px; font-weight: 600; color: var(--muted); }
+.dr-hud .st-card-go { max-width: 240px; margin-top: 10px; background: var(--text); color: var(--bg); border-color: transparent; }
+
+/* ---------- (d) Journal ---------- */
+.st-j-ch { padding: 14px 0 16px; border-top: 1px solid var(--line); }
+.st-j-ch:first-child { border-top: 0; padding-top: 6px; }
+.st-j-head { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 4px 8px; }
+.st-j-no { font: 700 13px/1 var(--f-title); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.st-j-tag { font-size: 12px; font-weight: 600; color: var(--muted); }
+.st-j-ch[data-status="now"] .st-j-tag { color: var(--amber); }
+.st-j-ch[data-status="done"] .st-j-tag { color: var(--green); }
+.st-j-title { grid-column: 1 / -1; font: 700 22px/1.1 var(--f-title); font-stretch: condensed; letter-spacing: .03em; text-transform: uppercase; }
+.st-j-ch[data-status="next"] .st-j-title { color: var(--muted); font-size: 17px; }
+.st-j-steps { display: grid; gap: 2px; padding-top: 10px; }
+.st-j-step { display: flex; align-items: center; gap: 10px; min-height: 34px; font-size: 14.5px; }
+.st-j-mark { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--line-strong); color: var(--muted); }
+.st-j-mark .dr-ic { width: 13px; height: 13px; stroke-width: 2.4; }
+.st-j-step[data-status="done"] { color: var(--muted); }
+.st-j-step[data-status="done"] .st-j-mark { border-color: transparent; background: color-mix(in srgb, var(--green) 22%, transparent); color: var(--green); }
+.st-j-step[data-status="now"] { font-weight: 650; }
+.st-j-step[data-status="now"] .st-j-mark { border-color: var(--amber); }
+.st-j-step[data-status="now"] .st-j-mark::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--amber-fill); }
+.st-j-step[data-status="next"] { color: var(--muted); font-style: italic; }
+.st-j-step[data-status="next"] .st-j-mark { border-style: dashed; }
+.st-j-obj { flex: 1 1 0; min-width: 0; }
+.st-j-count { flex: none; font: 700 15px/1 var(--f-title); color: var(--amber); }
+.st-j-end { margin-top: 10px; padding: 10px 14px; border-left: 2px solid var(--amber); font-size: 14.5px; line-height: 1.45; font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+  .st-radio, .st-card-box > *, .st-card-veil, .st-goal.is-new .st-goal-ic, .st-radio-wave { animation: none; }
+}

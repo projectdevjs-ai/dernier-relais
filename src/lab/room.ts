@@ -24,7 +24,7 @@ export interface StationDef {
 }
 const AT = { exo: V(-2.15, 0, -2.0), holo: V(2.15, 0, -1.1), console: V(-2.1, 0, 3.2), lit: V(2.1, 0, 4.0) } as const;
 export const STATIONS: StationDef[] = [
-  { id: 'teleporteur', look: V(0, 1.4, -3.9), cam: V(0.9, 2.8, 3.6), tag: V(0, 3.1, -3.9), hit: [V(0, 1.5, -3.9), V(3.4, 3, 1.6)] },
+  { id: 'teleporteur', look: V(0, 1.2, -3.9), cam: V(0, 3.7, 7.0), tag: V(0, 3.1, -3.9), hit: [V(0, 1.5, -3.9), V(3.4, 3, 1.6)] },
   { id: 'exo', look: V(-2.15, 1.05, -2.0), cam: V(-0.6, 2.7, 3.3), tag: V(-2.15, 2.6, -2.0), hit: [V(-2.15, 1.15, -2.0), V(1.7, 2.3, 1.2)] },
   { id: 'holo', look: V(2.15, 1.45, -1.1), cam: V(0.5, 3.2, 4.1), tag: V(2.15, 2.75, -1.1), hit: [V(2.15, 1.2, -1.1), V(1.8, 2.4, 1.8)] },
   { id: 'console', look: V(-2.1, 1.25, 3.2), cam: V(-0.3, 2.7, 8.2), tag: V(-2.1, 2.85, 3.2), hit: [V(-2.1, 0.9, 3.2), V(2.2, 1.9, 1.3)] },
@@ -245,7 +245,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   point(0xffa448, 4, 6, -1.8, 1.6, 3.4);     // console
   point(0x7fc7d9, 3, 5.5, 2.0, 2.4, -0.5);   // table holographique
   point(0xffc690, 2.5, 4.5, 2.2, 1.3, 3.2);  // couchette
-  point(0xffe2b8, 2.6, 6, -2.0, 3.0, -1.0);  // râtelier
+  point(0xffe2b8, 1.8, 6, -1.7, 3.0, -0.8);  // râtelier
   point(0xb6ffad, 2.5, 4.5, 3.2, 1.5, 1.3);  // hydroponie
 
   // ---------- Salle ----------
@@ -292,13 +292,10 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   guide.wrapT = THREE.RepeatWrapping; guide.repeat.set(1, 8);
   const guideMesh = add(new THREE.Mesh(new THREE.PlaneGeometry(0.5, 11), new THREE.MeshBasicMaterial({ map: guide, color: 0xe8a24a, transparent: true, opacity: 0.55, depthWrite: false })));
   guideMesh.rotation.x = -Math.PI / 2; guideMesh.position.set(0, 0.016, 3.2);
-  // rampes d'éclairage sur le mur du fond, avec leurs cônes de lumière
-  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff1dc });
-  lampMat.color.multiplyScalar(2.2);
+  // deux nappes de lumière qui tombent le long du mur du fond
   const cones: THREE.Mesh[] = [];
   for (const x of [-3.45, 3.45]) {
-    box(1.1, 0.05, 0.16, lampMat, x, 4.6, ROOM.back + 0.12);
-    const c = add(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 1.7, 4.4, 24, 1, true), glowMat(0xffe6c2, 0.07, ramp)));
+    const c = add(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 1.7, 4.4, 24, 1, true), glowMat(0xffe6c2, 0.05, ramp)));
     c.position.set(x, 4.6 - 2.2, ROOM.back + 0.5);
     cones.push(c);
   }
@@ -376,11 +373,11 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
         .replace('#include <color_fragment>', `#include <color_fragment>
           float exoLv; vec3 exoTint; exoZone(exoLv, exoTint);
           float exoOn = step(0.001, exoLv);
-          diffuseColor.rgb = mix(vec3(0.01, 0.026, 0.032), diffuseColor.rgb * mix(vec3(1.0), exoTint * 1.5, 0.3) * (0.5 + 0.5 * exoLv), exoOn);`)
+          diffuseColor.rgb = mix(vec3(0.01, 0.026, 0.032), diffuseColor.rgb * mix(vec3(1.0), exoTint * 1.4, 0.25) * (0.42 + 0.3 * exoLv), exoOn);`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           float exoScan = pow(0.5 + 0.5 * sin(vRack.y * 46.0 - uT * 1.6), 10.0);
           totalEmissiveRadiance += (1.0 - exoOn) * vec3(0.08, 0.36, 0.46) * (0.08 + 0.8 * exoScan);
-          totalEmissiveRadiance += exoOn * exoTint * (0.03 + 0.14 * exoLv) * (1.0 + 0.25 * sin(uT * 2.0 + vRack.y * 3.0)) + exoOn * exoTint * uPulse;`);
+          totalEmissiveRadiance += exoOn * exoTint * (0.015 + 0.05 * exoLv) * (1.0 + 0.25 * sin(uT * 2.0 + vRack.y * 3.0)) + exoOn * exoTint * uPulse;`);
     };
     mat.customProgramCacheKey = () => 'exo-zones';
   });
@@ -483,7 +480,10 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     const g = (backdropTex.image as HTMLCanvasElement).getContext('2d');
     if (g) { drawBackdrop(g, 1024, 512, a); backdropTex.needsUpdate = true; }
     backdropMat.color.setScalar(pal.backdrop);
+    // sur fond clair, l'hologramme passe en bleu soutenu pour rester lisible
+    if (a === 'clair') lineMat.color.set(0x0b6781); else lineMat.color.set(0x7fc7d9).multiplyScalar(1.7);
   };
+  if (ambiance === 'clair') lineMat.color.set(0x0b6781);
 
   let levels = new THREE.Vector4(), sig = '';
   const sync = (v: GameView): void => {
@@ -530,7 +530,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     exoU.uT.value = t;
     exoNodes.forEach((n, i) => {
       const lv = levels.getComponent(i);
-      n.material.opacity = lv > 0 ? 0.35 + lv * 0.5 + Math.sin(t * 2 + i) * 0.08 : 0.1 + Math.max(0, Math.sin(t * 1.4 + i * 1.7)) * 0.12;
+      n.material.opacity = lv > 0 ? 0.25 + lv * 0.35 + Math.sin(t * 2 + i) * 0.06 : 0.1 + Math.max(0, Math.sin(t * 1.4 + i * 1.7)) * 0.12;
       n.scale.setScalar(lv > 0 ? 0.3 + lv * 0.3 : 0.16);
     });
     map3d.rotation.y = Math.sin(t * 0.25) * 0.35;
@@ -554,7 +554,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     }
     dpos.needsUpdate = true;
     dust.material.opacity = 0.4 + Math.sin(t * 0.5) * 0.08;
-    for (const c of cones) (c.material as THREE.MeshBasicMaterial).opacity = 0.06 + Math.sin(t * 0.7 + c.position.x) * 0.012;
+    for (const c of cones) (c.material as THREE.MeshBasicMaterial).opacity = 0.045 + Math.sin(t * 0.7 + c.position.x) * 0.01;
   };
 
   const dispose = (): void => {

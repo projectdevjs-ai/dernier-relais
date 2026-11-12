@@ -3,6 +3,7 @@
 .s3-lab.no-gl { background: radial-gradient(120% 80% at 50% 30%, var(--raise), var(--veil)); }
 
 /* ---------- En-tête ---------- */
+.s3-lab::before { content: ""; position: absolute; z-index: 1; left: 0; right: 0; top: 0; height: calc(var(--sat) + 120px); pointer-events: none; background: linear-gradient(var(--veil), transparent); opacity: .85; }
 .lab-top {
   position: absolute; z-index: 2; top: calc(var(--sat) + 14px); left: calc(var(--sal) + 16px); right: calc(var(--sar) + 16px);
   display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; pointer-events: none;

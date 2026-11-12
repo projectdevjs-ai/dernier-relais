@@ -47,6 +47,15 @@ const P = {
   ear: '<path d="M7.5 10a4.5 4.5 0 0 1 9 0c0 3-2.6 3.4-2.6 6a2.6 2.6 0 0 1-4.8 1.4M10 10.2a2 2 0 0 1 4 0M19 5.5a8 8 0 0 1 1.3 4.5M4.9 5.6a8 8 0 0 0-1.2 4.4"/>',
   strap: '<rect x="7" y="8" width="10" height="8" rx="1.5"/><path d="M2.5 12H7M17 12h4.5M12 8v8"/>',
   camera: '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7H8l1.5-2.2h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.4"/>',
+  // Jeu en ligne et réglages
+  relay: '<path d="M4 8h11M12 5l3 3-3 3M20 16H9M12 13l-3 3 3 3"/>',
+  volume: '<path d="M4 9.5h3l4.5-4v13L7 14.5H4zM15.5 9.2a4 4 0 0 1 0 5.6M18 6.7a7.5 7.5 0 0 1 0 10.6"/>',
+  voice: '<path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-7L8 20v-3.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5zM8 9.5h8M8 12.5h5"/>',
+  vibrate: '<rect x="8" y="4" width="8" height="16" rx="2"/><path d="M4.8 9v6M19.2 9v6M2 10.5v3M22 10.5v3"/>',
+  user: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.6-3.8 3.4-6 7-6s6.4 2.2 7 6"/>',
+  install: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M12 8v6M9.8 12l2.2 2.2 2.2-2.2"/>',
+  film: '<rect x="4" y="5.5" width="16" height="13" rx="2"/><path d="M10.5 9.5v5l4-2.5z"/>',
+  flask: '<path d="M9.5 3.5h5M10.5 3.5v6L5.5 18a1.8 1.8 0 0 0 1.6 2.6h9.8a1.8 1.8 0 0 0 1.6-2.6l-5-8.5v-6M8 15h8"/>',
 } as const;
 
 export type IconName = keyof typeof P;

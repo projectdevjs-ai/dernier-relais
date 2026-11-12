@@ -1,7 +1,7 @@
 // L'interface du jeu : un calque transparent posé au-dessus de la carte.
 // HUD permanent (haut + scanner), une seule fiche en bas, panneaux, écran de note, toasts, aide.
 import './hud.css';
-import type { ActionResult, Ambiance, GameEvent, GameView, HudApi, HudEvents, WeatherKind } from '../game/api';
+import type { ActionResult, Ambiance, GameEvent, GameView, HudApi, HudEvents, HudOptions, UiKind, WeatherKind } from '../game/api';
 import type { Ctx, Tone } from './ctx';
 import { btn, fmtDist, fmtInt, h, setAttr, setDisabled, setText, setVar, show } from './dom';
 import { EventsBar, NearAction } from './events';
@@ -9,7 +9,9 @@ import { GradeScreen } from './grade';
 import { Help } from './help';
 import { icon, type IconName } from './icons';
 import { OrderPanel } from './order';
+import { setPanelSound } from './panel';
 import { PorterPanel, type PorterTab } from './porter';
+import { PseudoPrompt } from './pseudo';
 import { Sheet } from './sheet';
 import { ShelterPanel } from './shelter';
 import { Toasts } from './toasts';
@@ -32,6 +34,11 @@ export class Hud implements HudApi {
   private eventsBar: EventsBar;
   private near: NearAction;
   private events: HudEvents;
+  private pseudo: PseudoPrompt;
+  /** Le choix du nom n'est proposé qu'une fois par séance à l'ouverture de la carte du réseau. */
+  private pseudoAsked = false;
+  private netDot = h('i', 'dr-menu-dot');
+  private netOn: boolean | null = null;
 
   // Éléments du HUD permanent
   private lvl = h('span', 'dr-lvl-n');
@@ -53,10 +60,12 @@ export class Hud implements HudApi {
   private scan: HTMLButtonElement;
   private scanSec = h('span', 'dr-scan-sec');
 
-  constructor(private root: HTMLElement, events: HudEvents, opts?: { ambiance?: Ambiance }) {
+  constructor(private root: HTMLElement, events: HudEvents, opts?: HudOptions) {
     root.classList.add('dr-hud');
     this.events = events;
     this.setAmbiance(opts?.ambiance ?? 'crépuscule');
+    // Tous les panneaux (carte du réseau comprise) annoncent leur ouverture et leur fermeture.
+    setPanelSound(events.onUi ? (kind) => this.ui(kind) : null);
 
     const ctx: Ctx = {
       events,
@@ -64,6 +73,7 @@ export class Hud implements HudApi {
       run: (r) => this.run(r),
       openOrder: (id) => this.openOrder(id),
       openShelter: (id) => this.openShelter(id),
+      ui: (kind) => this.ui(kind),
     };
 
     // ----- Haut : niveau, endurance, météo, menu, charge, équilibre, GPS -----
@@ -76,7 +86,8 @@ export class Hud implements HudApi {
     this.lvlBox.setAttribute('role', 'img');
     this.wxBox = h('div', 'dr-chip dr-wx', this.wxIcon, this.wxTemp, this.wxNight);
     this.wxBox.setAttribute('role', 'img');
-    const menu = btn('dr-iconbtn dr-surface dr-menu', 'Menu du porteur', icon('menu'));
+    const menu = btn('dr-iconbtn dr-surface dr-menu', 'Menu du porteur', icon('menu'), this.netDot);
+    this.netDot.hidden = true;
     menu.addEventListener('click', () => this.openPorter());
 
     this.loadBox = h('div', 'dr-chip dr-load', icon('bag'), this.loadTxt);
@@ -98,7 +109,7 @@ export class Hud implements HudApi {
     this.scan = btn('dr-scan', 'Scanner les alentours');
     this.scan.innerHTML = '<svg class="dr-scan-ring" viewBox="0 0 80 80" aria-hidden="true"><circle class="dr-scan-track" cx="40" cy="40" r="36"/><circle class="dr-scan-prog" cx="40" cy="40" r="36" pathLength="100" transform="rotate(-90 40 40)"/></svg>';
     this.scan.append(h('span', 'dr-scan-core', icon('scan'), this.scanSec));
-    this.scan.addEventListener('click', () => this.run(events.actions.scan()));
+    this.scan.addEventListener('click', () => { if (this.run(events.actions.scan())) this.ui('tap'); });
     const fabs = h('div', 'dr-fabs', recenter, this.scan);
 
     root.append(top, fabs);
@@ -108,7 +119,12 @@ export class Hud implements HudApi {
     this.toasts = new Toasts(root);
     this.shelter = new ShelterPanel(root, ctx);
     this.order = new OrderPanel(root, ctx);
-    this.porter = new PorterPanel(root, ctx, { setAmbiance: (a) => this.setAmbiance(a), replayHelp: () => this.showHelp() });
+    this.porter = new PorterPanel(root, ctx, {
+      setAmbiance: (a) => this.setAmbiance(a), replayHelp: () => this.showHelp(),
+      openNetwork: () => this.openNetwork(), editPseudo: () => this.pseudo.open(),
+      settings: opts?.settings ?? {},
+    });
+    this.pseudo = new PseudoPrompt(root, ctx);
     this.porter.showAmbiance(this.ambiance);
     this.grade = new GradeScreen(root, (id) => events.actions.proof(id));
     this.grade.onShow = () => this.closePanels();
@@ -158,6 +174,13 @@ export class Hud implements HudApi {
     setDisabled(this.scan, cooling);
     setText(this.scanSec, cooling ? String(Math.ceil(s.cooldownLeftS)) : '');
     setAttr(this.scan, 'aria-label', cooling ? `Scanner en recharge, ${Math.ceil(s.cooldownLeftS)} secondes` : 'Scanner les alentours');
+
+    // Pastille d'état en ligne sur le bouton du menu : lecture immédiate, aucun appel réseau.
+    const net = this.events.online;
+    if (net) {
+      const on = net.isOnline();
+      if (on !== this.netOn) { this.netOn = on; this.netDot.hidden = false; this.netDot.classList.toggle('is-on', on); }
+    }
 
     this.eventsBar.render(view);
     this.near.render(view);
@@ -236,6 +259,23 @@ export class Hud implements HudApi {
     else this.toasts.push(`${w.name}, à ${fmtDist(w.distanceM)} : approche-toi pour lui parler`, 'info', 'walker');
   }
 
+  /** L'état en ligne a changé (niveau collectif, relais, retour du réseau) : le panneau d'abri ouvert relit ses données. */
+  refreshOnline(): void { if (this.shelter.id) this.shelter.loadOnline(); }
+
+  /** Carte du réseau. La première fois, le joueur choisit d'abord son nom de porteur. */
+  openNetwork(): void {
+    const go = this.events.onNetwork;
+    if (!go) return;
+    this.closePanels();
+    const p = this.events.pseudo;
+    if (p && !this.pseudoAsked && !p.chosen()) { this.pseudoAsked = true; this.pseudo.open(() => go()); return; }
+    go();
+  }
+  /** Choix du nom de porteur (réglages, démo). */
+  openPseudo(): void { this.closePanels(); this.pseudo.open(); }
+  /** Le navigateur propose (ou ne propose plus) l'installation : montre ou cache le bouton des réglages. */
+  setCanInstall(on: boolean): void { this.porter.setCanInstall(on); }
+
   // ---------- Au-delà du contrat (menu, démo) ----------
   openPorter(tab?: PorterTab): void {
     this.shelter.panel.close(); this.order.panel.close();
@@ -256,8 +296,10 @@ export class Hud implements HudApi {
   }
   private run(r: ActionResult): boolean {
     if (r.ok) return true;
-    this.toast(r.why, 'warn');
+    if (r.why) this.toast(r.why, 'warn');
+    this.ui('error');
     return false;
   }
+  private ui(kind: UiKind): void { try { this.events.onUi?.(kind); } catch { /* le son ne doit jamais gêner l'interface */ } }
   private toast(text: string, tone: Tone): void { this.toasts.push(text, tone); }
 }

@@ -26,6 +26,7 @@ export class OrderPanel {
   private lostTag = h('span', 'dr-tag dr-tag-blue', icon('heart'), this.lostTxt);
   private jamTag = h('span', 'dr-tag dr-tag-line', icon('stack'), 'Colis groupé');
   private strapTag = h('span', 'dr-tag dr-tag-good', icon('strap'), 'Bien arrimé');
+  private relayTag = h('span', 'dr-tag dr-tag-blue', icon('relay'), 'Relais');
   private rule = h('p', 'dr-rule');
   private listen: HTMLButtonElement;
   private listenTxt = h('span', '');
@@ -65,7 +66,7 @@ export class OrderPanel {
       }, 900);
     });
     this.panel.body.append(
-      h('div', 'dr-tags', this.speTag, this.lostTag, this.jamTag, this.frag, this.strapTag),
+      h('div', 'dr-tags', this.speTag, this.relayTag, this.lostTag, this.jamTag, this.frag, this.strapTag),
       this.rule,
       h('div', 'dr-cells', this.wt.el, this.reward.el, this.delay.el, this.cond.el),
       this.destBtn,
@@ -94,15 +95,17 @@ export class OrderPanel {
     setText(this.crate, o.special && !o.special.known ? 'Colis scellé' : CRATE[o.crate]);
     setText(this.name, o.name);
     const sp = o.special ?? null, known = o.inspected !== false;
-    const look = sp ? 'special' : o.lost ? 'lost' : 'crate';
-    if (this.look !== look) { this.look = look; this.art.dataset.look = look; this.art.replaceChildren(icon(sp ? 'special' : o.lost ? 'heart' : 'crate')); }
+    const look = sp ? 'special' : o.lost || o.relay ? 'lost' : 'crate';
+    if (this.look !== look) { this.look = look; this.art.dataset.look = look; this.art.replaceChildren(icon(sp ? 'special' : o.lost ? 'heart' : o.relay ? 'relay' : 'crate')); }
     show(this.frag, o.fragile && known);
     show(this.speTag, !!sp);
     show(this.lostTag, !!o.lost);
     if (o.lost) setText(this.lostTxt, `Perdu par ${o.lost.by}`);
     show(this.jamTag, !!o.jamId);
+    show(this.relayTag, !!o.relay);
     show(this.strapTag, carried && (o.strap ?? 0) >= 1);
-    const rule = sp ? (sp.known ? sp.rule : 'Le scanner ne reconnaît pas ce colis. Écoute-le, ou prends-le pour voir.') : o.lost ? 'Ramène-le à son abri : récompense de solidarité.' : '';
+    const rule = sp ? (sp.known ? sp.rule : 'Le scanner ne reconnaît pas ce colis. Écoute-le, ou prends-le pour voir.') : o.lost ? 'Ramène-le à son abri : récompense de solidarité.'
+      : o.relay ? 'Colis de relais : livre-le, ou redépose-le dans un abri plus près du but. Toute la chaîne est récompensée.' : '';
     setText(this.rule, rule); show(this.rule, rule !== '');
     setAttr(this.rule, 'data-look', look);
     setText(this.wt.val, sp && !sp.known ? '?' : fmtKg(o.weightKg));
@@ -127,7 +130,9 @@ export class OrderPanel {
       this.actIcon.replaceChildren(icon(carried ? 'drop' : 'pickup'));
       this.act.classList.toggle('dr-btn-take', !carried);
     }
-    setDisabled(this.act, !carried && !o.inRange);
-    setText(this.actText, carried ? 'Poser' : o.inRange ? 'Ramasser' : `Approche-toi : ${fmtDist(o.distanceM)}`);
+    // Un colis de relais ne se pose pas par terre : il se livre ou se redépose dans un abri.
+    const held = carried && !!o.relay;
+    setDisabled(this.act, held || (!carried && !o.inRange));
+    setText(this.actText, held ? 'À déposer dans un abri' : carried ? 'Poser' : o.inRange ? 'Ramasser' : `Approche-toi : ${fmtDist(o.distanceM)}`);
   }
 }

@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import type { Ambiance, Weather } from '../game/api';
 import { TOP, WORLD } from './layer';
+import type { Palette } from './mapstyle';
 
 /** État du ciel calculé, partagé par tous les modules de rendu. */
 export interface Env {
@@ -82,7 +83,34 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+const moteVert = /* glsl */`
+attribute vec3 seed;
+uniform float uTime; uniform vec3 uCenter; uniform vec3 uBox; uniform float uSize;
+varying float vA;
+void main() {
+  // Poussières en suspension : lente montée, léger balancement, bouclées dans une boîte autour du joueur.
+  vec3 p = seed * uBox;
+  float sp = 0.4 + seed.z * 0.8;
+  p.y = mod(p.y + uTime * sp * 0.9, uBox.y);
+  p.x += sin(uTime * 0.35 * sp + seed.y * 40.0) * 2.5;
+  p.z += cos(uTime * 0.28 * sp + seed.x * 40.0) * 2.5;
+  p.xz = mod(p.xz - uCenter.xz, uBox.xz) - 0.5 * uBox.xz + uCenter.xz;
+  float k = p.y / uBox.y;
+  vA = smoothstep(0.0, 0.15, k) * (1.0 - smoothstep(0.7, 1.0, k)) * (0.45 + 0.55 * sin(uTime * (0.8 + seed.x) + seed.y * 30.0) * 0.5 + 0.275);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  gl_PointSize = uSize * (0.6 + seed.y * 0.9);
+}`;
+const moteFrag = /* glsl */`
+uniform vec3 uColor; uniform float uOpacity; varying float vA;
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  gl_FragColor = vec4(uColor, uOpacity * vA * (1.0 - smoothstep(0.2, 1.0, d)));
+  #include <colorspace_fragment>
+}`;
+
 const DROPS = 520;
+const MOTES = 140;
+const tc = new THREE.Color();
 
 export class Sky {
   readonly hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
@@ -91,6 +119,7 @@ export class Sky {
   readonly lamp = new THREE.PointLight(0xffc27a, 0, 60, 1.2);
   private readonly haze: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
   private readonly rain: THREE.LineSegments<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  private readonly motes: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
   private raining = false;
   private readonly sunDir = new THREE.Vector3(0, 1, 0);
 
@@ -126,11 +155,27 @@ export class Sky {
     }));
     this.rain.frustumCulled = false; this.rain.renderOrder = 950; this.rain.layers.set(TOP); this.rain.visible = false;
     scene.add(this.rain);
+
+    // Poussières d'ambiance : quelques points lumineux qui dérivent autour du porteur.
+    const ms = new Float32Array(MOTES * 3);
+    for (let i = 0; i < ms.length; i++) ms[i] = Math.random();
+    const mg = new THREE.BufferGeometry();
+    mg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MOTES * 3), 3));
+    mg.setAttribute('seed', new THREE.BufferAttribute(ms, 3));
+    this.motes = new THREE.Points(mg, new THREE.ShaderMaterial({
+      vertexShader: moteVert, fragmentShader: moteFrag, transparent: true, depthWrite: false,
+      uniforms: {
+        uTime: { value: 0 }, uCenter: { value: new THREE.Vector3() }, uBox: { value: new THREE.Vector3(120, 30, 120) },
+        uSize: { value: 5 * Math.min(window.devicePixelRatio || 1, 2) }, uColor: { value: new THREE.Color() }, uOpacity: { value: 0.5 },
+      },
+    }));
+    this.motes.frustumCulled = false; this.motes.renderOrder = 890; this.motes.layers.set(WORLD);
+    scene.add(this.motes);
   }
 
   get animated(): boolean { return this.raining; }
 
-  apply(env: Env, w: Weather | null): void {
+  apply(env: Env, w: Weather | null, pal: Palette): void {
     const n = env.night, clair = env.ambiance === 'clair';
     const alt = Math.max(8, w ? w.sunAltDeg : 35) * Math.PI / 180;
     // Soleil au sud-ouest : la lumière vient de la gauche de l'écran, vers la caméra.
@@ -139,27 +184,33 @@ export class Sky {
     const cover = 1 - env.dull * 0.55;
     const u = this.haze.material.uniforms;
     if (clair) {
-      this.hemi.color.set(0xeaf4ff).lerp(new THREE.Color(0x3b4f7a), n);
-      this.hemi.groundColor.set(0xc9b79a).lerp(new THREE.Color(0x1a2233), n);
+      this.hemi.color.set(0xeaf4ff).lerp(tc.set(0x3b4f7a), n);
+      this.hemi.groundColor.set(0xc9b79a).lerp(tc.set(0x1a2233), n);
       this.hemi.intensity = THREE.MathUtils.lerp(1.9, 1.2, n);
-      this.sun.color.set(0xfff4e0).lerp(new THREE.Color(0xffb36b), low * 0.7).lerp(new THREE.Color(0x8fa8ff), n);
+      this.sun.color.set(0xfff4e0).lerp(tc.set(0xffb36b), low * 0.7).lerp(tc.set(0x8fa8ff), n);
       this.sun.intensity = THREE.MathUtils.lerp(2.6 * cover, 0.55, n);
-      (u.uColor.value as THREE.Color).set(0xe6eef0).lerp(new THREE.Color(0x0b1220), n);
-      u.uTop.value = 0.5 + env.fog * 0.45; u.uStart.value = 0.58 - env.fog * 0.3;
-      u.uAll.value = env.fog * 0.16; u.uVignette.value = n * 0.45;
+      u.uTop.value = 0.62 + env.fog * 0.35; u.uStart.value = 0.56 - env.fog * 0.3;
+      u.uAll.value = env.fog * 0.16; u.uVignette.value = n * 0.4;
     } else {
       // Crépuscule : ambiance froide et sombre, lumière principale ambrée.
-      this.hemi.color.set(0x9fc4c0).lerp(new THREE.Color(0x35507a), n);
-      this.hemi.groundColor.set(0x33423a).lerp(new THREE.Color(0x141c26), n);
+      this.hemi.color.set(0x9fc4c0).lerp(tc.set(0x35507a), n);
+      this.hemi.groundColor.set(0x33423a).lerp(tc.set(0x141c26), n);
       this.hemi.intensity = THREE.MathUtils.lerp(1.9, 1.25, n);
-      this.sun.color.set(0xffc98a).lerp(new THREE.Color(0x86a4ff), n);
+      this.sun.color.set(0xffc98a).lerp(tc.set(0x86a4ff), n);
       this.sun.intensity = THREE.MathUtils.lerp(2.3 * cover, 0.5, n);
-      (u.uColor.value as THREE.Color).set(0x0b1413).lerp(new THREE.Color(0x04080a), n);
-      u.uTop.value = 0.62 + env.fog * 0.3; u.uStart.value = 0.55 - env.fog * 0.3;
-      u.uAll.value = env.fog * 0.14; u.uVignette.value = 0.3 + n * 0.3;
-      if (env.fog > 0.6) (u.uColor.value as THREE.Color).set(0x1c2a2a);
+      u.uTop.value = 0.8 + env.fog * 0.2; u.uStart.value = 0.5 - env.fog * 0.3;
+      u.uAll.value = env.fog * 0.14; u.uVignette.value = 0.24 + n * 0.22;
     }
+    // Le voile prend la teinte de l'air de la palette ; par temps bouché il perd sa lueur d'horizon.
+    const air = (u.uColor.value as THREE.Color).set(pal.haze);
+    (u.uHorizon.value as THREE.Color).set(pal.horizon).lerp(air, Math.max(env.dull, n * 0.3));
+    (u.uVig.value as THREE.Color).set(pal.sky).multiplyScalar(0.28);
     this.lamp.intensity = n > 0.3 ? 45 * n : 0;
+    const m = this.motes.material.uniforms;
+    this.motes.visible = env.rain === 0;
+    (m.uColor.value as THREE.Color).set(env.dark ? 0xffd69a : 0xffffff);
+    m.uOpacity.value = env.dark ? 0.75 : 0.55;
+    this.motes.material.blending = env.dark ? THREE.AdditiveBlending : THREE.NormalBlending;
 
     this.raining = env.rain > 0;
     this.rain.visible = this.raining;
@@ -178,6 +229,11 @@ export class Sky {
     this.lamp.position.set(focus.x, 14, focus.z + 4);
     this.sun.target.position.copy(focus);
     this.sun.position.copy(focus).add(this.sunDir);
+    if (this.motes.visible) {
+      const m = this.motes.material.uniforms;
+      m.uTime.value = timeS % 2000;
+      (m.uCenter.value as THREE.Vector3).copy(focus);
+    }
     if (this.raining) {
       const r = this.rain.material.uniforms;
       r.uTime.value = timeS % 1000;

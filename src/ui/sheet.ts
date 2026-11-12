@@ -161,9 +161,11 @@ export class Sheet {
     spe.title = 'Colis spécial';
     const lost = h('span', 'dr-row-lost', icon('heart'));
     lost.title = 'Colis perdu à ramener';
+    const relay = h('span', 'dr-row-lost', icon('relay'));
+    relay.title = 'Colis de relais';
     const w = meta('weight'), c = meta('shield'), d = meta('clock'), far = meta('route');
     const info = btn('dr-row-info', null,
-      h('span', 'dr-row-l1', name, spe, lost, frag),
+      h('span', 'dr-row-l1', name, spe, lost, relay, frag),
       h('span', 'dr-row-l2', icon('pin'), dest),
       h('span', 'dr-row-l3', w.el, c.el, d.el, far.el));
     const actLabel = h('span', '');
@@ -188,7 +190,7 @@ export class Sheet {
         // Tant que le colis n'a pas été écouté ou ramassé, on ne sait pas s'il est fragile, ni ce que pèse un colis spécial.
         const known = o.inspected !== false;
         show(frag, o.fragile && known);
-        show(spe, !!o.special); show(lost, !!o.lost);
+        show(spe, !!o.special); show(lost, !!o.lost); show(relay, !!o.relay);
         setAttr(el, 'data-look', o.special ? 'special' : o.lost ? 'lost' : '');
         setText(w.val, o.special && !o.special.known ? '? kg' : fmtKg(o.weightKg));
         const carried = o.state === 'porté';

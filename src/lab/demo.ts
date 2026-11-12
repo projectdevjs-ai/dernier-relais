@@ -2,7 +2,7 @@
 //   ?poste=exo|holo|console|lit|teleporteur   place la caméra sur un poste
 //   &ambiance=clair    &parle=iris|noe|selma (ouvre une bulle)    &debut=1 (porteur débutant : rien d'appris)
 //   &max=1 (toutes les compétences au maximum)    &fige=1 (une image par changement : pour les captures)
-//   &depart=1 (lance la séquence du Passeur)       &oubli=1 (oublie les rencontres déjà faites)
+//   &depart=1 (lance la séquence du Passeur ; &depart=0.75 la fige à cette fraction)       &oubli=1 (oublie les rencontres déjà faites)
 import type { Ambiance } from '../game/api';
 import { mockView } from '../game/mock';
 import { Lab } from './lab';
@@ -29,7 +29,7 @@ const lab = new Lab(document.getElementById('scene')!, {
   onNetwork: () => say('onNetwork : carte du réseau'),
   onContracts: () => say('onContracts : contrats'),
   onJournal: () => say('onJournal : carnet'),
-}, { ambiance, still: q.has('fige') });
+}, { ambiance, still: q.has('fige'), holdDepartAt: q.get('depart') && q.get('depart') !== '1' ? Number(q.get('depart')) : undefined });
 
 void lab.open(view).then(() => {
   const poste = q.get('poste') as StationId | null;

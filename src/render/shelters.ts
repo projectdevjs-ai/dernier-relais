@@ -52,6 +52,10 @@ export class Shelters {
   constructor(private readonly scene: THREE.Scene, private readonly kit: FxKit, private readonly layer: Layer3D) {}
 
   get all(): IterableIterator<Item> { return this.items.values(); }
+  get count(): number { return this.items.size; }
+  /** Vrai une fois si un abri a été créé, retiré ou déplacé depuis la dernière lecture. */
+  get moved(): boolean { const m = this.dirty; this.dirty = false; return m; }
+  private dirty = false;
   get(id: string): Item | undefined { return this.items.get(id); }
 
   sync(list: ShelterView[]): void {
@@ -62,7 +66,7 @@ export class Shelters {
       if (it && it.npcId !== s.npc) { this.remove(it); it = undefined; }
       if (!it) it = this.create(s);
       if (it.at[0] !== s.at[0] || it.at[1] !== s.at[1]) {
-        it.at = [s.at[0], s.at[1]]; this.layer.toLocal(it.at, it.group.position);
+        it.at = [s.at[0], s.at[1]]; this.layer.toLocal(it.at, it.group.position); this.dirty = true;
       }
       const stars = Math.max(0, Math.min(5, Math.floor(s.stars))), deliverable = s.deliverable.length > 0;
       if (stars !== it.stars || deliverable !== it.deliverable || s.inRange !== it.inRange) {
@@ -134,6 +138,7 @@ export class Shelters {
       arcs, pips, pipRow, beacon, chevron, pulse, glow, halo, height: SHELTER_HEIGHT, stars: -1, deliverable: false, inRange: false, alive: true,
     };
     this.items.set(s.id, it);
+    this.dirty = true;
     void spawn(BUILDING[s.npc], 'batiment', { height: SHELTER_HEIGHT, maxWidth: SHELTER_WIDTH, ownMaterials: true }).then(inst => {
       if (!it.alive) { disposeInstance(inst); return; }
       it.building = inst; it.height = inst.size.y;
@@ -192,6 +197,7 @@ export class Shelters {
     disposeInstance(it.building); disposeInstance(it.npc);
     it.group.removeFromParent();
     this.items.delete(it.id);
+    this.dirty = true;
   }
 
   applyEnv(env: Env): void {
