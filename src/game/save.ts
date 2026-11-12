@@ -20,7 +20,7 @@ export interface JamSave {
   state: 'en cours' | 'réussi' | 'raté';
 }
 /** Révision du format à l'intérieur de la version 1 : les champs ajoutés sont facultatifs, une sauvegarde plus ancienne se charge telle quelle. */
-export const SAVE_REV = 4;
+export const SAVE_REV = 5;
 
 export interface GameSave {
   version: 1;
@@ -33,6 +33,7 @@ export interface GameSave {
   score: number;
   /** Réputation des dépôts solidaires, sans conversion en points ou XP. */
   reputation?: number;
+  missions?: Record<string, { cycle: number; progress: number; active: boolean }>;
   deliveries: number;
   distanceM: number;
   stamina: number;
@@ -153,6 +154,10 @@ export function parseGameSave(raw: unknown): GameSave | null {
     discovered: strs(o.discovered), visited: strs(o.visited), day: typeof o.day === 'string' ? o.day : '',
     orders: (Array.isArray(o.orders) ? o.orders : []).map(order).filter((x): x is OrderSave => x !== null),
     done: strs(o.done), contracts, last: pt(o.last),
+    missions: Object.fromEntries(Object.entries(obj(o.missions) ?? {}).flatMap(([id, raw]) => {
+      const m = obj(raw);
+      return m ? [[id, { cycle: Math.floor(num(m.cycle, 0, 0, 100000)), progress: num(m.progress, 0, 0, 10000), active: m.active === true }]] : [];
+    })),
     rev: SAVE_REV, cachesFound: strs(o.cachesFound), cachesOpened: strs(o.cachesOpened), met: strs(o.met),
     jams: (Array.isArray(o.jams) ? o.jams : []).map(jam).filter((x): x is JamSave => x !== null),
     relays,
