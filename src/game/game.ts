@@ -341,7 +341,6 @@ export class Game implements GameEngine {
       const signal = signalForCell(here);
       if (signal && !this.rebirth.radio && !this.rebirth.radioLog.some(s => s.startsWith(signal.id+'|'))) {
         this.rebirth.radio = signal;
-        this.emit({ type: 'toast', text: 'RADIO LUMEN : nouvelle transmission interceptée dans la console de survie.', tone: 'info' });
       }
       // Les déplacements réels restent la source principale de matériaux, sans achats ni serveurs.
       if (hash('loot:'+here)%4===0) this.rebirth.resources.scrap += 1;
