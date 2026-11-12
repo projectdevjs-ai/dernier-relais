@@ -268,7 +268,7 @@ export class CinematicBattle {
   /** Reuse original textured GLB characters and set dressing; lazy and cancellable. */
   private async loadCinematicModels(kind:EnemyKind):Promise<void> {
     const add=async(name:string,category:'perso'|'batiment'|'caisse',height:number,
-      parent:THREE.Group,position:[number,number,number],angle:number,replaceFallback=false,maxWidth?:number):Promise<void>=>{
+      parent:THREE.Object3D,position:[number,number,number],angle:number,replaceFallback=false,maxWidth?:number):Promise<void>=>{
       const inst=await spawn(name,category,{height,maxWidth,ownMaterials:true});
       if(this.stopped){disposeInstance(inst);return;}
       if(replaceFallback)parent.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=false;});
@@ -284,9 +284,9 @@ export class CinematicBattle {
       }
     };
     const jobs:Promise<void>[]=[];
-    jobs.push(add('porteur','perso',3.7,this.fighter,[0,0,0],0,true,2.8));
+    jobs.push(add('porteur','perso',3.7,this.fighter,[0,0,0],Math.PI,true,2.8));
     if(kind!=='drone')jobs.push(add(kind==='scavenger'?'porteur_civil':'porteur_intro','perso',
-      3.85,this.enemy,[0,0,0],0,true,2.7));
+      3.85,this.enemy,[0,0,0],Math.PI,true,2.7));
     // Ces modèles sont déjà présents dans le dossier public/models, sans appel API.
     const props:[
       {name:'ruine_1',height:15,x:-12,z:-11,angle:.22},
@@ -296,7 +296,7 @@ export class CinematicBattle {
       {name:'deco_barricade',height:2.4,x:7,z:-6,angle:-.35},
       {name:'deco_futs',height:1.9,x:-7,z:0,angle:.23},
     ];
-    for(const p of props)jobs.push(add(p.name,'batiment',p.height,this.scene as unknown as THREE.Group,
+    for(const p of props)jobs.push(add(p.name,'batiment',p.height,this.scene,
       [p.x,0,p.z],p.angle,false,p.height*.92));
     await Promise.allSettled(jobs);
     if(!this.stopped)this.container.dataset.assetsReady='true';
