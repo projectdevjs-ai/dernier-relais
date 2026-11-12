@@ -340,6 +340,48 @@ function threatMarker(kind: string): THREE.Group {
   return group;
 }
 
+/** Gravats et infrastructures oubliées, placés uniquement en périphérie des zones hostiles.
+ *  Géométries partagées et nombre de pièces borné pour conserver les performances mobiles. */
+const hazardBlock = new THREE.BoxGeometry(1, 1, 1);
+const hazardSteel = new THREE.MeshStandardMaterial({ color: 0x58615e, metalness: .56, roughness: .8, flatShading: true });
+const hazardConcrete = new THREE.MeshStandardMaterial({ color: 0x77786f, roughness: .95, flatShading: true });
+const hazardLamp = new THREE.MeshBasicMaterial({ color: 0xe89063, toneMapped: false });
+const hazardWarning = new THREE.MeshBasicMaterial({ color: 0xb26b48 });
+function wrecksForDanger(id: string, radius: number): THREE.Group {
+  const result = new THREE.Group();
+  let seed = hash(id + '|wreck') || 1;
+  const rand = ():number => { seed = (Math.imul(seed,1664525)+1013904223)>>>0; return seed/4294967296; };
+  const block = (material:THREE.Material,x:number,y:number,z:number,w:number,h:number,d:number,yaw=0,tilt=0):THREE.Mesh=>{
+    const mesh=new THREE.Mesh(hazardBlock,material);
+    mesh.position.set(x,y,z);mesh.scale.set(w,h,d);
+    mesh.rotation.set(tilt,yaw,0);mesh.receiveShadow=true;
+    result.add(mesh);return mesh;
+  };
+  // Les bornes écroulées dessinent un secteur interdit, sans masquer la silhouette ennemie au centre.
+  const count=Math.min(12,Math.max(4,Math.round(radius/10)));
+  for(let i=0;i<count;i++){
+    const a=(i/count)*Math.PI*2+rand()*.35;
+    const r=radius*(.72+rand()*.21),x=Math.cos(a)*r,z=Math.sin(a)*r;
+    if(i%3===0){
+      const h=4+rand()*8;
+      block(hazardConcrete,x,h/2,z,1.05,h,1.1,a,.1+(rand()-.5)*.25);
+      block(hazardSteel,x,Math.max(1,h*.72),z,.92,.16,1.2,a);
+      block(hazardLamp,x,h-.12,z,1.45,.22,.6,a);
+      block(hazardSteel,x+.25,1.2,z+.2,.20,2,.18,a);
+    }else if(i%3===1){
+      const h=1.5+rand()*1.2;
+      block(hazardSteel,x,h/2,z,4.5,h,.65,a);
+      block(hazardWarning,x,h*.74,z,3.8,.16,.72,a);
+      block(hazardWarning,x,h*.37,z,3.8,.15,.72,a);
+    }else{
+      const h=.6+rand()*1.5;
+      block(hazardConcrete,x,h/2,z,1.1+rand()*2.3,h,1+rand()*2.5,a);
+      block(hazardSteel,x+.3,.22,z-.3,2.8,.16,.4,a+.5);
+    }
+  }
+  return result;
+}
+
 interface DangerItem { group: THREE.Group; marker: THREE.Group; r: number; at: [number, number] }
 
 /** Zones dangereuses : disque translucide au sol, bord net, paroi basse qui s'estompe. */
@@ -366,7 +408,7 @@ export class Dangers {
         const wall = new THREE.Mesh(this.kit.beam, this.kit.wallDanger);
         wall.scale.set(d.radiusM * 0.985, 16, d.radiusM * 0.985); wall.renderOrder = 6;
         const marker = threatMarker(d.enemy ?? 'Récupérateur');
-        group.add(disc, wall, marker);
+        group.add(disc, wall, marker, wrecksForDanger(d.id, d.radiusM));
         group.traverse(o => o.layers.set(WORLD));
         this.scene.add(group);
         it = { group, marker, r: d.radiusM, at: [d.at[0], d.at[1]] };
