@@ -131,6 +131,18 @@ export class Sound {
           this.buzz(HAPTICS.pickup);
           break;
         case 'drop': this.play('drop'); this.buzz(HAPTICS.drop); break;
+        case 'combat': {
+          const fx: Record<typeof e.phase, SoundName> = {
+            start: 'dangerIn', strike: 'strap', guard: 'uiConfirm', pulse: 'special',
+            evade: 'frontOut', victory: 'jamWon', defeat: 'jamLost',
+          };
+          if (e.phase === 'victory') this.phrase('jamWon');
+          else this.play(fx[e.phase]);
+          if (e.phase === 'start') this.buzz(HAPTICS.dangerIn);
+          else if (e.phase === 'strike' || e.phase === 'pulse') this.buzz(HAPTICS.pickup);
+          else if (e.phase === 'victory') this.buzz(HAPTICS.contract);
+          break;
+        }
         case 'delivery': {
           const r = e.result, name = GRADES[r.grade] ?? 'deliveryC', star = r.starsAfter > r.starsBefore;
           const t = this.phrase(name);
