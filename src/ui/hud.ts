@@ -186,7 +186,8 @@ export class Hud implements HudApi {
       quick: () => this.quick,
       overlay: (open) => events.onOverlay?.(open),
     });
-    this.rebirthConsole = new RebirthConsole(root, events.actions, (r) => this.run(r));
+    this.rebirthConsole = new RebirthConsole(root, events.actions, (r) => this.run(r),
+      open => events.onOverlay?.(open));
     this.pseudo = new PseudoPrompt(root, ctx);
     this.passenger = new PassengerPrompt(root, ctx);
     this.porter.showAmbiance(this.ambiance);
