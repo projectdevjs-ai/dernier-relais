@@ -126,6 +126,8 @@ export class PickupSequence {
 
   private view: View3D | null = null;
   private sensors = new Sensors();
+  /** Une interaction au doigt prend la priorité sur le gyroscope jusqu'au prochain ramassage. */
+  private manualScan = false;
   private stream: MediaStream | null = null;
   private st: State | null = null;
   private p: SeqParcel | null = null;
@@ -179,6 +181,7 @@ export class PickupSequence {
   run(p: SeqParcel, host: SeqHost, opts: SeqOptions = {}): Promise<SeqResult> {
     if (this.done) this.finish({ outcome: 'quit', phase: this.st?.phase ?? 'reperage', strapping: false });
     this.p = p; this.host = host; this.opts = opts;
+    this.manualScan = false;
     this.reduce = reducedMotion();
     this.frozen = false;
     this.el.hidden = false;
@@ -384,7 +387,7 @@ export class PickupSequence {
     s.group.rotation.y = -target * D2R + (Math.random() - 0.5) * 1.2;
   }
   private drawScan(s: ScanState, now: number, dt: number): void {
-    const v = this.view!, { W, H } = this, sen = this.sensors, live = sen.live;
+    const v = this.view!, { W, H } = this, sen = this.sensors, live = sen.live && !this.manualScan;
     const yaw = live ? sen.heading! : s.manualYaw, pitch = live && sen.tilt !== null ? clamp(sen.tilt - 90, -80, 30) : s.manualPitch;
     // La caisse est posée une fois le repère connu : au vrai cap du colis avec une boussole, sinon ailleurs autour du joueur.
     if (s.target === null) {
@@ -924,7 +927,14 @@ export class PickupSequence {
     if (this.frozen) { this.frozen = false; this.opts.freezeMs = 0; this.last = performance.now(); this.raf = requestAnimationFrame(t => this.loop(t)); } // démo figée : un toucher la réveille
     const q = this.at(e);
     try { this.c2.setPointerCapture(e.pointerId); } catch { /* pointeur déjà relâché */ }
-    if (s.phase === 'reperage') { s.drag = { x: q.x, y: q.y, yaw: s.manualYaw, pitch: s.manualPitch }; return; }
+    if (s.phase === 'reperage') {
+      if (!this.manualScan && this.sensors.live) {
+        this.manualScan = true;
+        s.manualYaw = this.sensors.heading ?? s.manualYaw;
+        s.manualPitch = this.sensors.tilt !== null ? clamp(this.sensors.tilt - 90, -80, 30) : s.manualPitch;
+      }
+      s.drag = { x: q.x, y: q.y, yaw: s.manualYaw, pitch: s.manualPitch }; return;
+    }
     if (s.phase === 'inspection') { s.drag = { x: q.x, y: q.y, yaw: s.yaw, pitch: s.pitch, moved: 0 }; return; }
     if (s.done) return;
     if (s.mode === 'ratchet') { s.rt.hold = true; return; }
@@ -942,7 +952,7 @@ export class PickupSequence {
     if (!s) return;
     const q = this.at(e), now = performance.now();
     if (s.phase === 'reperage') {
-      if (s.drag && !this.sensors.live) { s.manualYaw = (s.drag.yaw - (q.x - s.drag.x) * 0.2 + 360) % 360; s.manualPitch = clamp(s.drag.pitch + (q.y - s.drag.y) * 0.15, -70, 20); }
+      if (s.drag) { s.manualYaw = (s.drag.yaw - (q.x - s.drag.x) * 0.2 + 360) % 360; s.manualPitch = clamp(s.drag.pitch + (q.y - s.drag.y) * 0.15, -70, 20); }
       return;
     }
     if (s.phase === 'inspection') {
