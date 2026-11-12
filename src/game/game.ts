@@ -242,7 +242,7 @@ export class Game implements GameEngine {
     // ils sont oubliés, sinon l'interface guiderait vers un colis à des centaines de kilomètres. Ils seront à rescanner au retour.
     const loaded = new Set(this.loadedCells);
     for (const [id, o] of this.orders) {
-      if (o.state === 'révélé' && o.pickedAt === null && o.cell && !o.jam && !o.lost?.net && !loaded.has(o.cell)) this.orders.delete(id);
+      if (o.state === 'révélé' && o.pickedAt === null && o.cell && !o.jam && !o.lost?.net && !loaded.has(o.cell) && this.pos !== null && dist(o.at, this.pos) > 1500) this.orders.delete(id);
     }
     for (const c of cells) for (const spot of c.parcels) {
       if (this.orders.has(spot.id) || this.done.has(spot.id)) continue;
@@ -472,13 +472,13 @@ export class Game implements GameEngine {
     o.slot = r.slot;
     // Distance à faire à pied, retenue pour reconnaître un trajet fait en véhicule.
     o.legM = this.pos ? Math.round(dist(this.pos, o.destAt)) : 0;
-    const t = this.now(), wasKnown = o.inspected === true;
+    const t = this.now(), wasKnown = o.inspected === true, firstPickup = o.pickedAt === null;
     if (o.pickedAt === null) o.pickedAt = t;
     o.inspected = true;
     this.strapUntil.set(o.id, t + GESTURE.strapWindowS * 1000);
     const v = this.orderView(o, t);
     this.emit({ type: 'pickup', order: v });
-    this.advanceRelayMissions('pickup', 1);
+    if (firstPickup) this.advanceRelayMissions('pickup', 1);
     // Un colis spécial pris sans l'avoir écouté : on annonce sa contrainte.
     if (o.special && !wasKnown) this.emit({ type: 'special', order: v });
     this.saveNow();
@@ -1023,7 +1023,7 @@ export class Game implements GameEngine {
     const st = this.shelterSave.get(shelterId);
     return st ? starsFor(st.points, st.deliveries) : 0;
   }
-  private pickupRange(): number { return RANGE.pickup + this.mods.pickupBonusM; }
+  private pickupRange(): number { return RANGE.pickup + this.mods.pickupBonusM + 4; }
   /** Portée du scanner : base, compétences, et avantage des abris à 4 étoiles autour du joueur. */
   private scanRange(): number {
     let r = RANGE.scan + this.mods.scanRangeM;
