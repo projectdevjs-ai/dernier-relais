@@ -11,7 +11,7 @@ STATE = """(() => { const m = __dr.stage.map, c = m.getCenter(), p = __dr.game.v
 with sync_playwright() as p:
     px = os.environ.get('HTTPS_PROXY')
     b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], proxy={'server': px, 'bypass': 'localhost'} if px else None)
-    c = b.new_context(viewport={'width': W, 'height': H}, device_scale_factor=2, has_touch=True, is_mobile=True, ignore_https_errors=True)
+    c = b.new_context(viewport={'width': W, 'height': H}, device_scale_factor=1, has_touch=True, is_mobile=True, ignore_https_errors=True)
     pg = c.new_page(); errs = []
     pg.on('pageerror', lambda e: errs.append('ERR ' + str(e)[:300]))
     pg.goto(url); pg.wait_for_function("window.__dr && __dr.stage.map.loaded()", timeout=60000); pg.wait_for_timeout(3000)
@@ -37,10 +37,10 @@ with sync_playwright() as p:
     print('éléments sous les doigts :', pg.evaluate(f"[[{cx-90},{cy}],[{cx+90},{cy}],[{cx},{cy}]].map(([x,y]) => {{ const e = document.elementFromPoint(x,y); return e.tagName + '.' + e.className; }})"))
     print('touch-action :', pg.evaluate("[document.body, document.getElementById('stage'), document.querySelector('#stage canvas'), document.querySelector('.maplibregl-canvas-container')].map(e => e && getComputedStyle(e).touchAction)"))
 
-    def serie(titre):
+    def serie(titre, r0=60, r1=150):
         print('\n== ' + titre)
         a = st(); show('départ', a)
-        gesture(pinch(60, 150)); pg.wait_for_timeout(700); z = st(); show('après pincement (écarter)', {**diff(a, z), 'écart': z['ecartCentreJoueurM']})
+        gesture(pinch(r0, r1)); pg.wait_for_timeout(700); z = st(); show("après pincement", {**diff(a, z), 'écart': z['ecartCentreJoueurM']})
         gesture(twist(50)); pg.wait_for_timeout(700); r = st(); show('après rotation 2 doigts (50°)', {**diff(z, r), 'écart': r['ecartCentreJoueurM']})
         gesture(swipe(160, 0)); pg.wait_for_timeout(700); s = st(); show('après glisser 1 doigt horizontal', {**diff(r, s), 'écart': s['ecartCentreJoueurM']})
         pg.wait_for_timeout(3000); e = st(); show('3 s plus tard (total depuis départ)', {**diff(a, e), 'écart': e['ecartCentreJoueurM']})
@@ -50,9 +50,10 @@ with sync_playwright() as p:
     # Marche : la position avance de 1,4 m/s vers le nord-est, comme un GPS (5 positions par seconde).
     pg.evaluate("""(() => { const p = __dr.game.view().player.at.slice(); let t = performance.now();
       window.__marche = setInterval(() => { const n = performance.now(), d = (n - t) / 1000 * 1.4 * Math.SQRT1_2; t = n; p[0] += d / 75000; p[1] += d / 111000; __dr.teleport(p); }, 200); })()""")
+    pg.evaluate("__dr.stage.recenter()")  # le suivi du joueur est rétabli avant la série en marche
     pg.wait_for_timeout(2500)
     j0 = st()['joueur']
-    r2 = serie('JOUEUR EN MARCHE (nord-est, 1,4 m/s)')
+    r2 = serie("JOUEUR EN MARCHE (nord-est, 1,4 m/s)", 150, 60)
     j1 = st(); print('déplacement du joueur pendant la série (m) :', round(math.hypot((j1['joueur'][0] - j0[0]) * 75000, (j1['joueur'][1] - j0[1]) * 111000), 1), '| écart centre-joueur :', j1['ecartCentreJoueurM'])
     ok = lambda r: abs(r[1]['zoom'] - r[0]['zoom']) > 0.3 and abs((r[2]['cap'] - r[1]['cap'] + 540) % 360 - 180) > 15 and abs(r[4]['zoom'] - r[2]['zoom']) < 0.05 and abs((r[4]['cap'] - r[3]['cap'] + 540) % 360 - 180) < 3
     print('\nRÉSULTAT gestes immobile :', 'OK' if ok(r1) else 'ÉCHEC', '| gestes en marche :', 'OK' if ok(r2) else 'ÉCHEC', '| centre suit le joueur :', 'OK' if j1['ecartCentreJoueurM'] < 6 else 'ÉCHEC')

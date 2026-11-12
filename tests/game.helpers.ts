@@ -5,6 +5,7 @@ import { frontPath, frontSlot, zonesOf } from '../src/game/fronts';
 import { Game } from '../src/game/game';
 import { type Order, makeOrder } from '../src/game/orders';
 import { type GameSave, MemoryGameStore } from '../src/game/save';
+import { type Surprise, surpriseFor } from '../src/game/surprises';
 import type { CellContent, ParcelSpot, Shelter } from '../src/world/types';
 
 export const BASE: LngLat = [-1.5761, 47.1822];
@@ -31,9 +32,18 @@ export function findSpot(prefix: string, at: LngLat, shelters: Shelter[], want: 
   for (let i = 0; i < 5000; i++) {
     const s = spot(`${prefix}${i}`, at), o = makeOrder(s, shelters);
     // Les colis spéciaux (rares) ont leurs propres tests : voir findSpecial.
-    if (o && !o.special && want(o) && skip-- <= 0) return s;
+    // Les surprises cachées (un colis sur trois) aussi : voir findSurprise.
+    if (o && !o.special && surpriseFor(o.id) === null && want(o) && skip-- <= 0) return s;
   }
   throw new Error('aucun emplacement ne convient');
+}
+/** Emplacement dont la commande ordinaire cache la surprise voulue. */
+export function findSurprise(kind: Surprise, at: LngLat, shelters: Shelter[], want: (o: Order) => boolean = () => true): ParcelSpot {
+  for (let i = 0; i < 5000; i++) {
+    const s = spot(`su${i}`, at), o = makeOrder(s, shelters);
+    if (o && !o.special && surpriseFor(o.id) === kind && want(o)) return s;
+  }
+  throw new Error('aucune surprise ne convient');
 }
 /** Emplacement dont la commande est un colis spécial de la sorte voulue. */
 export function findSpecial(kind: NonNullable<Order['special']>, at: LngLat, shelters: Shelter[], want: (o: Order) => boolean = () => true): ParcelSpot {

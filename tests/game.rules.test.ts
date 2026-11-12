@@ -208,12 +208,14 @@ describe('niveaux', () => {
 });
 
 describe('compétences', () => {
-  it('forment 4 branches et 10 à 12 compétences à plusieurs rangs', () => {
-    expect(SKILLS.length).toBeGreaterThanOrEqual(10); expect(SKILLS.length).toBeLessThanOrEqual(12);
+  it('forment 4 branches : 10 à 12 compétences à plusieurs rangs, plus les 3 paliers d’exosquelette', () => {
+    const ranked = SKILLS.filter(s => !s.exoTier);
+    expect(ranked.length).toBeGreaterThanOrEqual(10); expect(ranked.length).toBeLessThanOrEqual(12);
+    expect(SKILLS.filter(s => s.exoTier).map(s => [s.id, s.branch, s.maxRank, s.exoTier])).toEqual([['exo-bras', 'portage', 1, 1], ['exo-jambes', 'portage', 1, 2], ['exo-gyro', 'portage', 1, 3]]);
     expect(new Set(SKILLS.map(s => s.branch))).toEqual(new Set(['scanner', 'portage', 'endurance', 'réseau']));
     expect(new Set(SKILLS.map(s => s.id)).size).toBe(SKILLS.length);
     for (const s of SKILLS) {
-      expect(s.maxRank).toBeGreaterThanOrEqual(2);
+      expect(s.maxRank).toBeGreaterThanOrEqual(s.exoTier ? 1 : 2);
       if (s.needs) { const n = SKILLS.find(x => x.id === s.needs!.id)!; expect(n.branch).toBe(s.branch); expect(n.maxRank).toBeGreaterThanOrEqual(s.needs.rank); }
     }
   });

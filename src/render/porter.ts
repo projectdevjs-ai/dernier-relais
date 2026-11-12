@@ -5,6 +5,7 @@ import type { CrateKind } from '../game/api';
 import { disposeInstance, type Instance, setLayer, spawn } from './assets';
 import type { FxKit } from './fx';
 import { TOP, WORLD } from './layer';
+import { fixClips } from './pose';
 import type { Env } from './sky';
 
 /** Taille « jeu » du porteur en mètres à l'échelle de la carte (plus grand que nature pour se lire à l'écran). */
@@ -16,6 +17,13 @@ const MAX_STACK = 4;
 export const CRATE_MODEL: Record<CrateKind, string> = { bois: 'caisse_bois', alu: 'malle_alu', plastique: 'bac_plastique', carton: 'carton' };
 
 type Anim = 'idle' | 'walk' | 'run';
+/**
+ * Vitesse au sol (m/s, à l'échelle de la carte) pour laquelle chaque clip est joué à sa vitesse d'origine.
+ * Le porteur est dessiné bien plus grand que nature : ses pas couvrent trop de terrain pour coller exactement au
+ * sol sans tourner au ralenti. La cadence suit donc la vitesse réelle, dans des bornes qui restent naturelles.
+ */
+const NATURAL_SPEED: Record<Anim, number> = { idle: 1, walk: 1.6, run: 3.6 };
+const RATE_MIN = 0.55, RATE_MAX = 1.25;
 
 export class Porter {
   /** Position et cap dans le repère local de la scène. */
@@ -37,6 +45,10 @@ export class Porter {
   private stackToken = 0;
   private readonly marker: THREE.Mesh;
   private readonly lampPool: THREE.Mesh;
+  /** Flèche de cap au sol, montrée en vue 2D : vu de dessus, le porteur n'est plus qu'une tête et deux épaules. */
+  private readonly arrow: THREE.Mesh;
+  /** Vitesse visible du porteur à l'écran (m/s, lissée) : c'est elle qui règle la cadence des pas. */
+  private groundSpeed = 0;
   moving = false;
 
   constructor(scene: THREE.Scene, kit: FxKit) {
@@ -50,7 +62,14 @@ export class Porter {
     this.marker.scale.set(PORTER_HEIGHT * 0.62, 1, PORTER_HEIGHT * 0.62); this.marker.position.y = 0.2; this.marker.renderOrder = 11;
     this.lampPool = new THREE.Mesh(kit.quad, kit.glowWarm);
     this.lampPool.scale.set(70, 1, 70); this.lampPool.position.y = 0.16; this.lampPool.renderOrder = 9;
+    const tri = new THREE.Shape();
+    tri.moveTo(0, 1); tri.lineTo(0.62, -0.55); tri.lineTo(0, -0.22); tri.lineTo(-0.62, -0.55); tri.closePath();
+    // Pointe vers +z, la direction du regard du modèle.
+    this.arrow = new THREE.Mesh(new THREE.ShapeGeometry(tri).rotateX(-Math.PI / 2).rotateY(Math.PI), kit.solidAmber);
+    this.arrow.scale.setScalar(PORTER_HEIGHT * 0.3); this.arrow.position.set(0, 0.24, PORTER_HEIGHT * 0.86); this.arrow.renderOrder = 12;
+    this.arrow.visible = false;
     for (const m of [shadow, this.marker, this.lampPool]) { m.layers.set(WORLD); this.root.add(m); }
+    this.arrow.layers.set(TOP); this.root.add(this.arrow);
     this.root.visible = false;
     scene.add(this.root);
     void this.load();
@@ -62,12 +81,12 @@ export class Porter {
     this.body.add(inst.root);
     if (inst.clips.length) {
       this.mixer = new THREE.AnimationMixer(inst.root);
+      // Clips corrigés (voir pose.ts) : attente sobre, bras le long du corps, poignets droits.
+      const clips = fixClips(inst.root, inst.clips);
       for (const name of ['idle', 'walk', 'run'] as const) {
-        const clip = inst.clips.find(c => c.name.toLowerCase() === name);
+        const clip = clips[name];
         if (clip) this.actions[name] = this.mixer.clipAction(clip);
       }
-      // Pas géants : on ralentit un peu la marche pour limiter le glissement des pieds.
-      this.actions.walk?.setEffectiveTimeScale(0.85);
       this.play(this.wanted, 0);
     }
     // Les colis suivent le haut du dos pour osciller avec la marche.
@@ -81,7 +100,8 @@ export class Porter {
     this.anim = name;
     if (!next || next === prev) return;
     next.reset().setEffectiveWeight(1).play();
-    if (prev) prev.crossFadeTo(next, fade, true);
+    // Fondu simple (sans « warp ») : la cadence de chaque clip est réglée à chaque image sur la vitesse réelle.
+    if (prev) prev.crossFadeTo(next, fade, false);
   }
 
   /** Nouvelle position visée (appelé à chaque sync). `snap` : téléportation sans glissement. */
@@ -98,6 +118,9 @@ export class Porter {
   }
 
   hide(): void { this.root.visible = false; this.placed = false; }
+
+  /** Vue de dessus : la flèche de cap est affichée devant le porteur. */
+  setFlat(on: boolean): void { this.arrow.visible = on; }
 
   /** Colis portés : modèles (caisse du bon type ou colis spécial) empilés dans le dos (4 visibles au plus). */
   setCarried(kinds: string[]): void {
@@ -133,7 +156,15 @@ export class Porter {
     const k = 1 - Math.exp(-dt * 3.2);
     const dx = this.target.x - this.pos.x, dz = this.target.z - this.pos.z;
     this.moving = dx * dx + dz * dz > 0.0004;
-    if (this.moving) { this.pos.x += dx * k; this.pos.z += dz * k; }
+    let step = 0;
+    if (this.moving) { this.pos.x += dx * k; this.pos.z += dz * k; step = Math.hypot(dx, dz) * k; }
+    // Cadence des pas : suit la vitesse réellement visible, pour que le porteur ne « patine » pas quand il
+    // ralentit ou accélère. À l'arrêt, le clip d'attente garde sa vitesse.
+    if (dt > 0) this.groundSpeed += (Math.min(12, step / dt) - this.groundSpeed) * (1 - Math.exp(-dt * 5));
+    for (const name of ['walk', 'run'] as const) {
+      const a = this.actions[name];
+      if (a) a.timeScale = Math.min(RATE_MAX, Math.max(RATE_MIN, this.groundSpeed / NATURAL_SPEED[name]));
+    }
     let dh = this.targetHeading - this.heading;
     dh = Math.atan2(Math.sin(dh), Math.cos(dh));
     const turning = Math.abs(dh) > 0.002;

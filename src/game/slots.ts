@@ -1,8 +1,8 @@
 // Emplacements de chargement : dos, bras et jambes (fixations de l'exosquelette), repris de l'ancien jeu.
 // Fonctions pures : règles d'emplacement, répartition gauche/droite, stabilité, rangement conseillé.
-import type { SpecialKind } from './api';
+import type { SlotId, SpecialKind } from './api';
 
-export type SlotId = 'dos' | 'brasG' | 'brasD' | 'jambeG' | 'jambeD';
+export type { SlotId };
 export type Limb = 'dos' | 'bras' | 'jambe';
 export interface SlotDef {
   id: SlotId; name: string; limb: Limb;

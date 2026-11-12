@@ -5,7 +5,8 @@ import type { Fix } from '../player/gps';
 import type { CellContent, Shelter } from '../world/types';
 import {
   type ActionResult, type CacheView, type ContractView, type DangerView, type DeliveryResult, type FrontView, type GameEngine, type GameEvent,
-  type GameView, type JamView, type LostInput, type OrderView, RANGE, RELAY, type RelayCrate, type RelayGiveResult, type ShelterView, type SkillView, type WandererView, type Weather,
+  type GameView, type JamView, type LostInput, type OrderView, RANGE, RELAY, type RelayCrate, type RelayGiveResult, type ShelterView, type SkillView, type SlotId, type SlotView, type SurpriseKind,
+  type WandererView, type Weather,
 } from './api';
 import { type Cache, cachesFor } from './caches';
 import { driftBalance, isUnbalanced, nextStamina, wearPerSecond } from './carry';
@@ -23,6 +24,8 @@ import { BALANCE, CACHE, DAMAGED, FRONT, GESTURE, NEWBIE, PROOF, SAVE_EVERY_MS, 
 import { type GameSave, type GameStore, type JamSave, type OrderSave, SAVE_REV, type ShelterSave, emptyGameSave } from './save';
 import { nextStarAt, nextUnlock, npcFor, starsFor, unlockText } from './shelters';
 import { type Mods, learnBlock, modsFor, skillDef, skillViews } from './skills';
+import { EXO, type Rig, SLOTS, SLOT_IDS, arrange, bestSlot, capacityKg, isSlot, kgOf, lateral, legsDrainMult, loadSwayMult, moveTo, sideKg, slotFull, slotOf, slotRule, slotUnlocked } from './slots';
+import { LORE, SURPRISE, SURPRISE_NOTE, loreFor, surpriseFor } from './surprises';
 import { SPECIALS, UNKNOWN_SPECIAL, specialDrainMult, specialWearPerSecond } from './specials';
 import { dayKey, nextDayMs, weekKey } from './time';
 import { type Wanderer, wanderGift, wanderLine, wanderSlot, wandererAt, wanderersFor, whereText } from './wanderers';
@@ -345,7 +348,7 @@ export class Game implements GameEngine {
     // En véhicule le porteur ne marche pas : ni fatigue, ni balancement, ni course.
     const moving = !this.vehicle && this.speed > SPEED.moving, running = !this.vehicle && this.speed > SPEED.run;
     const carried = this.carried();
-    const loadFrac = this.carriedKg(carried) / this.mods.capacityKg;
+    const loadFrac = this.carriedKg(carried) / this.capacity();
     this.refreshTimed(t);
     this.stepFronts(t, dt, carried);
     this.stepJams(t);
@@ -355,12 +358,17 @@ export class Game implements GameEngine {
     this.stamina = nextStamina(this.stamina, dt, {
       moving, running, loadFrac, inShelter: near !== null,
       shelterPerk: near !== null && this.starsOf(near) >= 3 ? SHELTER_PERK.restMult : 1,
-      drainMult: this.mods.drainMult * specialDrainMult(carried), restMult: this.mods.restMult,
+      // Jambes chargées : la marche fatigue davantage (+100 % pour 35 kg, comme dans l'ancien jeu).
+      drainMult: this.mods.drainMult * specialDrainMult(carried) * legsDrainMult(carried), restMult: this.mods.restMult,
     });
     if (this.stamina !== before) this.dirty = true;
 
     if (moving && carried.length) this.walkS += dt;
-    this.balance = driftBalance(this.balance, dt, this.walkS, { moving, loadFrac, windKmh: this.weather.windKmh, mult: this.mods.balanceMult * strapBalanceMult(carried) });
+    // Répartition : une charge de travers dérive du côté lourd ; bras et jambes chargés la font tanguer davantage.
+    this.balance = driftBalance(this.balance, dt, this.walkS, {
+      moving, loadFrac, windKmh: this.weather.windKmh, lean: lateral(carried),
+      mult: this.mods.balanceMult * strapBalanceMult(carried) * loadSwayMult(carried, this.rig()),
+    });
     this.unbalancedS = isUnbalanced(this.balance) ? this.unbalancedS + dt : 0;
 
     if (carried.length) {
@@ -370,7 +378,9 @@ export class Game implements GameEngine {
         running, exhausted: this.stamina <= 0, wearMult: this.mods.wearMult, dangerMult: this.mods.dangerMult,
       };
       for (const o of carried) {
-        const w = (wearPerSecond(o, ctx) + specialWearPerSecond(o.special, { everPicked: true, carried: true, running })) * dt;
+        // Boîte noire : protégée de la pluie quand elle est sur le dos. Un colis bien sanglé encaisse mieux les secousses.
+        const mine = { ...ctx, sheltered: o.special === 'boitenoire' && slotOf(o) === 'dos', strap: o.strap ?? 0 };
+        const w = (wearPerSecond(o, mine) + specialWearPerSecond(o.special, { everPicked: true, carried: true, running })) * dt;
         if (w > 0) { o.condition = Math.max(0, o.condition - w); this.dirty = true; }
         if (o.deadlineMin !== null && !this.lateWarned.has(o.id) && elapsedMin(o, t) > o.deadlineMin) {
           this.lateWarned.add(o.id);
@@ -425,17 +435,38 @@ export class Game implements GameEngine {
     return OK;
   }
 
-  pickup(orderId: string): ActionResult {
+  /** Emplacement où irait le colis, ou la raison du refus. */
+  private pickupSlot(orderId: string, want?: SlotId): { o: Order; slot: SlotId } | { why: string } {
     const o = this.orders.get(orderId);
-    if (!o || o.state === 'caché') return no('Colis introuvable.');
-    if (o.state === 'porté') return no('Ce colis est déjà dans le sac.');
-    if (!this.pos) return no('Position inconnue.');
-    if (this.vehicle && !this.passenger) return no('Tu vas vite : confirme que tu es passager pour ramasser.');
-    if (dist(o.at, this.pos) > this.pickupRange()) return no('Trop loin du colis.');
-    if (this.carriedKg(this.carried()) + o.weightKg > this.mods.capacityKg) return no('Sac trop lourd : pose d’abord un colis.');
+    if (!o || o.state === 'caché') return { why: 'Colis introuvable.' };
+    if (o.state === 'porté') return { why: 'Ce colis est déjà dans le sac.' };
+    if (!this.pos) return { why: 'Position inconnue.' };
+    if (this.vehicle && !this.passenger) return { why: 'Tu vas vite : confirme que tu es passager pour ramasser.' };
+    if (dist(o.at, this.pos) > this.pickupRange()) return { why: 'Trop loin du colis.' };
+    const bag = this.carried(), rig = this.rig();
+    if (this.carriedKg(bag) + o.weightKg > capacityKg(rig)) return { why: 'Sac trop lourd : pose d’abord un colis.' };
+    if (want !== undefined) {
+      if (!isSlot(want)) return { why: 'Emplacement inconnu.' };
+      const why = slotRule(o, want, rig.tier) || slotFull(o, want, bag, rig);
+      return why ? { why: `${why}.` } : { o, slot: want };
+    }
+    const slot = bestSlot(o, bag, rig);
+    // Le poids total passerait, mais aucun emplacement ne convient tel que le sac est rangé.
+    return slot ? { o, slot } : { why: kgOf(bag.filter(b => slotOf(b) === 'dos')) + o.weightKg > rig.backKg && rig.tier === 0 ? 'Sac trop lourd : pose d’abord un colis.' : 'Plus de place : ouvre le sac pour réorganiser.' };
+  }
+  canPickup(orderId: string): ActionResult {
+    const r = this.pickupSlot(orderId);
+    return 'why' in r ? no(r.why) : OK;
+  }
+
+  pickup(orderId: string, slot?: SlotId): ActionResult {
+    const r = this.pickupSlot(orderId, slot);
+    if ('why' in r) return no(r.why);
+    const o = r.o;
     o.state = 'porté';
+    o.slot = r.slot;
     // Distance à faire à pied, retenue pour reconnaître un trajet fait en véhicule.
-    o.legM = Math.round(dist(this.pos, o.destAt));
+    o.legM = this.pos ? Math.round(dist(this.pos, o.destAt)) : 0;
     const t = this.now(), wasKnown = o.inspected === true;
     if (o.pickedAt === null) o.pickedAt = t;
     o.inspected = true;
@@ -457,6 +488,7 @@ export class Game implements GameEngine {
     o.state = 'révélé';
     o.at = [this.pos[0], this.pos[1]];
     delete o.strap;
+    delete o.slot;
     this.strapUntil.delete(o.id); this.frontS.delete(o.id);
     this.emit({ type: 'drop', orderId });
     this.saveNow();
@@ -487,7 +519,11 @@ export class Game implements GameEngine {
       if (o.lost) g.notes.push(`Colis de ${o.lost.by} retrouvé`);
       const relayId = this.relayIds.get(o.id) ?? null;
       if (relayId) { g.notes.push('Colis de relais'); this.relayIds.delete(o.id); }
-      const points = Math.round(orderReward(o, starsBefore) * g.mult * this.mods.pointsMult * (ridden ? VEHICLE.mult : 1));
+      // Surprise du colis : elle compte même si le joueur ne l'a pas écoutée, sauf l'étiquette, qu'il faut avoir trouvée.
+      const sur = this.surpriseOf(o), counted = sur && (sur !== 'label' || o.label === true) ? sur : null;
+      if (counted) g.notes.push(SURPRISE_NOTE[counted]);
+      const lore = counted === 'lore' ? loreFor(o.id) : null;
+      const points = Math.round(orderReward(o, starsBefore) * g.mult * this.mods.pointsMult * (ridden ? VEHICLE.mult : 1) * (counted ? SURPRISE.mult[counted] : 1));
       const xp = Math.round((XP.perDelivery + points * XP.perPoint) * this.mods.xpMult);
       st.points += points; st.deliveries++;
       const starsAfter = starsFor(st.points, st.deliveries);
@@ -506,6 +542,7 @@ export class Game implements GameEngine {
         grade: g.grade, condition: o.condition, onTime: g.onTime, points, xp, notes: g.notes,
         starsBefore, starsAfter, unlock: unlocks.length ? unlocks.join(' · ') : null, levelUp: levels.length > 0,
         special: o.special ?? null, lostBy: o.lost?.by ?? null, proofBonus: bonus, relayId,
+        ...(counted ? { surprise: counted } : {}), ...(lore ? { lore: { index: lore.index, total: LORE.length, text: lore.text } } : {}),
       };
       this.emit({ type: 'delivery', result });
       for (const level of levels) this.emit({ type: 'levelUp', level });
@@ -533,7 +570,7 @@ export class Game implements GameEngine {
   steady(): void { this.balance = 0; this.unbalancedS = 0; }
 
   learn(skillId: string): ActionResult {
-    const why = learnBlock(skillId, this.ranks, this.skillPoints);
+    const why = learnBlock(skillId, this.ranks, this.skillPoints, this.level);
     if (why) return no(why);
     const d = skillDef(skillId)!;
     this.skillPoints -= d.cost;
@@ -624,6 +661,9 @@ export class Game implements GameEngine {
     if (!this.pos) return no('Position inconnue.');
     if (dist(o.at, this.pos) > GESTURE.inspectM) return no('Trop loin pour l’écouter.');
     o.inspected = true;
+    // L'écoute révèle aussi la surprise du colis, s'il en cache une (l'étiquette, elle, se cherche des yeux).
+    const sur = this.surpriseOf(o);
+    if (sur && sur !== 'label') o.surprise = sur;
     const levels = this.gainXp(GESTURE.inspectXp);
     this.emit({ type: 'inspect', order: this.orderView(o, this.now()), xp: GESTURE.inspectXp });
     for (const level of levels) this.emit({ type: 'levelUp', level });
@@ -642,6 +682,49 @@ export class Game implements GameEngine {
     const xp = strapXp(q), levels = xp ? this.gainXp(xp) : [];
     this.emit({ type: 'strap', orderId, quality: q, xp });
     for (const level of levels) this.emit({ type: 'levelUp', level });
+    this.saveNow();
+    return OK;
+  }
+
+  // ───────────────────────── rangement (emplacements de l'exosquelette)
+
+  stow(orderId: string, slot: SlotId): ActionResult {
+    const o = this.orders.get(orderId);
+    if (!o || o.state !== 'porté') return no('Ce colis n’est pas dans le sac.');
+    if (!isSlot(slot)) return no('Emplacement inconnu.');
+    const r = moveTo(o, slot, this.carried(), this.rig());
+    if (!r.ok) return no(`${r.why}.`);
+    if (!r.moves.length) return OK;
+    for (const [id, k] of r.moves) { const x = this.orders.get(id); if (x) x.slot = k; }
+    this.emit({ type: 'stow', orderId, slot });
+    this.saveNow();
+    return OK;
+  }
+
+  autoStow(): ActionResult {
+    const bag = this.carried();
+    if (!bag.length) return no('Aucun colis accroché.');
+    for (const [id, k] of arrange(bag, this.rig())) { const x = this.orders.get(id); if (x) x.slot = k; }
+    this.emit({ type: 'stow', orderId: '', slot: null });
+    this.saveNow();
+    return OK;
+  }
+
+  foundLabel(orderId: string): ActionResult {
+    const o = this.orders.get(orderId);
+    if (!o || o.state === 'caché') return no('Colis introuvable.');
+    if (this.surpriseOf(o) !== 'label' || o.label) return no('Rien de plus sur ce colis.');
+    o.label = true; o.surprise = 'label';
+    this.saveNow();
+    return OK;
+  }
+
+  fumble(orderId: string): ActionResult {
+    const o = this.orders.get(orderId);
+    if (!o || o.state !== 'révélé') return no('Colis introuvable.');
+    const lost = Math.min(this.score, GESTURE.fumblePoints);
+    this.score -= lost;
+    this.emit({ type: 'fumble', orderId, points: lost });
     this.saveNow();
     return OK;
   }
@@ -704,14 +787,17 @@ export class Game implements GameEngine {
     if (!p || !Array.isArray(p.destAt) || !Number.isFinite(p.destAt[0]) || !Number.isFinite(p.destAt[1]) || !p.destId) return no('Ce relais est illisible.');
     // Le contenu vient d'un autre joueur : valeurs bornées.
     const weightKg = Math.min(30, Math.max(0.5, Number.isFinite(p.weightKg) ? p.weightKg : 1));
-    if (this.carriedKg(this.carried()) + weightKg > this.mods.capacityKg) return no('Sac trop lourd : pose d’abord un colis.');
+    const bag = this.carried(), rig = this.rig();
+    if (this.carriedKg(bag) + weightKg > capacityKg(rig)) return no('Sac trop lourd : pose d’abord un colis.');
+    const slot = bestSlot({ id, weightKg, fragile: p.fragile === true }, bag, rig);
+    if (!slot) return no('Plus de place : ouvre le sac pour réorganiser.');
     if (dryRun) return OK;
     const t = this.now();
     const o: Order = {
       id, cell: '', name: String(p.name || 'Colis').slice(0, 40), rareName: null, crate: p.crate, weightKg, fragile: p.fragile === true,
       at: [sh.at[0], sh.at[1]], destId: p.destId, destName: String(p.destName || 'Abri').slice(0, 80), destAt: [p.destAt[0], p.destAt[1]],
       deadlineMin: null, baseReward: Math.min(400, Math.max(5, Number.isFinite(p.reward) ? Math.round(p.reward) : 5)),
-      state: 'porté', condition: Math.min(1, Math.max(0, Number.isFinite(p.condition) ? p.condition! : 1)), pickedAt: t, inspected: true,
+      state: 'porté', condition: Math.min(1, Math.max(0, Number.isFinite(p.condition) ? p.condition! : 1)), pickedAt: t, inspected: true, slot,
     };
     this.orders.set(id, o);
     this.relayIds.set(id, relay.id);
@@ -774,7 +860,7 @@ export class Game implements GameEngine {
     shelters.sort(byDist);
 
     const dangers: DangerView[] = this.dangers.map(z => ({ id: z.id, at: z.at, radiusM: z.radiusM, inside: p !== null && insideDanger(z, p) }));
-    this.skillsCache ??= skillViews(this.ranks, this.skillPoints);
+    this.skillsCache ??= skillViews(this.ranks, this.skillPoints, this.level);
     this.contractsCache ??= this.contracts.map(c => contractView(c, this.mods.contractMult));
 
     const caches: CacheView[] = [];
@@ -804,12 +890,24 @@ export class Game implements GameEngine {
         minutes: j.minutes, minutesLeft: null, bonus: j.bonus, distanceM: d, inRange: p !== null && d <= RANGE.deliver,
       });
     }
+    // Rangement : les cinq emplacements, le palier d'exosquelette et la répartition de la charge.
+    const bag = this.carried(), rig = this.rig(), sides = sideKg(bag);
+    const slots: SlotView[] = SLOT_IDS.map(k => {
+      const d = SLOTS[k], there = bag.filter(o => slotOf(o) === k), unlocked = slotUnlocked(k, rig.tier);
+      return {
+        id: k, name: d.name, side: d.side, unlocked, maxKg: d.maxKg ?? rig.backKg, kg: kgOf(there), orders: there.map(o => o.id),
+        ...(unlocked ? {} : { lockedWhy: `${EXO[d.tier].name} à installer chez Noé, au labo` }),
+      };
+    });
     return {
       player: {
         at: p, headingDeg: this.heading, speedMps: this.speed, moving: !this.vehicle && this.speed > SPEED.moving, mode: this.mode, vehicle: this.vehicle, passenger: this.passenger,
         level: this.level, xp: this.xp, xpNext: xpNeeded(this.level), stamina: this.stamina, skillPoints: this.skillPoints,
-        carriedKg, capacityKg: this.mods.capacityKg, balance: this.balance, score: this.score, deliveries: this.deliveries,
+        carriedKg, capacityKg: capacityKg(rig), balance: this.balance, score: this.score, deliveries: this.deliveries,
         distanceKm: Math.round(this.distanceM / 10) / 100,
+        slots, exoTier: rig.tier,
+        exo: EXO.map((e, i) => ({ tier: i, name: e.name, desc: e.desc, installed: i <= rig.tier, level: e.level })),
+        sides: { leftKg: sides.left, rightKg: sides.right, armsKg: sides.arms, legsKg: sides.legs }, lean: lateral(bag),
       },
       scanner: { ready: this.cooldownLeft <= 0, cooldownLeftS: this.cooldownLeft, cooldownS: this.mods.scanCooldownS, rangeM: this.scanRange() },
       weather: this.weather,
@@ -839,6 +937,14 @@ export class Game implements GameEngine {
     return null;
   }
   private carriedKg(list: Order[]): number { let kg = 0; for (const o of list) kg += o.weightKg; return kg; }
+  /** L'exosquelette du porteur : palier installé et capacité du dos. */
+  private rig(): Rig { return { tier: this.mods.exoTier, backKg: this.mods.capacityKg }; }
+  /** Poids total que le porteur peut emporter, tous emplacements débloqués confondus. */
+  private capacity(): number { return capacityKg(this.rig()); }
+  /** Surprise cachée dans un colis ordinaire (jamais dans un colis spécial, perdu, groupé ou de relais). */
+  private surpriseOf(o: Order): SurpriseKind | null {
+    return o.special || o.lost || o.jam || this.relayIds.has(o.id) ? null : surpriseFor(o.id);
+  }
   private starsOf(shelterId: string): number {
     const st = this.shelterSave.get(shelterId);
     return st ? starsFor(st.points, st.deliveries) : 0;
@@ -866,6 +972,8 @@ export class Game implements GameEngine {
       inspected: known, canInspect: !carried && !known && this.pos !== null && d <= GESTURE.inspectM,
       strap: o.strap ?? null, relay: this.relayIds.has(o.id) ? { id: this.relayIds.get(o.id)! } : null,
       strapLeftS: carried && o.strap === undefined ? Math.max(0, ((this.strapUntil.get(o.id) ?? 0) - t) / 1000) : 0,
+      slot: carried ? slotOf(o) : null, surprise: o.surprise ?? null,
+      labelHidden: !carried && !o.label && this.surpriseOf(o) === 'label',
     };
   }
 

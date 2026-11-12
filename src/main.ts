@@ -81,7 +81,7 @@ const stage = new Stage('stage', {
   onTapOrder: id => hud.openOrder(id),
   onTapCache: id => hud.openCache?.(id),
   onTapWanderer: id => hud.openWanderer?.(id),
-}, { center: START, ambiance });
+}, { center: START, ambiance, tilt: pref.get('vue') === '2d' ? '2d' : '3d' });
 
 // Le lien en ligne : chaîne de relais, abris collectifs, primes, nom de porteur (voir src/net/link.ts).
 const hudRoot = document.getElementById('hud')!;
@@ -98,6 +98,8 @@ const hud = new Hud(hudRoot, {
   actions: game,
   onUseGps: () => { stage.recenter(); locator.startGPS(); },
   onRecenter: () => stage.recenter(),
+  // Vue 2D (de dessus) / 3D (inclinée) : le choix est mémorisé pour le prochain lancement.
+  onTilt: () => { pref.set('vue', stage.toggleTilt()); },
   onAmbiance: a => { currentAmbiance = a; pref.set('ambiance', a); stage.setAmbiance(a); lab.setAmbiance(a); },
   onGoto: (at, label) => {
     simTarget = null;

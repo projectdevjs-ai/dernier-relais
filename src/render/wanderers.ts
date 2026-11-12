@@ -5,6 +5,7 @@ import type { WandererView } from '../game/api';
 import type { LngLat } from '../core/geo';
 import { disposeInstance, type Instance, setLayer, spawn } from './assets';
 import type { FxKit } from './fx';
+import { fixClip } from './pose';
 import { type Layer3D, TOP, WORLD } from './layer';
 
 export const WANDERER_HEIGHT = 10;
@@ -76,8 +77,9 @@ export class Wanderers {
         it.mixer = new THREE.AnimationMixer(inst.root);
         const clip = (name: string) => inst.clips.find(c => c.name.toLowerCase() === name);
         const walk = clip('walk'), idle = clip('calmv0') ?? clip('calm_0');
-        if (walk) { it.walk = it.mixer.clipAction(walk); it.walk.setEffectiveTimeScale(0.8); }
-        if (idle) it.idle = it.mixer.clipAction(idle);
+        // Mêmes corrections que le porteur (pose.ts) : bras le long du corps, poignets droits.
+        if (walk) { it.walk = it.mixer.clipAction(fixClip(inst.root, walk, 'walk')); it.walk.setEffectiveTimeScale(0.8); }
+        if (idle) it.idle = it.mixer.clipAction(fixClip(inst.root, idle, 'idle'));
         this.play(it, 0);
       }
     });

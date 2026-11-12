@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { proofBonus, strapBalanceMult, strapQuality, strapXp } from '../src/game/gestures';
 import { GESTURE, PROOF } from '../src/game/rules';
-import { type GameSave, emptyGameSave, parseGameSave } from '../src/game/save';
+import { type GameSave, SAVE_REV, emptyGameSave, parseGameSave } from '../src/game/save';
 import { findSpot, off, ofType, place, rig, spot, wait, walk, world } from './game.helpers';
 import { A, B, quiet, when } from './game.events.helpers';
 
@@ -147,7 +147,7 @@ describe('sauvegarde : révision 2', () => {
     for (const k of ['rev', 'cachesFound', 'cachesOpened', 'met', 'jams']) delete old[k];
     old.orders = [{ id: 'o1', cell: '1/2', name: 'Outils', rareName: null, crate: 'bois', weightKg: 9, fragile: false, at: AT, destId: 'A', destName: 'Abri A', destAt: A.at, deadlineMin: null, baseReward: 80, state: 'porté', condition: 0.9, pickedAt: 1000 }];
     const s = parseGameSave(JSON.parse(JSON.stringify(old)))!;
-    expect(s).toMatchObject({ version: 1, rev: 2, level: 3, score: 900, cachesFound: [], cachesOpened: [], met: [], jams: [] });
+    expect(s).toMatchObject({ version: 1, rev: SAVE_REV, level: 3, score: 900, cachesFound: [], cachesOpened: [], met: [], jams: [] });
     expect(Object.keys(s.orders[0]).sort()).toEqual(Object.keys((old.orders as object[])[0]).sort());
     const cells = world([A, B], [spot('p1', off(50, 0))]);
     const r = await rig({ save: s as GameSave, t: Date.UTC(2026, 10, 11, 10) });

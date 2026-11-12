@@ -15,8 +15,8 @@ const PAD = new THREE.Vector3(0, 0, -3.5);
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 /** Centre de la chambre des quartiers (pièce à part, derrière la porte : on y entre par un fondu). */
 export const CHAMBER = V(SX[2], 0, -26);
-export const EXO_AT = V(-1.75, 0, -2.3);
-export const DOOR_AT = V(SX[2] - 0.55, 0, ROOM.back + 0.12);
+export const EXO_AT = V(-1.0, 0, -2.1);
+export const DOOR_AT = V(SX[2] - 0.2, 0, ROOM.back + 0.12);
 
 const SCI_AT: Record<SciId, { at: THREE.Vector3; ry: number; st: number }> = {
   iris: { at: V(SX[0] + 1.3, 0, -1.7), ry: -0.45, st: 0 },
@@ -24,7 +24,7 @@ const SCI_AT: Record<SciId, { at: THREE.Vector3; ry: number; st: number }> = {
   selma: { at: V(SX[2] + 1.15, 0, -1.9), ry: -0.45, st: 2 },
 };
 /** Place du porteur devant chaque poste (comme dans l'ancien : il suit d'un poste à l'autre). */
-export const porterSpot = (i: number): THREE.Vector3 => V(SX[i] - 0.8, 0, 0.9);
+export const porterSpot = (i: number): THREE.Vector3 => V(SX[i] - 1.38, 0, -0.1);
 export const PAD_AT = PAD;
 
 // ---------- Palettes ----------
@@ -36,12 +36,12 @@ interface Pal {
 const PALS: Record<Ambiance, Pal> = {
   'crépuscule': {
     bg: 0x070d0d, fogNear: 22, fogFar: 62, wall: 0x24353a, floor: 0x2a3838, floorRough: 0.5,
-    hemiSky: 0x5d8a92, hemiGround: 0x140f0a, hemi: 0.5, window: 0xff9a4d, windowPower: 1.25, key: 0xbfd9e2, keyPower: 0.7,
+    hemiSky: 0x5d8a92, hemiGround: 0x140f0a, hemi: 0.55, window: 0xff9a4d, windowPower: 0.7, key: 0xbfd9e2, keyPower: 0.7,
     exposure: 1.0, bloom: 0.4, env: 0.22, backdrop: 1.9, points: 1, strips: 1,
   },
   'clair': {
     bg: 0xcfd3cc, fogNear: 26, fogFar: 80, wall: 0xb9b8ab, floor: 0x767a76, floorRough: 0.38,
-    hemiSky: 0xe9f1f4, hemiGround: 0x8a8272, hemi: 1.9, window: 0xfff1d6, windowPower: 2.4, key: 0xffffff, keyPower: 1.5,
+    hemiSky: 0xe9f1f4, hemiGround: 0x8a8272, hemi: 1.9, window: 0xfff1d6, windowPower: 0.8, key: 0xffffff, keyPower: 1.5,
     exposure: 1.0, bloom: 0.3, env: 0.55, backdrop: 1.5, points: 0.45, strips: 0.8,
   },
 };
@@ -193,7 +193,7 @@ export interface LabScene {
   /** Lampe de la chambre : 1 allumée, 0 en veilleuse. */
   lamp(k: number): void;
   /** Chats clandestins installés dans la chambre (0 à 3). */
-  setCats(n: number): void;
+  setCats(n: number, onReady?: () => void): void;
   dispose(): void;
 }
 
@@ -243,19 +243,19 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     points.push({ l, base: power });
     return l;
   };
-  point(0x7fc7d9, 16, 12, SX[0], 3.7, -0.6);
+  point(0x7fc7d9, 30, 14, SX[0], 3.5, -2.4);
   point(0x7fc7d9, 3, 5.5, SX[0] - 0.2, 2.4, -1.6);    // table holographique
-  point(0x9fe6f7, 12, 12, SX[1] + 0.6, 3.7, 0.2);
+  point(0x9fe6f7, 22, 14, SX[1] + 0.6, 3.6, -0.6);
   const padLight = point(0x8fe3f5, 5, 9, 0, 1.7, PAD.z + 0.9);
-  point(0xffc690, 16, 12, SX[2], 3.7, -0.6);
-  point(0xb6ffad, 2.5, 4.5, SX[2] - 2.0, 1.6, -2.4);  // hydroponie
+  point(0xffc690, 30, 14, SX[2], 3.5, -2.4);
+  point(0xb6ffad, 3, 4.5, SX[2] + 1.9, 1.7, -4.0);  // hydroponie
   const lampBase = 9;
   const lampL = point(0xffb070, lampBase, 12, CHAMBER.x - 2.0, 2.4, CHAMBER.z + 0.9);
 
   // ---------- Coque du couloir ----------
   const W = ROOM.halfW, H = ROOM.height, depth = ROOM.front - ROOM.back, zMid = (ROOM.front + ROOM.back) / 2;
   const ft = floorTextures();
-  const floorMat = new THREE.MeshStandardMaterial({ color: pal.floor, map: ft.map, roughnessMap: ft.rough, roughness: pal.floorRough * 1.6, metalness: 0.35 });
+  const floorMat = new THREE.MeshStandardMaterial({ color: pal.floor, map: ft.map, roughnessMap: ft.rough, roughness: Math.min(1, pal.floorRough * 2.1), metalness: 0.35 });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, depth), floorMat);
   floor.rotation.x = -Math.PI / 2; floor.position.z = zMid;
   shell.add(floor);
@@ -353,10 +353,10 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   const exoG = place(G[1], exoM, EXO_AT.x, EXO_AT.z, 0.45);
   place(G[1], bench, 3.0, -4.9, -0.15);
   // Poste 3 — Quartiers : baie médicale, hydroponie, porte de la chambre
-  place(G[2], med, SX[2] + 1.9, -4.3, -0.35);
-  place(G[2], hydro, SX[2] - 2.0, -3.1, 0.5);
-  place(G[2], copy(racks), SX[2] + 3.6, -5.15, 0.1);
-  place(G[2], copy(caisses), SX[2] + 3.0, -1.0, -0.4);
+  place(G[2], med, SX[2] + 3.3, -2.6, -0.9);
+  place(G[2], hydro, SX[2] + 1.95, -4.9, -0.15);
+  place(G[2], copy(racks), SX[2] - 2.6, -5.15, 0.1);
+  place(G[2], copy(caisses), SX[2] - 3.1, -1.6, 0.4);
   const doorMat = new THREE.MeshStandardMaterial({ color: 0x1b2225, metalness: 0.6, roughness: 0.4 });
   box(G[2], 1.9, 3.0, 0.14, doorMat, DOOR_AT.x, 1.5, DOOR_AT.z);
   box(G[2], 0.05, 3.0, 0.16, darkMat, DOOR_AT.x, 1.5, DOOR_AT.z + 0.01);
@@ -563,7 +563,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     key.color.set(pal.key); key.intensity = pal.keyPower;
     for (const p of points) p.l.intensity = p.base * pal.points;
     for (const m of wallMats) m.color.set(pal.wall);
-    floorMat.color.set(pal.floor); floorMat.roughness = pal.floorRough * 1.6;
+    floorMat.color.set(pal.floor); floorMat.roughness = Math.min(1, pal.floorRough * 2.1);
     darkMat.color.set(a === 'clair' ? 0x4a5252 : 0x0c1212);
     spillMat.color.set(pal.window);
     setStrips();
@@ -643,10 +643,10 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   lamp(1);
 
   // Chats clandestins (ancien : jusqu'à trois, aux mêmes endroits de la chambre).
-  const catSpots: [number, number, number][] = [[0.6, 0.6, 2.4], [-0.2, 0.9, 0.6], [1.1, -0.1, -1.2]];
+  const catSpots: [number, number, number][] = [[1.0, -0.8, -0.6], [0.4, -0.2, 0.9], [1.45, -1.7, 2.4]];
   const cats: THREE.Object3D[] = [];
   let catModel: Promise<Model> | null = null, catWant = 0, gone = false;
-  const setCats = (n: number): void => {
+  const setCats = (n: number, onReady?: () => void): void => {
     catWant = Math.max(0, Math.min(3, Math.floor(n)));
     cats.forEach((c, i) => { c.visible = i < catWant; });
     if (catWant <= cats.length) return;
@@ -658,6 +658,8 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
         setEnvIntensity(g, 1);
         cats.push(g);
       }
+      cats.forEach((c, i) => { c.visible = i < catWant; });
+      onReady?.();
     });
   };
 

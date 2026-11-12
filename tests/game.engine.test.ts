@@ -514,7 +514,7 @@ describe('compétences', () => {
     const r = await rig({ save: save({ skillPoints: 3, level: 4 }) });
     expect(r.game.learn('rien')).toEqual({ ok: false, why: 'Compétence inconnue.' });
     expect(r.game.learn('sangles').ok).toBe(false);
-    expect(r.game.view().skills).toHaveLength(12);
+    expect(r.game.view().skills).toHaveLength(15);
     expect(r.game.view().skills.find(s => s.id === 'calage')!.available).toBe(false);
     expect(r.game.learn('sac')).toEqual({ ok: true });
     expect(r.game.view().skills.find(s => s.id === 'sac')).toMatchObject({ rank: 1, available: true });

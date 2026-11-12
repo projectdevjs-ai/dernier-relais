@@ -1,5 +1,5 @@
 # Parcours complet du premier lancement, vérifié par le DOM (aucune capture pendant qu'une scène 3D tourne) :
-# écran de départ, prologue, Passer, labo, chaque poste et son panneau, « Partir », carte, puis second lancement.
+# écran de départ, prologue, Passer, labo en trois postes (cartes, Passeur, quartiers) et leurs boutons, chambre, « Partir », carte, puis second lancement.
 #   python3 scripts/flow.py http://localhost:4201/ [dossier_de_captures]
 # L'adresse reçoit « ?leger » : rendu 3D allégé, sinon Chrome sans carte graphique ne suit pas.
 # Code de sortie 0 si tout est bon, 1 sinon. Chaque étape a un délai maximal : le script ne se bloque pas.
@@ -39,8 +39,24 @@ MODALS = SHOWN + "('#hud .dr-modal')"
 # Éléments du HUD de la carte qui ne doivent jamais se voir par-dessus le labo.
 MAP_HUD = SHOWN + "('#hud .dr-top, #hud .dr-fabs, #hud .dr-sheet, #hud .st-goal, #hud .st-radio, #hud .dr-help, #hud .dr-toast, #hud .dr-near')"
 STATE = "({ lab: document.body.classList.contains('dr-in-lab'), labShown: !!document.querySelector('.s3-lab') && !document.querySelector('.s3-lab').hidden, prologue: !!document.querySelector('.s3-prologue'), paused: __dr.stage.paused === true })"
-# Poste du labo -> titre attendu du panneau (ou de la feuille du pseudo pour la carte du réseau).
-POSTES = [('exo', ['Porteur']), ('console', ['Porteur']), ('lit', ['Porteur']), ('holo', ['Ton nom de porteur', 'Réseau'])]
+# Le labo est un hall en trois postes. Bouton d'action (data-act) -> poste (rang), lieu, titres attendus du panneau ouvert.
+ACTIONS = [('network', 0, 'hall', ['Ton nom de porteur', 'Réseau']), ('contracts', 0, 'hall', ['Porteur']), ('skills', 1, 'exo', ['Porteur']),
+           ('journal', 2, 'hall', ['Porteur']), ('journal', 2, 'room', ['Porteur']), ('tree', 2, 'room', ['Porteur'])]
+LAB_READY = "!!document.querySelector('.lab-panel .lab-btn') && document.querySelectorAll('.lab-dot').length === 3 && getComputedStyle(document.querySelector('.s3-lab .s3-veil')).opacity < 0.05"
+POSTE = "document.querySelector('.s3-lab').dataset.poste"
+LIEU = "document.querySelector('.s3-lab').dataset.lieu"
+TITLE = "(document.querySelector('.lab-panel .lab-card-title') || {}).textContent"
+
+def lab_goto(pg, rang, lieu):
+    """Amène le labo au poste voulu (points de pagination), puis dans l'atelier ou la chambre si demandé."""
+    if pg.evaluate(LIEU) == lieu and lieu != 'hall' and pg.evaluate("[...document.querySelectorAll('.lab-dot')].length") == 0: return True  # déjà dans l'atelier ou la chambre
+    if pg.evaluate(LIEU) != 'hall':
+        pg.evaluate("document.querySelector('.lab-panel [data-act=back]')?.click()")
+        wait(pg, LIEU + " === 'hall'", 4000); pg.wait_for_timeout(500)
+    pg.evaluate(f"document.querySelectorAll('.lab-dot')[{rang}].click()"); pg.wait_for_timeout(300)
+    if lieu == 'exo': pg.evaluate("document.querySelector('.lab-panel [data-act=exo]').click()")
+    if lieu == 'room': pg.evaluate("document.querySelector('.lab-panel [data-act=enter]').click()")
+    return wait(pg, LIEU + f" === '{lieu}'", 5000)
 
 def panel_title(pg):
     return pg.evaluate("(() => { const m = [...document.querySelectorAll('#hud .dr-modal')].find(e => !e.hidden); return m ? (m.querySelector('[role=dialog]')?.getAttribute('aria-label') || '') : null; })()")
@@ -80,37 +96,50 @@ with sync_playwright() as p:
         check('prologue terminé après Passer', wait(pg, "!document.querySelector('.s3-prologue')", 6000))
         s = pg.evaluate(STATE)
         check('labo affiché aussitôt, sans éclair de carte', s['lab'] and s['labShown'] and s['paused'], str(s))
-        check('labo prêt (postes cliquables)', wait(pg, "document.querySelectorAll('.lab-tag').length >= 8 && getComputedStyle(document.querySelector('.s3-lab .s3-veil')).opacity < 0.05", 90000))
+        check('labo prêt (panneau du poste et trois points)', wait(pg, LAB_READY, 90000))
+        check('première visite : arrivée à la salle des cartes', pg.evaluate(POSTE) == 'cartes' and pg.evaluate(TITLE) == 'Salle des cartes', str(pg.evaluate(TITLE)))
         said = pg.evaluate("window.__says.length"); pg.wait_for_timeout(16000)
         check('la narration du prologue s’arrête après Passer', pg.evaluate("window.__says.length") == said, f'{said} -> ' + str(pg.evaluate("window.__says.slice(-3)")))
         check('aucun élément du HUD de la carte sur le labo', pg.evaluate(MAP_HUD) == 0, str(pg.evaluate("[...document.querySelectorAll('#hud>*')].filter(e => getComputedStyle(e).display !== 'none').map(e => e.className)")))
         check('GPS toujours pas demandé au labo', pg.evaluate("window.__geo") == 0)
 
-        print('2. Postes du labo', flush=True)
-        for poste, titres in POSTES:
-            pg.evaluate(f"document.querySelector('.lab-tag[data-id={poste}]').click()")
-            ok = wait(pg, "(() => { const k = document.querySelector('.lab-card'); return !!k && !k.hidden && !!k.querySelector('.lab-act'); })()", 5000)
-            check(f'{poste} : fiche ouverte', ok)
+        print('2. Les trois postes du labo', flush=True)
+        pg.wait_for_timeout(1500)
+        pg.evaluate("document.querySelector('.lab-nav.is-next').click()"); pg.wait_for_timeout(400)
+        check('suivant : Le Passeur', pg.evaluate(TITLE) == 'Le Passeur', str(pg.evaluate(TITLE)))
+        pg.evaluate("document.querySelector('.lab-nav.is-next').click()"); pg.wait_for_timeout(400)
+        check('suivant : Quartiers', pg.evaluate(TITLE) == 'Quartiers' and pg.evaluate("document.querySelector('.lab-nav.is-next').hidden"), str(pg.evaluate(TITLE)))
+        pg.evaluate("document.querySelector('.lab-nav.is-prev').click()"); pg.wait_for_timeout(400)
+        check('précédent : Le Passeur', pg.evaluate(TITLE) == 'Le Passeur')
+        check('« Partir » présent à chaque poste', all(pg.evaluate(f"(document.querySelectorAll('.lab-dot')[{i}].click(), !document.querySelector('.lab-go').hidden)") for i in range(3)))
+        pg.evaluate("document.querySelector('.lab-panel [data-act=talk]').click()"); pg.wait_for_timeout(400)
+        check('parler : la bulle du scientifique s’ouvre', pg.evaluate("!document.querySelector('.lab-bubble').hidden && document.querySelector('.lab-bubble p').textContent.length > 10"))
+        for act, rang, lieu, titres in ACTIONS:
+            nom = f'{act} ({["cartes", "passeur", "quartiers"][rang]}, {lieu})'
+            ok = lab_goto(pg, rang, lieu) and wait(pg, f"!!document.querySelector('.lab-panel [data-act={act}]')", 4000)
+            check(f'{nom} : bouton présent', ok)
             if not ok: continue
-            pg.evaluate("document.querySelector('.lab-card .lab-act').click()"); pg.wait_for_timeout(500)
+            pg.evaluate(f"document.querySelector('.lab-panel [data-act={act}]').click()"); pg.wait_for_timeout(500)
             t = panel_title(pg)
-            check(f'{poste} : panneau « {t} » ouvert', t is not None and any(x in t for x in titres), str(t))
+            check(f'{nom} : panneau « {t} » ouvert', t is not None and any(x in t for x in titres), str(t))
             top = pg.evaluate("(() => { const e = document.elementFromPoint(innerWidth / 2, innerHeight * 0.6); return !!e && !!e.closest('#hud .dr-modal'); })()")
-            check(f'{poste} : panneau par-dessus le labo', top)
-            if poste == 'holo' and t and 'nom' in t:
+            check(f'{nom} : panneau par-dessus le labo', top)
+            if act == 'network' and t and 'nom' in t:
                 pg.evaluate("document.querySelector('.dr-pseudo .dr-btn')?.click()"); pg.wait_for_timeout(1500)
                 t2 = panel_title(pg)
-                check('holo : carte du réseau après le choix du nom', t2 is not None and 'nom' not in t2, str(t2))
-            if poste == 'exo':
+                check('network : carte du réseau après le choix du nom', t2 is not None and 'nom' not in t2, str(t2))
+            if act == 'skills':
                 # Sans point à dépenser, « Apprendre » est refusé : le joueur doit voir pourquoi, même au labo.
                 pg.evaluate("[...document.querySelectorAll('#hud .dr-modal:not([hidden]) button')].find(b => /apprendre/i.test(b.innerText) && !b.disabled)?.click()"); pg.wait_for_timeout(400)
                 n = pg.evaluate(SHOWN + "('#hud .dr-toast')")
-                check('exo : le refus d’une action est expliqué par un message', n >= 1 or pg.evaluate("![...document.querySelectorAll('#hud .dr-modal:not([hidden]) button')].some(b => /apprendre/i.test(b.innerText) && !b.disabled)"))
+                check('skills : le refus d’une action est expliqué par un message', n >= 1 or pg.evaluate("![...document.querySelectorAll('#hud .dr-modal:not([hidden]) button')].some(b => /apprendre/i.test(b.innerText) && !b.disabled)"))
                 pg.wait_for_timeout(3200)
-            check(f'{poste} : panneau refermé', close_panels(pg))
+            check(f'{nom} : panneau refermé', close_panels(pg))
             s = pg.evaluate(STATE)
-            check(f'{poste} : retour au labo intact', s['lab'] and s['labShown'] and s['paused'] and pg.evaluate(MAP_HUD) == 0, str(s))
-            pg.evaluate("document.querySelector('.lab-back')?.click()"); pg.wait_for_timeout(300)
+            check(f'{nom} : retour au labo intact', s['lab'] and s['labShown'] and s['paused'] and pg.evaluate(MAP_HUD) == 0, str(s))
+        check('chambre : pas de « Partir », retour possible', pg.evaluate(LIEU) == 'room' and pg.evaluate("document.querySelector('.lab-go').hidden"))
+        lab_goto(pg, 0, 'hall')
+        check('retour à la salle des cartes', pg.evaluate(TITLE) == 'Salle des cartes', str(pg.evaluate(TITLE)))
 
         print('3. Partir', flush=True)
         pg.evaluate("document.querySelector('.lab-go').click()")
@@ -134,7 +163,7 @@ with sync_playwright() as p:
         print('4. Second lancement', flush=True)
         pg.goto(url + '?leger')
         check('pas d’écran de départ ni de prologue', wait(pg, "document.body.classList.contains('dr-in-lab')", 20000) and pg.evaluate("!document.querySelector('#splash') && !document.querySelector('.s3-prologue')"))
-        check('labo prêt', wait(pg, "document.querySelectorAll('.lab-tag').length >= 8 && getComputedStyle(document.querySelector('.s3-lab .s3-veil')).opacity < 0.05", 90000))
+        check('labo prêt', wait(pg, LAB_READY, 90000))
         check('aucun élément du HUD de la carte sur le labo', pg.evaluate(MAP_HUD) == 0)
     except Exception as e:
         check('parcours interrompu', False, str(e)[:300])

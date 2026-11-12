@@ -28,41 +28,30 @@
 .lab-bar { display: block; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; min-width: 0; }
 .lab-bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--amber-fill); transform-origin: left center; transition: transform .4s ease-out; }
 
-/* ---------- Étiquettes flottantes des postes : une pastille et son nom, posées au-dessus de l'objet ---------- */
-.lab-tags { position: absolute; inset: 0; z-index: 1; pointer-events: none; transition: opacity .3s ease; }
-.lab-tag {
-  position: absolute; left: 0; top: 0; will-change: transform; pointer-events: auto;
-  min-width: 48px; min-height: 48px; padding: 0 2px; display: grid; justify-items: center; align-content: start; gap: 5px;
+/* ---------- Flèches vers le poste voisin (ancien : labPrev / labNext) ---------- */
+.lab-nav {
+  position: absolute; z-index: 2; top: calc(var(--sat) + 84px); left: calc(var(--sal) + 10px); max-width: 44vw; min-height: 44px; padding: 0 12px 0 8px;
+  display: flex; align-items: center; gap: 4px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line-strong); color: var(--text);
+  box-shadow: var(--shadow); font: 700 11px/1 var(--f-title); font-stretch: condensed; letter-spacing: .12em; text-transform: uppercase;
+  transition: opacity .3s ease;
 }
-.lab-tag:active { filter: brightness(1.2); }
-.lab-tag.is-off { visibility: hidden; }
-.lab-tag-ic {
-  position: relative; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--panel); border: 1px solid var(--line-strong); color: var(--amber); box-shadow: var(--shadow);
+.s3 .lab-nav { background: var(--panel); color: var(--text); font: 700 11px/1 var(--f-title); }
+.lab-nav.is-next { left: auto; right: calc(var(--sar) + 10px); padding: 0 8px 0 12px; }
+.lab-nav .s3-ic { width: 20px; height: 20px; flex: none; color: var(--amber); }
+.lab-nav-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lab-nav:active { transform: scale(.96); }
+.lab-nav[hidden] { display: none; }
+/* Pendant une réplique, les flèches s’estompent (ancien : classe « dim ») mais restent utilisables. */
+.s3-lab.is-talking .lab-nav { opacity: .35; }
+.lab-hint {
+  position: absolute; z-index: 2; left: 50%; top: calc(var(--sat) + 140px); transform: translateX(-50%); max-width: calc(100vw - 32px);
+  padding: 8px 12px 7px; border-radius: 10px; background: var(--scrim); color: var(--text); border: 1px solid var(--line);
+  font: 600 13px/1.2 var(--f-ui); text-align: center; pointer-events: none; animation: lab-pop .3s ease-out both;
 }
-.lab-tag-ic .s3-ic { width: 20px; height: 20px; }
-.lab-tag[data-id="teleporteur"] .lab-tag-ic { background: var(--amber-fill); border-color: transparent; color: var(--on-amber); }
-.lab-tag-name {
-  padding: 4px 7px 3px; border-radius: 6px; background: var(--scrim); color: var(--text); white-space: nowrap;
-  font: 700 11px/1 var(--f-title); font-stretch: condensed; letter-spacing: .16em; text-transform: uppercase;
-}
-.s3-lab[data-ambiance="clair"] .lab-tag-name { background: var(--panel); }
-.lab-tag-badge {
-  position: absolute; left: 50%; top: -5px; margin-left: 9px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px;
-  display: grid; place-items: center; background: var(--amber-fill); color: var(--on-amber); font: 700 12px/1 var(--f-ui);
-  box-shadow: 0 0 0 2px var(--panel-solid);
-}
-.lab-tag[data-id="teleporteur"] .lab-tag-badge { background: var(--blue-fill); color: var(--on-blue); }
-/* Scientifiques : une pastille « parler » au-dessus de la tête (zone de toucher de 44 px). */
-.lab-tag-sci { width: 44px; min-width: 44px; min-height: 44px; height: 44px; padding: 0; align-content: center; }
-.lab-tag-sci .lab-tag-ic { width: 28px; height: 28px; color: var(--text); }
-.lab-tag-sci .lab-tag-ic .s3-ic { width: 15px; height: 15px; }
-.lab-tag-sci.has-news .lab-tag-ic { border-color: var(--amber); color: var(--amber); }
-.lab-tag-sci.has-news .lab-tag-ic::after { content: ""; position: absolute; right: -2px; top: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--amber-fill); box-shadow: 0 0 0 2px var(--panel-solid); }
-.s3-lab.is-focus .lab-tags, .s3-lab.is-leaving .lab-tags { opacity: 0; }
-.s3-lab.is-focus .lab-tag, .s3-lab.is-leaving .lab-tag { pointer-events: none; }
-.s3-lab.is-focus .lab-top { opacity: .0; }
-.s3-lab.is-leaving :is(.lab-top, .lab-bottom, .lab-bubble) { opacity: 0; pointer-events: none; }
+.s3-lab[data-ambiance="clair"] .lab-hint { background: var(--panel); }
+.s3-lab.is-leaving :is(.lab-top, .lab-bottom, .lab-bubble, .lab-nav, .lab-hint) { opacity: 0; pointer-events: none; }
+.s3-lab[data-lieu="room"] .lab-top, .s3-lab[data-lieu="exo"] .lab-top { opacity: 0; }
+.lab-dim { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; background: #050807; transition: opacity .5s ease; }
 
 /* ---------- Bulle de dialogue ---------- */
 .lab-bubble {
@@ -100,11 +89,44 @@
 .lab-go-text small { font: 500 12px/1.1 var(--f-ui); opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lab-go .lab-go-arrow { width: 22px; height: 22px; stroke-width: 2.2; }
 
-.lab-card {
-  padding: 10px 12px 12px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
-  display: grid; gap: 10px; animation: lab-rise .3s ease-out both;
+.lab-panel {
+  padding: 8px 12px 12px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
+  display: grid; gap: 9px; animation: lab-rise .3s ease-out both;
 }
+.lab-panel[hidden] { display: none; }
+.lab-panel.is-exo, .lab-panel.is-room { padding-top: 10px; }
 @keyframes lab-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+/* Points de pagination : un trait long pour le poste courant (ancien : lpdots). Zone de toucher de 44 px. */
+.lab-dots { display: flex; justify-content: center; margin: -6px 0 -12px; }
+.lab-dot { width: 44px; height: 44px; display: grid; place-items: center; background: none; }
+.s3 .lab-dot { background: none; }
+.lab-dot i { display: block; width: 7px; height: 7px; border-radius: 4px; background: var(--line-strong); transition: width .3s ease, background-color .3s ease; }
+.lab-dot.is-on i { width: 24px; background: var(--amber-fill); }
+.lab-panel-head { display: grid; gap: 6px; }
+.lab-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lab-btn {
+  position: relative; min-height: 46px; padding: 0 10px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--raise); border: 1px solid var(--line-strong); color: var(--text); text-align: center;
+  font: 700 14px/1.1 var(--f-title); font-stretch: condensed; letter-spacing: .1em; text-transform: uppercase;
+}
+.s3 .lab-btn { background: var(--raise); color: var(--text); font: 700 14px/1.1 var(--f-title); }
+.lab-btn.is-main { grid-column: 1 / -1; min-height: 48px; background: var(--blue-fill); border-color: transparent; color: var(--on-blue); font-size: 15px; }
+.s3 .lab-btn.is-main { background: var(--blue-fill); color: var(--on-blue); }
+.lab-btn.is-ghost { background: none; }
+.s3 .lab-btn.is-ghost { background: none; }
+.lab-btn.is-ghost.has-news { border-color: var(--amber); }
+.lab-btn.is-ghost.has-news::after { content: ""; position: absolute; right: -3px; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--amber-fill); box-shadow: 0 0 0 2px var(--panel-solid); }
+.lab-btn:active, .lab-tile:active { transform: scale(.97); }
+.lab-badge { font-style: normal; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; display: grid; place-items: center; background: var(--amber-fill); color: var(--on-amber); font: 700 12px/1 var(--f-ui); letter-spacing: 0; }
+/* Chambre : trois tuiles (ancien : rgrid / tile). */
+.lab-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lab-tile { min-width: 0; min-height: 62px; padding: 10px 7px; border-radius: 12px; display: grid; gap: 5px; align-content: center; text-align: left; background: var(--raise); border: 1px solid var(--line-strong); color: var(--text); }
+.s3 .lab-tile { background: var(--raise); color: var(--text); }
+.lab-tile b { font: 700 12.5px/1.05 var(--f-title); font-stretch: condensed; letter-spacing: 0; white-space: nowrap; text-transform: uppercase; }
+.lab-tile span { font-size: 11.5px; line-height: 1.2; color: var(--muted); }
+.lab-go.is-pad { background: var(--blue-fill); color: var(--on-blue); }
+.s3 .lab-go.is-pad { background: var(--blue-fill); color: var(--on-blue); }
+.lab-go[hidden] { display: none; }
 .lab-card-head { display: flex; align-items: center; gap: 8px; }
 .lab-back { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center; background: var(--raise); border: 1px solid var(--line); color: var(--text); }
 .s3 .lab-back { background: var(--raise); color: var(--text); }
@@ -147,20 +169,20 @@
 /* Éclair du Passeur au départ. */
 .lab-flash { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; background: radial-gradient(90% 70% at 50% 42%, #f4fdff, #9fe6f7 55%, #2b6f80); }
 
-/* Sans WebGL : les postes deviennent une simple liste. */
-.no-gl .lab-tags { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-.no-gl .lab-tag { position: static; }
-.no-gl .lab-tag::after { display: none; }
+/* Sans WebGL : le panneau et les boutons restent utilisables sur un fond uni. */
 
 @media (orientation: landscape) {
   .lab-bottom { margin: 0; right: auto; width: min(340px, 44vw); bottom: calc(var(--sab) + 10px); gap: 8px; }
   .lab-go { min-height: 52px; }
   .lab-go-text small { display: none; }
-  .lab-card { padding: 8px 10px 10px; gap: 7px; }
+  .lab-panel { padding: 6px 10px 10px; gap: 7px; }
   .lab-note { display: none; }
   .lab-note.is-hot { display: block; }
+  .lab-nav.is-prev { left: calc(var(--sal) + min(340px, 44vw) + 24px); }
+  .lab-tile { min-height: 50px; padding: 6px 8px; }
+  .lab-figs { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lab-bubble, .lab-card { animation: none; }
-  .lab-top, .lab-tags, .lab-bottom, .lab-go, .lab-bar-fill { transition: none; }
+  .lab-bubble, .lab-panel, .lab-hint { animation: none; }
+  .lab-top, .lab-bottom, .lab-go, .lab-bar-fill, .lab-nav, .lab-dim, .lab-dot i { transition: none; }
 }

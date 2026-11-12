@@ -5,6 +5,7 @@ import maplibregl, { type Map as MlMap, type StyleSpecification } from 'maplibre
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { LngLat } from '../core/geo';
 import type { Ambiance, CacheView, FrontView, GameView, JamView, StageApi, StageEvents, WandererView, Weather } from '../game/api';
+import { CameraRig, type TiltMode } from './camera';
 import { CACHE_TOP, Caches } from './caches';
 import { ExploreFog } from './fog';
 import { Fronts } from './fronts';
@@ -20,11 +21,15 @@ import { computeEnv, Sky } from './sky';
 import { Trail, type TrailTone } from './trail';
 import { WANDERER_HEIGHT, Wanderers } from './wanderers';
 
-export interface StageOptions { center?: LngLat; ambiance?: Ambiance }
+export interface StageOptions { center?: LngLat; ambiance?: Ambiance; tilt?: TiltMode }
 
 const DEFAULT_CENTER: LngLat = [-1.5761, 47.1822];
 const ZOOM = 19.4;
 const PITCH = 62;
+const BEARING = -18;
+const MIN_ZOOM = 15, MAX_ZOOM = 20.5, MAX_PITCH = 70;
+/** Le cap de marche n'est relevé qu'après cette distance parcourue (mètres) : un GPS qui hésite ne fait pas tourner la caméra. */
+const COURSE_STEP_M = 5;
 /** Part de la hauteur d'écran laissée au-dessus du point suivi : place le porteur dans le tiers bas. */
 const TOP_PADDING = 0.46;
 /** Au-delà de cette distance à l'ancre (mètres), on recale le repère local. */
@@ -68,6 +73,14 @@ export class Stage implements StageApi {
   private view: GameView | null = null;
   private ready = false;
   private follow = true;
+  /** Angle, zoom et inclinaison : gestes du joueur et caméra derrière le porteur (voir camera.ts). */
+  private readonly rig: CameraRig;
+  /** Cap de marche lissé (degrés, 0 = nord), relevé sur le déplacement réel du porteur ; null tant qu'il n'a pas avancé. */
+  private course: number | null = null;
+  private readonly courseRef = new THREE.Vector3();
+  private courseSet = false;
+  private camBusy = false;
+  private readonly pad = { top: 0, bottom: 0, left: 0, right: 0 };
   /** Après jumpTo : on attend que le joueur arrive avant de reprendre le suivi. */
   private holdUntil = 0;
   private snapNext = true;
@@ -94,18 +107,22 @@ export class Stage implements StageApi {
       container,
       // Style minimal au départ : la scène 3D s'affiche même si la carte ne se charge pas.
       style: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': pal.land } }] },
-      center, zoom: ZOOM, pitch: PITCH, bearing: -18,
-      minZoom: 15, maxZoom: 20.5, maxPitch: 70,
+      center, zoom: ZOOM, pitch: PITCH, bearing: BEARING,
+      minZoom: MIN_ZOOM, maxZoom: MAX_ZOOM, maxPitch: MAX_PITCH,
+      // Aucun geste natif de MapLibre : le suivi du porteur recale la carte à chaque image (jumpTo), ce qui
+      // annulait tout pincement ou rotation en cours. Les gestes sont gérés par CameraRig.
+      interactive: false,
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
       canvasContextAttributes: { antialias: true },
       attributionControl: false,
       fadeDuration: 150,
     });
     this.map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '© OpenFreeMap © OpenMapTiles © OpenStreetMap' }), 'top-right');
-    // Zoom et rotation autour du joueur plutôt qu'autour des doigts.
-    this.map.touchZoomRotate.enable({ around: 'center' });
-    this.map.scrollZoom.enable({ around: 'center' });
-    this.map.touchPitch.enable();
+    this.rig = new CameraRig(this.map.getCanvasContainer(), {
+      bearing: BEARING, zoom: ZOOM, pitch: PITCH, minZoom: MIN_ZOOM, maxZoom: MAX_ZOOM, maxPitch: MAX_PITCH,
+      onTap: (x, y) => { const at = this.map.unproject([x, y]); this.onTap(x, y, [at.lng, at.lat]); },
+    });
+    if (opts.tilt === '2d') this.rig.setTilt('2d');
     // Mention des sources : repliée par défaut (un toucher l'ouvre).
     this.map.once('load', () => this.map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
 
@@ -126,9 +143,7 @@ export class Stage implements StageApi {
     this.router = new Router(() => { if (this.view && !this.paused) this.refreshGuide(this.view); });
 
     this.map.on('load', () => this.onLoad());
-    this.map.on('resize', () => this.applyPadding());
-    this.map.on('dragstart', () => { this.follow = false; });
-    this.map.on('click', e => this.onTap(e.point.x, e.point.y, [e.lngLat.lng, e.lngLat.lat]));
+    this.map.on('resize', () => this.rig.invalidate());
     this.raf = requestAnimationFrame(this.tick);
   }
 
@@ -173,9 +188,27 @@ export class Stage implements StageApi {
     this.refreshEnv();
   }
 
+  /** Vue actuelle : '2d' (carte vue de dessus) ou '3d' (inclinée). */
+  get tilt(): TiltMode { return this.rig.mode; }
+
+  /** Choisit la vue : '2d' = carte vue de dessus, porteur repéré par sa flèche de cap ; '3d' = vue inclinée. Transition douce. */
+  setTilt(mode: TiltMode): void {
+    this.rig.setTilt(mode);
+    this.porter.setFlat(mode === '2d');
+    this.lastBusy = performance.now();
+  }
+
+  /** Bascule entre la vue 2D et la vue 3D ; renvoie la vue obtenue. */
+  toggleTilt(): TiltMode {
+    this.setTilt(this.rig.mode === '2d' ? '3d' : '2d');
+    return this.rig.mode;
+  }
+
   recenter(): void {
     this.follow = true;
     this.holdUntil = 0;
+    // Zoom et inclinaison d'origine ; la caméra se replace derrière le porteur.
+    this.rig.recenter();
     // On repart du centre actuel de la carte : la caméra glisse vers le joueur.
     const c = this.map.getCenter();
     this.layer.toLocal([c.lng, c.lat], this.cam);
@@ -204,7 +237,8 @@ export class Stage implements StageApi {
     map.addSource('veil', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer(this.layer);
     map.addLayer({ id: 'veil', type: 'fill', source: 'veil', paint: { 'fill-color': '#000', 'fill-opacity': 0.32 } }, LAYER_ID);
-    this.applyPadding();
+    this.rig.invalidate();
+    if (this.rig.mode === '2d') this.porter.setFlat(true);
     this.ready = true;
     this.refreshEnv();
     if (this.view) this.apply(this.view);
@@ -229,11 +263,6 @@ export class Stage implements StageApi {
     } catch (err) {
       console.warn('[render] carte indisponible, fond uni', err);
     }
-  }
-
-  private applyPadding(): void {
-    const h = this.map.getContainer().clientHeight;
-    this.map.setPadding({ top: Math.round(h * TOP_PADDING), bottom: 0, left: 0, right: 0 });
   }
 
   /** Recalcule ciel, palette et lumières si l'ambiance ou la météo ont changé. */
@@ -322,6 +351,8 @@ export class Stage implements StageApi {
         if (this.v.distanceTo(this.cam) < 500 || performance.now() > this.holdUntil) { this.holdUntil = 0; snap = true; }
       }
       this.snapNext = false;
+      // Téléportation : le cap de marche repart de zéro (le saut n'est pas une direction).
+      if (snap) this.courseSet = false;
       this.porter.setTarget(this.v, view.player.headingDeg, view.player.moving ? view.player.speedMps : 0, snap);
     } else {
       this.porter.hide();
@@ -347,7 +378,7 @@ export class Stage implements StageApi {
     this.raf = requestAnimationFrame(this.tick);
     if (!this.ready || document.hidden) { this.last = now; return; }
     // Scène calme (personnages au repos seulement) : 30 images par seconde suffisent.
-    const busy = this.porter.moving || this.scan.active || this.party.active || this.sky.animated || this.map.isMoving();
+    const busy = this.porter.moving || this.scan.active || this.party.active || this.sky.animated || this.camBusy || this.rig.active;
     if (busy) this.lastBusy = now;
     // Rien ne bouge depuis un moment : les balises pulsent encore, mais 20 images par seconde suffisent.
     if (!busy && now - this.last < (now - this.lastBusy > 8000 ? 48 : 30)) return;
@@ -369,9 +400,25 @@ export class Stage implements StageApi {
     this.jams.update(this.timeS);
     this.shelters.update(dt, this.timeS, this.porter.pos, (this.map.getBearing() * Math.PI) / 180, (this.map.getPitch() * Math.PI) / 180);
 
-    // Suivi caméra : le centre glisse vers le porteur, sans à-coup.
+    // Cap de marche : relevé sur le chemin réellement parcouru, par pas de quelques mètres, et seulement
+    // quand le jeu dit que le joueur avance. À l'arrêt il ne change pas : la caméra ne fait pas la girouette.
+    const pp = this.porter.pos;
+    if (!this.courseSet || !this.porter.root.visible) { this.courseRef.copy(pp); this.courseSet = this.porter.root.visible; }
+    else {
+      const cx = pp.x - this.courseRef.x, cz = pp.z - this.courseRef.z, d2 = cx * cx + cz * cz;
+      if (d2 > 80 * 80) this.courseRef.copy(pp);
+      else if (d2 > COURSE_STEP_M * COURSE_STEP_M) {
+        if (this.view?.player.moving) this.course = (Math.atan2(cx, -cz) * 180) / Math.PI;
+        this.courseRef.copy(pp);
+      }
+    }
+    const camChanged = this.rig.update(dt, this.holdUntil ? null : this.course);
+    this.camBusy = camChanged;
+
+    // Suivi caméra : le centre glisse vers le porteur, sans à-coup. Les gestes ne changent que l'angle et le zoom.
     let moved = false;
-    if (this.follow && !this.holdUntil && this.porter.root.visible) {
+    const tracking = this.follow && !this.holdUntil && this.porter.root.visible;
+    if (tracking) {
       if (!this.camPlaced) { this.cam.copy(this.porter.pos); this.camPlaced = true; moved = true; }
       const dx = this.porter.pos.x - this.cam.x, dz = this.porter.pos.z - this.cam.z;
       if (dx * dx + dz * dz > 0.0004) {
@@ -379,7 +426,16 @@ export class Stage implements StageApi {
         this.cam.x += dx * k; this.cam.z += dz * k;
         moved = true;
       }
-      if (moved) this.map.jumpTo({ center: this.layer.toLngLat(this.cam.x, this.cam.z, this.ll) });
+    }
+    if (moved || camChanged) {
+      // Un seul recalage par image : centre, cap, zoom, inclinaison et cadrage ensemble.
+      const rig = this.rig, k = Math.min(1, rig.pitch / PITCH);
+      // Vue inclinée : porteur dans le tiers bas. Vue de dessus : porteur au milieu de l'écran.
+      this.pad.top = Math.round(this.map.getContainer().clientHeight * TOP_PADDING * k);
+      const cam = { bearing: rig.bearing, zoom: rig.mapZoom, pitch: rig.pitch, padding: this.pad };
+      if (tracking) this.map.jumpTo({ ...cam, center: this.layer.toLngLat(this.cam.x, this.cam.z, this.ll) });
+      else this.map.jumpTo(cam);
+      moved = true;
     }
     this.sky.update(this.timeS, this.porter.root.visible ? this.porter.pos : this.cam);
     if (!moved) this.map.triggerRepaint();
