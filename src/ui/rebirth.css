@@ -143,3 +143,52 @@
 .rb-radio-log {display:grid;gap:7px;}
 .rb-radio-log p {font-size:12px;line-height:1.6;color:#b7cfc3;padding:12px;margin:0;background:#1d2c2f;
   border-left:2px solid #8cae93;border-radius:0 7px 7px 0;}
+
+/* CINEMATIC ENCOUNTER 2.0 — live 3D arena, not a CSS mock-up. */
+.rb-arena { height:clamp(280px,43dvh,470px); border-radius:17px; border:1px solid #5f7569;
+  box-shadow:0 0 0 1px #1a332a,0 20px 70px #000b; background:#151d24;
+  isolation:isolate;overflow:hidden; }
+.rb-arena .rb-3d-canvas {display:block;position:absolute;inset:0;width:100%;height:100%;z-index:1;touch-action:pan-y;}
+.rb-arena .rb-signal {z-index:5;background:rgba(9,20,24,.83);border-left:2px solid #fc8666;
+  padding:8px 10px;top:13px;left:13px;backdrop-filter:blur(7px);border-radius:0 5px 5px 0;
+  text-shadow:0 1px 2px #000;pointer-events:none; }
+.rb-arena-bottom {position:absolute;z-index:5;bottom:12px;right:14px;left:14px;text-align:right;
+  font:750 9px/1.3 system-ui,sans-serif;letter-spacing:.17em;color:#d4e9e0;
+  text-shadow:0 2px 7px #000,0 1px 4px #000;pointer-events:none;}
+.rb-arena::after {content:'';position:absolute;z-index:4;inset:0;pointer-events:none;
+  box-shadow:inset 0 0 60px 12px #091014a8; border-radius:inherit;}
+.rb-arena-fallback {display:grid;place-items:center;height:100%;font-size:22px;font-weight:900;
+  letter-spacing:.14em;color:#f8b499;text-shadow:0 0 15px #ff745366;
+  background:radial-gradient(ellipse,#445451,#19262c 60%,#10171b);}
+.rb-battle-stats {border:1px solid #3e544e;padding:13px 11px;border-radius:11px;
+  background:linear-gradient(125deg,#25343a,#16232a);}
+.rb-battle-hp {font-size:10px;letter-spacing:.04em;}
+.rb-battle-hp strong {font-size:14px;}
+.rb-battle-log {border:1px solid #536b62;border-left:3px solid #a6d0b1;border-radius:3px 9px 9px 3px;
+  box-shadow:inset 0 1px #ffffff12;}
+.rb-move {transition:transform .12s,background .18s,border-color .18s;}
+.rb-move:active:not(:disabled) {background:#557165;box-shadow:inset 0 0 14px #fff2;}
+@media(max-height:690px) {.rb-arena {height:250px;} .rb-panel {padding-top:12px;} }
+@media(min-width:700px) {.rb-arena {height:360px;}}
+
+/* Intentions tactiques : le joueur lit le coup suivant avant de décider. */
+.rb-telegraph {display:grid;gap:5px;border:1px solid #3c6b66;border-left:3px solid #75bbad;
+  background:linear-gradient(90deg,#234341,#1b2e32);padding:11px 13px;margin:13px 0 7px;border-radius:4px 10px 10px 4px;}
+.rb-telegraph-eyebrow {font-size:9px;font-weight:900;letter-spacing:.15em;color:#8fd3c2;}
+.rb-telegraph strong {color:#d5e5dd;font-size:12px;letter-spacing:.03em;line-height:1.5;}
+.rb-telegraph.rb-danger {background:linear-gradient(90deg,#51362f,#292b2c);border-color:#bd785e;}
+.rb-telegraph.rb-danger .rb-telegraph-eyebrow{color:#ffad89;}
+.rb-battle-actions {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.rb-move-focus {border-color:#92b9a9;background:linear-gradient(135deg,#2c514b,#24403d);}
+.rb-move-feint {border-color:#8daaa4;background:linear-gradient(135deg,#304f54,#28383d);}
+.rb-move {min-height:64px;padding:11px 12px;font-size:11px;}
+.rb-move small {font-size:10px;line-height:1.35;}
+
+/* Borne de simulation tactique : accès immédiat à la mise en scène 3D. */
+.rb-training {display:block;width:100%;text-align:center;margin:13px 0 4px;min-height:59px;
+  border-radius:10px;border:1px solid #c3a98c;
+  background:linear-gradient(115deg,#6f775f 0%,#3c645c 56%,#28433e 100%);
+  color:#f6fae9;font:bold 13px/1.3 system-ui,sans-serif;
+  letter-spacing:.14em;box-shadow:inset 0 1px #ffffff40,0 6px 20px #0005;}
+.rb-training:active:not(:disabled){transform:scale(.985);}
+.rb-training-hint{text-align:center;font-size:9px;letter-spacing:.13em;color:#91ae9e;margin:0 0 5px;}

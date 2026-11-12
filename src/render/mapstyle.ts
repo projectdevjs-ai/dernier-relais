@@ -24,34 +24,34 @@ const KEYS: Key[] = ['land', 'urban', 'park', 'wood', 'water', 'sand', 'road', '
  */
 const DAY: Record<Ambiance, Palette> = {
   'crépuscule': {
-    land: '#ecdcb9', urban: '#e4d0a8', park: '#9fcb72', wood: '#7fb560', water: '#52aede', sand: '#f1d58c',
-    road: '#fdf6e6', roadMajor: '#ffd685', roadEdge: '#b39a6e', path: '#dcb26a', rail: '#a69274',
-    bLow: '#f4dfbb', bHigh: '#e0bd92', roofLow: '#d6784c', roofHigh: '#8fa9ba', text: '#66543a', halo: '#ecdcb9', veil: '#d6d3c6',
-    sky: '#4f9fe8', horizon: '#cfe7fa', haze: '#bcdaf2',
+    // Monde après l'effondrement : pierre, béton patiné, eau acier et végétation poussiéreuse.
+    land:'#9e9e8c',urban:'#a7a394',park:'#7f9778',wood:'#607b67',water:'#658995',sand:'#b6a78d',
+    road:'#d2cbb9',roadMajor:'#c6b39b',roadEdge:'#777f79',path:'#a7a087',rail:'#727d78',
+    bLow:'#b9b6ab',bHigh:'#859294',roofLow:'#8f8176',roofHigh:'#6b8189',text:'#2c3c3c',halo:'#b9b6a7',veil:'#89968f',
+    sky:'#778f9a',horizon:'#c7c3b9',haze:'#a9b3b1',
   },
   clair: {
-    land: '#f3ecda', urban: '#ede4cf', park: '#bfe09a', wood: '#a3d188', water: '#86cdea', sand: '#f6e3a8',
-    road: '#ffffff', roadMajor: '#ffe7b0', roadEdge: '#c9b996', path: '#e6c98c', rail: '#b9ad98',
-    bLow: '#fbeedb', bHigh: '#f0d9c0', roofLow: '#e9a27c', roofHigh: '#c2d0d6', text: '#7b6c52', halo: '#f3ecda', veil: '#c4cfd4',
-    sky: '#7cbdf0', horizon: '#dceefb', haze: '#cbe3f4',
+    land:'#bbbcb0',urban:'#c5bfb2',park:'#98ae8d',wood:'#769483',water:'#7fa2ad',sand:'#d1bea4',
+    road:'#e4e0d3',roadMajor:'#d5c5aa',roadEdge:'#929e99',path:'#bcb6a0',rail:'#899593',
+    bLow:'#d0cec4',bHigh:'#9bacb2',roofLow:'#a59b8e',roofHigh:'#859fa7',text:'#30434a',halo:'#cdd0c4',veil:'#a2b1b3',
+    sky:'#95b2c0',horizon:'#dae0da',haze:'#becbc8',
   },
 };
-/** Palettes de l'HEURE DORÉE (soleil entre -4° et 6°) : tout est chaud, l'horizon s'embrase, le zénith reste bleu. */
+/** Fin de journée : poussière ambrée, lumière rasante et béton cuivré. */
 const GOLD: Record<Ambiance, Palette> = {
   'crépuscule': {
-    land: '#d8b582', urban: '#d0a976', park: '#94a252', wood: '#788f48', water: '#6a96bd', sand: '#e4ba6e',
-    road: '#f4d9aa', roadMajor: '#ffc063', roadEdge: '#a57d52', path: '#cf9550', rail: '#917253',
-    bLow: '#efba82', bHigh: '#d88f5e', roofLow: '#c35f36', roofHigh: '#a3857e', text: '#58402a', halo: '#d8b582', veil: '#c8ab8c',
-    sky: '#5179c4', horizon: '#ffa650', haze: '#e8b488',
+    land:'#8d8271',urban:'#988775',park:'#7a8564',wood:'#596c54',water:'#586d79',sand:'#ae9475',
+    road:'#c5aa8d',roadMajor:'#b98d69',roadEdge:'#806b5e',path:'#ab886c',rail:'#807161',
+    bLow:'#af9681',bHigh:'#857f7f',roofLow:'#9d7060',roofHigh:'#6e7882',text:'#3a3734',halo:'#a59582',veil:'#8e8478',
+    sky:'#586b80',horizon:'#dca77b',haze:'#bba48f',
   },
   clair: {
-    land: '#edd2a2', urban: '#e7c894', park: '#b2bd70', wood: '#97ad64', water: '#7db0d4', sand: '#f2d08a',
-    road: '#feebc4', roadMajor: '#ffcd78', roadEdge: '#be9e6c', path: '#dcae66', rail: '#ae9778',
-    bLow: '#f9d5a2', bHigh: '#ecb684', roofLow: '#dd8452', roofHigh: '#bea59a', text: '#6c5436', halo: '#edd2a2', veil: '#d6bf9e',
-    sky: '#73a2dc', horizon: '#ffbc70', haze: '#f1cda2',
+    land:'#b6a48a',urban:'#b8a58c',park:'#969c77',wood:'#71826d',water:'#708c9c',sand:'#c4a984',
+    road:'#d9c4a7',roadMajor:'#ddb588',roadEdge:'#988270',path:'#bf9e7c',rail:'#998471',
+    bLow:'#cbb3a0',bHigh:'#a2968a',roofLow:'#b58872',roofHigh:'#859099',text:'#51483c',halo:'#c2b5a3',veil:'#a8a69b',
+    sky:'#8398a4',horizon:'#e4b996',haze:'#d3bdab',
   },
 };
-/** Palettes de pleine nuit : bleu profond, rues encore lisibles sous la lune. */
 const NIGHT: Record<Ambiance, Palette> = {
   'crépuscule': {
     land: '#101a22', urban: '#131f28', park: '#12291f', wood: '#0f241b', water: '#0e3048', sand: '#22241c',

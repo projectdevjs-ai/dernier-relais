@@ -134,7 +134,7 @@ export class Sound {
         case 'combat': {
           const fx: Record<typeof e.phase, SoundName> = {
             start: 'dangerIn', strike: 'strap', guard: 'uiConfirm', pulse: 'special',
-            evade: 'frontOut', victory: 'jamWon', defeat: 'jamLost',
+            evade: 'frontOut', focus: 'scan', feint: 'uiTap', victory: 'jamWon', defeat: 'jamLost',
           };
           if (e.phase === 'victory') this.phrase('jamWon');
           else this.play(fx[e.phase]);

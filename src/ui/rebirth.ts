@@ -1,7 +1,8 @@
 // PROJECT REBIRTH — console de survie et arène tactique mobile, sans ressources externes.
 import './rebirth.css';
+import { CinematicBattle } from './battle3d';
 import type { GameActions, GameView, ActionResult } from '../game/api';
-import { RECIPES, type CombatMove, type Recipe, type Resource, type Rebirth, type Faction } from '../game/rebirth';
+import { RECIPES, enemyIntent, INTENT_LABELS, type CombatMove, type Recipe, type Resource, type Rebirth, type Faction } from '../game/rebirth';
 
 function el(tag: string, cls?: string, text?: string): HTMLElement {
   const n = document.createElement(tag);
@@ -36,6 +37,7 @@ export class RebirthConsole {
   private readonly body = el('div','rb-body');
   private readonly status = el('span','rb-trigger-alert');
   private last = '';
+  private battle: CinematicBattle | null = null;
   private opened = false;
   /** Ne montre pas à nouveau une confrontation que le joueur a volontairement réduite. */
   private announcedEncounter: string | null = null;
@@ -60,7 +62,7 @@ export class RebirthConsole {
     if (this.opened) return;
     this.opened = true; this.veil.hidden = false; this.last = ''; this.overlay?.(true); this.draw();
   }
-  close(): void { if (!this.opened) return; this.opened = false; this.veil.hidden = true; this.overlay?.(false); }
+  close(): void { if (!this.opened) return; this.opened = false; this.veil.hidden = true; this.battle?.dispose(); this.battle = null; this.overlay?.(false); }
   render(v: GameView): void {
     this.view = v;
     const s = v.player.rebirth, threat = s?.encounter;
@@ -85,6 +87,7 @@ export class RebirthConsole {
   private draw(): void {
     const v = this.view, state = v?.player.rebirth;
     if (!v || !state) return;
+    this.battle?.dispose(); this.battle = null;
     this.body.replaceChildren();
     const top = el('header','rb-head');
     const title = el('div','rb-head-title');
@@ -103,6 +106,12 @@ export class RebirthConsole {
     percentage.append(el('span','',String(state.integrity)),el('small','',' / 100'));
     summary.append(summaryText, percentage, bar(state.integrity,100,'rb-integrity'));
     this.body.append(summary);
+    const training = button('◉  LANCER UNE SIMULATION 3D', 'rb-training', () => {
+      this.act(this.actions.startTraining?.() ?? {ok:false,why:'Simulation indisponible'});
+    });
+    training.disabled = v.player.moving || !!v.player.vehicle;
+    this.body.append(training);
+    this.body.append(el('p','rb-training-hint','ESSAI GRATUIT · 0 PERTE DE MATÉRIEL · 0 POINT / XP'));
     const tabs = el('nav','rb-tabs');
     for (const [id,label] of [['survie','SAC'],['fabrication','ATELIER'],['factions','FACTIONS'],['radio','RADIO']] as const) {
       const b = button(label, 'rb-tab'+(this.tab===id?' is-active':''), ()=>{ this.tab=id; this.last=''; this.draw(); });
@@ -200,20 +209,33 @@ export class RebirthConsole {
     const e=s.encounter!;
     const stopped=!v.player.moving&&!v.player.vehicle;
     const arena=el('div','rb-arena rb-enemy-'+e.kind);
-    arena.append(el('div','rb-arena-grid'),el('div','rb-signal','CONTACT HOSTILE  //  '+String(e.turn+1).padStart(2,'0')));
-    const silhouette=el('div','rb-silhouette');
-    silhouette.append(el('span','rb-enemy-core'),el('span','rb-enemy-head'),el('span','rb-enemy-eye'));
-    arena.append(silhouette,el('div','rb-arena-horizon'));
     this.body.append(arena);
+    try {
+      this.battle = new CinematicBattle(arena,e);
+      this.battle.setMood(e.last.includes('Impulsion') ? 'pulse' : e.last.includes('Coup') ? 'strike' : e.last.includes('défensive') ? 'guard' : 'intro');
+    } catch {
+      this.battle?.dispose(); this.battle=null;
+      arena.append(el('div','rb-arena-fallback','SIGNAL HOSTILE // '+e.name.toUpperCase()));
+    }
+    arena.append(el('div','rb-signal','CONTACT HOSTILE  //  TOUR '+String(e.turn+1).padStart(2,'0')),
+      el('div','rb-arena-bottom','TACTICAL SURVIVAL · STATION LUMEN'));
     this.body.append(el('div','rb-battle-title',e.title),el('p','rb-hint',e.subtitle));
+    const intent=enemyIntent(e);
+    const telegraph=el('div','rb-telegraph '+(intent==='charge'?'rb-danger':''));
+    telegraph.append(el('span','rb-telegraph-eyebrow','◉  ANALYSE DU COMPORTEMENT'),
+      el('strong','',INTENT_LABELS[intent]));
+    this.body.append(telegraph);
     const stats=el('div','rb-battle-stats');
     const enemy=el('div','rb-battle-hp');enemy.append(el('span','','MENACE  /  '+e.name),el('strong','',e.hp+' / '+e.maxHp),bar(e.hp,e.maxHp,'rb-enemy-hp'));
     const player=el('div','rb-battle-hp');player.append(el('span','','ARMURE  /  PORTEUR'),el('strong','',s.integrity+' / 100'),bar(s.integrity,100,'rb-integrity'));
     stats.append(enemy,player);this.body.append(stats);
     this.body.append(el('p','rb-battle-log',stopped?e.last:'Tu es en déplacement. Immobilise-toi en sécurité pour agir.'));
+    this.body.append(el('p','rb-hint','CALIBRAGE '+('▮'.repeat(e.focus))+'▯'.repeat(2-e.focus)+'  ·  EMP x'+s.resources.charges));
     const actions=el('div','rb-battle-actions');
     const moves: [CombatMove,string,string][]=[
-      ['strike','⚔  ATTAQUER','10–16 dégâts'],
+      ['strike','⚔  ATTAQUER','10–16 dégâts · +8 par calibrage'],
+      ['focus','⌖  CALIBRER','+1 charge de précision · risque'],
+      ['feint','↯  DÉSTABILISER','Interrompt une attaque chargée'],
       ['guard','⬡  SE PROTÉGER','Réduit la riposte'],
       ['pulse','ϟ  IMPULSION EMP','Consomme 1 charge'],
       ['evade','↗  SE REPLIER','Tente une retraite']
@@ -222,7 +244,7 @@ export class RebirthConsole {
       const b=button(name,'rb-move rb-move-'+id,()=>this.act(this.actions.combatMove?.(id)??{ok:false,why:'Indisponible'}));
       b.append(el('small','',info));b.disabled=!stopped||(id==='pulse'&&s.resources.charges<1);actions.append(b);
     }
-    this.body.append(actions,el('p','rb-hint','Combat au tour par tour. Chaque action peut déclencher une contre-attaque. Tu peux fermer l’écran et reprendre plus tard.'));
+    this.body.append(actions,el('p','rb-hint','Lis la prochaine attaque, prépare une parade ou interromps une charge. À chaque tour, ton adversaire réagit. Combat sauvegardé automatiquement.'));
     this.body.append(el('footer','rb-footer','TACTICAL ENGAGEMENT  //  NO LIVE ACTION REQUIRED'));
   }
 }

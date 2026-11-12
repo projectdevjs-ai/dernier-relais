@@ -318,7 +318,7 @@ export type GameEvent =
   | { type: 'contract'; contract: ContractView }
   | { type: 'danger'; entered: boolean }
   /** Son de combat tactique généré localement, sans dépendance externe. */
-  | { type: 'combat'; phase: 'start' | 'strike' | 'guard' | 'pulse' | 'evade' | 'victory' | 'defeat' }
+  | { type: 'combat'; phase: 'start' | 'strike' | 'guard' | 'pulse' | 'evade' | 'focus' | 'feint' | 'victory' | 'defeat' }
   | { type: 'toast'; text: string; tone?: 'info' | 'good' | 'warn' }
   /** Vitesse de véhicule détectée ('début') ou retour à pied ('fin'). L'interface demande alors si le joueur est passager. */
   | { type: 'vehicle'; phase: 'début' | 'fin' }
@@ -390,6 +390,8 @@ export interface GameActions {
   resolveThreat?(zoneId: string, choice: 'eviter' | 'negocier'): ActionResult;
   /** Engager une rencontre tactique depuis une zone, seulement à l'arrêt. */
   engageThreat?(zoneId: string): ActionResult;
+  /** Simulateur tactique sans récompenses ni conséquences sur la sauvegarde. */
+  startTraining?(): ActionResult;
   /** Un tour de combat tactique avec riposte ennemie. */
   combatMove?(move: CombatMove): ActionResult;
   /** Fabriquer un objet ou réparer l'armure depuis les matériaux récoltés. */
