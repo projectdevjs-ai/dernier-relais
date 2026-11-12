@@ -170,3 +170,16 @@
 .rb-move:active:not(:disabled) {background:#557165;box-shadow:inset 0 0 14px #fff2;}
 @media(max-height:690px) {.rb-arena {height:250px;} .rb-panel {padding-top:12px;} }
 @media(min-width:700px) {.rb-arena {height:360px;}}
+
+/* Intentions tactiques : le joueur lit le coup suivant avant de décider. */
+.rb-telegraph {display:grid;gap:5px;border:1px solid #3c6b66;border-left:3px solid #75bbad;
+  background:linear-gradient(90deg,#234341,#1b2e32);padding:11px 13px;margin:13px 0 7px;border-radius:4px 10px 10px 4px;}
+.rb-telegraph-eyebrow {font-size:9px;font-weight:900;letter-spacing:.15em;color:#8fd3c2;}
+.rb-telegraph strong {color:#d5e5dd;font-size:12px;letter-spacing:.03em;line-height:1.5;}
+.rb-telegraph.rb-danger {background:linear-gradient(90deg,#51362f,#292b2c);border-color:#bd785e;}
+.rb-telegraph.rb-danger .rb-telegraph-eyebrow{color:#ffad89;}
+.rb-battle-actions {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.rb-move-focus {border-color:#92b9a9;background:linear-gradient(135deg,#2c514b,#24403d);}
+.rb-move-feint {border-color:#8daaa4;background:linear-gradient(135deg,#304f54,#28383d);}
+.rb-move {min-height:64px;padding:11px 12px;font-size:11px;}
+.rb-move small {font-size:10px;line-height:1.35;}
