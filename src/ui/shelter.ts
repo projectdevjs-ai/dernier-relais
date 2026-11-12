@@ -80,6 +80,9 @@ export class ShelterPanel {
   private handoffEl = h('div', 'dr-list');
   private handoffList: KeyedList<OrderView>;
   private handoffSec: HTMLElement;
+  private missionLabel = h('p', 'dr-hint');
+  private missionButton: HTMLButtonElement;
+  private missionSec: HTMLElement;
   private relaySide = h('span', 'dr-sec-side');
   private relayOff = h('p', 'dr-hint', 'Les relais demandent une connexion. Tout le reste marche hors ligne.');
   private relayHint = h('p', 'dr-hint');
@@ -108,6 +111,11 @@ export class ShelterPanel {
     this.coll = h('div', 'dr-coll', icon('network'), this.collTxt, h('span', 'dr-bar', this.collBar), this.collPts);
     this.coll.hidden = true;
     this.coll.setAttribute('role', 'img');
+    this.missionButton = btn('dr-btn dr-btn-wide', null, 'Accepter la mission');
+    this.missionButton.addEventListener('click', () => {
+      if (this.id && this.ctx.run(this.ctx.events.actions.relayMission?.(this.id) ?? { ok: false, why: 'Mission indisponible' })) this.ctx.ui('confirm');
+    });
+    this.missionSec = h('div', 'dr-relays', h('div', 'dr-sec', h('h3', 'dr-sec-title', icon('contract'), 'Missions permanentes')), this.missionLabel, this.missionButton);
     this.handoffList = new KeyedList(this.handoffEl, (o) => o.id, () => this.handoffRow());
     this.handoffSec = h('div', 'dr-relays', h('div', 'dr-sec', h('h3', 'dr-sec-title', icon('heart'), 'Dépôt solidaire')), h('p', 'dr-hint', 'Tout colis accepté, même hors ligne. +10 réputation, sans points ni XP. Le colis quitte définitivement ton sac.'), this.handoffEl);
     this.giveList = new KeyedList(this.giveEl, (x) => x.o.id, () => this.giveRow());
@@ -122,7 +130,7 @@ export class ShelterPanel {
       this.prog,
       h('div', 'dr-npc', this.portrait.el, h('div', 'dr-npc-txt', this.npcName, this.line)),
       h('div', 'dr-sec', h('h3', 'dr-sec-title', icon('crate'), 'À livrer ici'), this.secSide), listEl, this.empty,
-      this.handoffSec, this.relaySec);
+      this.missionSec, this.handoffSec, this.relaySec);
     this.cta = btn('dr-btn dr-btn-go dr-btn-wide', null, icon('pin'), this.ctaText);
     this.cta.addEventListener('click', () => { if (this.id) ctx.run(ctx.events.actions.deliver(this.id)); });
     this.panel.foot.append(this.cta);
@@ -305,6 +313,13 @@ export class ShelterPanel {
     setText(this.npcName, known ? NPC[s.npc].name : 'Quelqu’un t’observe');
     setText(this.line, known ? s.line : 'Livre un premier colis ici pour faire connaissance.');
 
+    const mission = s.mission;
+    show(this.missionSec, !!mission);
+    if (mission) {
+      setText(this.missionLabel, `${mission.label} · ${mission.progress}/${mission.goal} · prime ${mission.reward} pts. Une nouvelle mission sera disponible après chaque réussite.`);
+      setText(this.missionButton, !mission.active ? 'Accepter la mission' : mission.done ? 'Récupérer la prime' : 'Mission en cours');
+      setDisabled(this.missionButton, !s.inRange || (mission.active && !mission.done));
+    }
     const wrong = v.orders.filter(o => o.state === 'porté' && o.destId !== s.id);
     this.handoffList.sync(wrong);
     show(this.handoffSec, wrong.length > 0);
