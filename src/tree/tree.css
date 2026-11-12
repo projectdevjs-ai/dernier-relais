@@ -201,9 +201,9 @@
   .tr-kicker { font-size: 10px; }
   .tr-pts { padding: 0 9px; gap: 6px; }
   .tr-pts-ic { display: none; }
-  .tr-pts-l { width: 50px; font-size: 10px; }
+  .tr-pts-l { width: 58px; font-size: 10px; }
   .tr-top { gap: 6px; padding-left: calc(var(--sal) + 10px); }
-  .tr .tr-tag { max-width: 92px; padding: 3px 3px 3px 6px; gap: 4px; }
+  .tr .tr-tag { max-width: 102px; padding: 3px 3px 3px 6px; gap: 4px; }
   .tr-tag-name { font-size: 10px; }
   .tr-leg-name { font-size: 10.5px; letter-spacing: 0; }
   .tr .tr-leg { padding: 9px 5px 8px; }
