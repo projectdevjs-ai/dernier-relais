@@ -1,4 +1,5 @@
 // PROJECT REBIRTH — console de survie et arène tactique mobile, sans ressources externes.
+import './rebirth.css';
 import type { GameActions, GameView, ActionResult } from '../game/api';
 import { RECIPES, type CombatMove, type Recipe, type Resource, type Rebirth, type Faction } from '../game/rebirth';
 
