@@ -326,6 +326,11 @@ export class Game implements GameEngine {
       }
     }
     this.pos = p;
+    // Une téléportation peut suivre le chargement des tuiles ; ne conserve pas de vieux colis à des kilomètres.
+    const loadedNow = new Set(this.loadedCells);
+    for (const [id, o] of this.orders) {
+      if (o.state === 'révélé' && o.pickedAt === null && o.cell && !o.jam && !o.lost?.net && !loadedNow.has(o.cell) && dist(o.at, p) > 1500) this.orders.delete(id);
+    }
     const here = cellAt(p[0], p[1]).id;
     if (!this.visited.has(here)) { this.visited.add(here); this.visitedList.push(here); this.dirty = true; }
     this.refreshPlace();
