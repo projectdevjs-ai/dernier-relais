@@ -1,0 +1,41 @@
+# Fabrique l'APK Android de test à chaque envoi sur main et la publie en téléchargement :
+# https://github.com/projectdevjs-ai/dernier-relais/releases/download/apk/dernier-relais.apk
+name: APK Android
+on:
+  push: { branches: [main, apk-test] }
+  workflow_dispatch:
+permissions: { contents: write }
+concurrency: { group: apk, cancel-in-progress: true }
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npm run build
+      - name: Projet Android
+        run: |
+          npx cap add android
+          # Autorisations : position (GPS), caméra (preuve photo), vibrations.
+          sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-feature android:name="android.hardware.location.gps" android:required="false" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>#' android/app/src/main/AndroidManifest.xml
+          # Écran toujours vertical.
+          sed -i 's#android:name=".MainActivity"#android:name=".MainActivity" android:screenOrientation="portrait"#' android/app/src/main/AndroidManifest.xml
+          if [ -d android-config/res ]; then cp -r android-config/res/* android/app/src/main/res/; fi
+          npx cap sync android
+      - name: Clé de signature de test (fixe, pour installer les mises à jour par-dessus)
+        run: mkdir -p ~/.android && cp android-config/test.keystore ~/.android/debug.keystore
+      - name: Construction
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon -q
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk dernier-relais.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: dernier-relais-apk, path: dernier-relais.apk }
+      - name: Publication
+        if: github.ref == 'refs/heads/main'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release view apk >/dev/null 2>&1 || gh release create apk --title "APK de test" --notes "Dernière APK Android de test, reconstruite à chaque mise à jour du jeu." --latest
+          gh release upload apk dernier-relais.apk --clobber

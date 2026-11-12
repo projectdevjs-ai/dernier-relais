@@ -141,7 +141,7 @@ export class NearAction {
     setAttr(this.el, 'data-kind', t.kind);
     if (t.kind === 'cache') { setText(this.actTitle, 'Ouvrir la cache'); setText(this.actSub, 'Quelqu’un a laissé ça pour toi'); }
     else if (t.kind === 'wanderer') { setText(this.actTitle, `Parler à ${t.w.name}`); setText(this.actSub, 'Un voyageur de passage'); }
-    else { setText(this.actTitle, `Prendre les ${t.j.count} colis groupés`); setText(this.actSub, `${t.j.minutes} min pour tout livrer · bonus +${fmtInt(t.j.bonus)} pts`); }
+    else { setText(this.actTitle, 'Prendre le lot'); setText(this.actSub, `${t.j.count} colis en ${t.j.minutes} min : bonus +${fmtInt(t.j.bonus)} pts`); }
   }
 
   private pick(v: GameView): Near | null {

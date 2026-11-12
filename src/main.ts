@@ -10,6 +10,7 @@ import { fetchWeather } from './services/weather';
 import { FrancePanel } from './ui/france';
 import { Hud } from './ui/hud';
 import { Sound } from './audio/audio';
+import { Voice } from './audio/voice';
 import { World } from './world/world';
 
 const START: LngLat = [-1.5761, 47.1822];
@@ -22,7 +23,9 @@ const ambiance: Ambiance = pref.get('ambiance') === 'clair' ? 'clair' : 'crépus
 
 // Sons et vibrations : le navigateur n'autorise le son qu'après un premier toucher.
 const sound = new Sound({ muted: pref.get('son') === 'non' });
-addEventListener('pointerdown', () => sound.unlock());
+const voice = new Voice();
+voice.muted = pref.get('son') === 'non';
+addEventListener('pointerdown', () => { sound.unlock(); voice.unlock(); });
 
 // En ligne : sauvegarde locale d'abord, copie sur le serveur quand il répond. Hors ligne, le jeu reste complet.
 const online = createOnline(new LocalGameStore());
@@ -53,7 +56,11 @@ const locator = new Locator(place, (s, why) => {
 
 const stage = new Stage('stage', {
   onTapGround: at => { if (mode === 'simulé') simTarget = at; },
-  onTapShelter: id => hud.openShelter(id),
+  onTapShelter: id => {
+    hud.openShelter(id);
+    const sh = view?.shelters.find(x => x.id === id);
+    if (sh && sh.stars > 0) voice.say(sh.npc, sh.line);
+  },
   onTapOrder: id => hud.openOrder(id),
 }, { center: START, ambiance });
 
@@ -83,6 +90,9 @@ game.on(e => {
     stage.celebrate(e.result.shelterId);
     const sh = view?.shelters.find(x => x.id === e.result.shelterId);
     if (sh) online.net.onDelivery(e.result, { id: sh.id, name: sh.name, at: sh.at });
+    // Le responsable de l'abri réagit de vive voix, une fois le jingle de la note passé.
+    const sid = e.result.shelterId;
+    setTimeout(() => { const now = game.view().shelters.find(x => x.id === sid); if (now && now.stars > 0) voice.say(now.npc, now.line); }, 1900);
   }
 });
 
@@ -117,7 +127,7 @@ game.load().then(() => {
 });
 const flush = () => { void game.flush().then(() => online.store.flush()); };
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { flush(); sound.suspend(); } else sound.resume();
+  if (document.visibilityState === 'hidden') { flush(); sound.suspend(); voice.stop(); } else sound.resume();
 });
 addEventListener('pagehide', flush);
 

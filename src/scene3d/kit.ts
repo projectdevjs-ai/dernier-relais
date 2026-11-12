@@ -107,7 +107,7 @@ export class Viewport {
     r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
-    if (opts.shadows) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; }
+    if (opts.shadows) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap; }
     if (post && r.capabilities.isWebGL2) {
       const pr = r.getPixelRatio();
       // Anticrénelage matériel sur la cible intermédiaire : 4 échantillons sur écran ordinaire, 2 sur écran dense.

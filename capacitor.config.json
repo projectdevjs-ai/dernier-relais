@@ -1,0 +1,7 @@
+{
+  "appId": "fr.dernierrelais.app",
+  "appName": "Dernier Relais",
+  "webDir": "dist",
+  "backgroundColor": "#14201f",
+  "android": { "allowMixedContent": false }
+}

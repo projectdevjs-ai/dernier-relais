@@ -128,7 +128,7 @@ export class Sheet {
         setText(this.nextDelay, t.o.minutesLeft === null ? '' : fmtDelay(t.o.minutesLeft));
         setTone(this.nextDelay, delayTone(t.o.minutesLeft));
       } else if (t.kind === 'reveal') {
-        setText(this.nextTitle, t.o.name); setText(this.nextSub, t.o.inRange ? 'À portée : ramasse-le' : 'Colis à ramasser');
+        setText(this.nextTitle, t.o.name); setText(this.nextSub, t.o.inRange ? 'À portée : ramasse-le' : t.o.special ? 'Colis spécial à ramasser' : t.o.lost ? `Perdu par ${t.o.lost.by} : à ramener` : 'Colis à ramasser');
         setText(this.nextDist, fmtDist(t.o.distanceM)); setText(this.nextDelay, '');
       } else if (t.kind === 'shelter') {
         setText(this.nextTitle, t.s.name); setText(this.nextSub, 'Abri le plus proche');
@@ -157,9 +157,13 @@ export class Sheet {
     const dest = h('span', 'dr-row-dest');
     const frag = h('span', 'dr-row-frag', icon('fragile'));
     frag.title = 'Fragile';
+    const spe = h('span', 'dr-row-spe', icon('special'));
+    spe.title = 'Colis spécial';
+    const lost = h('span', 'dr-row-lost', icon('heart'));
+    lost.title = 'Colis perdu à ramener';
     const w = meta('weight'), c = meta('shield'), d = meta('clock'), far = meta('route');
     const info = btn('dr-row-info', null,
-      h('span', 'dr-row-l1', name, frag),
+      h('span', 'dr-row-l1', name, spe, lost, frag),
       h('span', 'dr-row-l2', icon('pin'), dest),
       h('span', 'dr-row-l3', w.el, c.el, d.el, far.el));
     const actLabel = h('span', '');
@@ -181,8 +185,12 @@ export class Sheet {
         }
         setText(name, o.name);
         setText(dest, o.destName);
-        show(frag, o.fragile);
-        setText(w.val, fmtKg(o.weightKg));
+        // Tant que le colis n'a pas été écouté ou ramassé, on ne sait pas s'il est fragile, ni ce que pèse un colis spécial.
+        const known = o.inspected !== false;
+        show(frag, o.fragile && known);
+        show(spe, !!o.special); show(lost, !!o.lost);
+        setAttr(el, 'data-look', o.special ? 'special' : o.lost ? 'lost' : '');
+        setText(w.val, o.special && !o.special.known ? '? kg' : fmtKg(o.weightKg));
         const carried = o.state === 'porté';
         show(c.el, carried);
         if (carried) { setText(c.val, fmtPct(o.condition)); setTone(c.el, condTone(o.condition)); }

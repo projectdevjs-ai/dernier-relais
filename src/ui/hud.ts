@@ -3,7 +3,8 @@
 import './hud.css';
 import type { ActionResult, Ambiance, GameEvent, GameView, HudApi, HudEvents, WeatherKind } from '../game/api';
 import type { Ctx, Tone } from './ctx';
-import { btn, fmtInt, h, setAttr, setDisabled, setText, setVar, show } from './dom';
+import { btn, fmtDist, fmtInt, h, setAttr, setDisabled, setText, setVar, show } from './dom';
+import { EventsBar, NearAction } from './events';
 import { GradeScreen } from './grade';
 import { Help } from './help';
 import { icon, type IconName } from './icons';
@@ -28,6 +29,9 @@ export class Hud implements HudApi {
   private porter: PorterPanel;
   private grade: GradeScreen;
   private help: Help;
+  private eventsBar: EventsBar;
+  private near: NearAction;
+  private events: HudEvents;
 
   // Éléments du HUD permanent
   private lvl = h('span', 'dr-lvl-n');
@@ -51,6 +55,7 @@ export class Hud implements HudApi {
 
   constructor(private root: HTMLElement, events: HudEvents, opts?: { ambiance?: Ambiance }) {
     root.classList.add('dr-hud');
+    this.events = events;
     this.setAmbiance(opts?.ambiance ?? 'crépuscule');
 
     const ctx: Ctx = {
@@ -81,9 +86,11 @@ export class Hud implements HudApi {
     this.balance.addEventListener('click', () => events.actions.steady());
     this.gps = h('div', 'dr-chip dr-gps', h('i', 'dr-gps-dot'), this.gpsTxt);
 
+    this.eventsBar = new EventsBar(root, ctx);
     const top = h('div', 'dr-top',
       h('div', 'dr-top-row', this.lvlBox, h('span', 'dr-grow'), this.wxBox, menu),
-      h('div', 'dr-top-row', this.loadBox, this.balance, h('span', 'dr-grow'), this.gps));
+      h('div', 'dr-top-row', this.loadBox, this.balance, h('span', 'dr-grow'), this.gps),
+      this.eventsBar.el);
 
     // ----- Bas droite : recentrer et scanner -----
     const recenter = btn('dr-iconbtn dr-surface dr-recenter', 'Recentrer la carte sur moi', icon('locate'));
@@ -96,13 +103,14 @@ export class Hud implements HudApi {
 
     root.append(top, fabs);
     this.sheet = new Sheet(root, ctx);
+    this.near = new NearAction(root, ctx);
     this.help = new Help(root);
     this.toasts = new Toasts(root);
     this.shelter = new ShelterPanel(root, ctx);
     this.order = new OrderPanel(root, ctx);
     this.porter = new PorterPanel(root, ctx, { setAmbiance: (a) => this.setAmbiance(a), replayHelp: () => this.showHelp() });
     this.porter.showAmbiance(this.ambiance);
-    this.grade = new GradeScreen(root);
+    this.grade = new GradeScreen(root, (id) => events.actions.proof(id));
     this.grade.onShow = () => this.closePanels();
     this.help.auto();
   }
@@ -151,6 +159,8 @@ export class Hud implements HudApi {
     setText(this.scanSec, cooling ? String(Math.ceil(s.cooldownLeftS)) : '');
     setAttr(this.scan, 'aria-label', cooling ? `Scanner en recharge, ${Math.ceil(s.cooldownLeftS)} secondes` : 'Scanner les alentours');
 
+    this.eventsBar.render(view);
+    this.near.render(view);
     this.sheet.render(view);
     if (this.shelter.id) this.shelter.render(view);
     if (this.order.id) this.order.render(view);
@@ -160,7 +170,8 @@ export class Hud implements HudApi {
   handle(e: GameEvent): void {
     switch (e.type) {
       case 'scan':
-        this.toasts.push(e.found === 0 ? 'Rien dans la zone' : e.found === 1 ? '1 colis repéré' : `${e.found} colis repérés`, e.found ? 'good' : 'info', 'scan');
+        if (e.found || !e.caches) this.toasts.push(e.found === 0 ? 'Rien dans la zone' : e.found === 1 ? '1 colis repéré' : `${e.found} colis repérés`, e.found ? 'good' : 'info', 'scan');
+        if (e.caches) this.toasts.push('Une cache est tout près', 'good', 'cache');
         break;
       case 'pickup': this.toasts.push(`${e.order.name} : dans le sac`, 'good', 'bag'); break;
       case 'drop': this.toasts.push('Colis posé', 'info', 'drop'); break;
@@ -171,6 +182,32 @@ export class Hud implements HudApi {
         break;
       case 'danger': this.toasts.push(e.entered ? 'Zone dangereuse : ne traîne pas' : 'Tu es sorti de la zone', e.entered ? 'warn' : 'info'); break;
       case 'toast': this.toasts.push(e.text, e.tone ?? 'info'); break;
+      // ----- Systèmes secondaires -----
+      case 'special': if (e.order.special) this.toasts.push(`${e.order.special.label}. ${e.order.special.rule}`, 'warn', 'special', 5500); break;
+      case 'inspect': {
+        const sp = e.order.special;
+        if (sp) this.toasts.push(`${sp.label}. ${sp.rule}`, 'warn', 'special', 5500);
+        else this.toasts.push(e.order.fragile ? `Ça tinte : colis fragile (+${e.xp} XP)` : `Rien de fragile là-dedans (+${e.xp} XP)`, 'info', 'ear');
+        break;
+      }
+      case 'cache':
+        this.toasts.push(`Cache ouverte : +${fmtInt(e.points)} pts, +${fmtInt(e.xp)} XP${e.skillPoint ? ' et 1 point de compétence' : ''}`, 'good', 'cache', 4000);
+        break;
+      case 'wanderer': this.toasts.push(`${e.name} : ${e.line}`, 'good', 'walker', 6000); break;
+      case 'front':
+        if (e.phase === 'approche') this.toasts.push(`Front de mauvais temps dans ${Math.max(1, Math.round((e.etaS ?? 0) / 60))} min : évite-le ou traverse-le`, 'warn', 'front', 4500);
+        else if (e.phase === 'entrée') this.toasts.push('Dans le front : tes colis s’usent, la note en tiendra compte', 'warn', 'front', 4500);
+        else this.toasts.push('Front traversé', 'info', 'front');
+        break;
+      case 'jam':
+        if (e.phase === 'début') this.toasts.push(`${e.jam.count} colis groupés : ${e.jam.minutes} min pour tout livrer`, 'info', 'stack', 4000);
+        else if (e.phase === 'réussi') this.toasts.push(`Lot livré à temps : +${fmtInt(e.bonus ?? 0)} pts`, 'good', 'stack', 4000);
+        else this.toasts.push('Trop tard pour le bonus du lot. Les colis restent à livrer', 'info', 'stack', 4000);
+        break;
+      case 'strap':
+        this.toasts.push(e.quality >= 1 ? `Bien arrimé : charge plus stable (+${e.xp} XP)` : e.quality === 0.5 ? 'Trop serré : arrimage moyen' : 'Sangle un peu lâche : arrimage moyen', e.quality >= 1 ? 'good' : 'info', 'strap');
+        break;
+      case 'proof': if (!this.grade.proofDone(e.orderId, e.points)) this.toasts.push(`Photo-preuve : +${fmtInt(e.points)} pts`, 'good', 'camera'); break;
     }
   }
 
@@ -181,6 +218,22 @@ export class Hud implements HudApi {
   openOrder(id: string): void {
     this.shelter.panel.close(); this.porter.panel.close();
     this.order.open(id, this.view);
+  }
+
+  /** Toucher d'une cache dans la scène : on l'ouvre si on est dessus, sinon on dit à quelle distance elle est. */
+  openCache(id: string): void {
+    const c = this.view?.caches?.find((x) => x.id === id);
+    if (!c) return;
+    if (c.inRange) this.run(this.events.actions.openCache(id));
+    else this.toasts.push(`Cache à ${fmtDist(c.distanceM)} : approche-toi pour l’ouvrir`, 'info', 'cache');
+  }
+  /** Toucher d'un rôdeur dans la scène. */
+  openWanderer(id: string): void {
+    const w = this.view?.wanderers?.find((x) => x.id === id);
+    if (!w) return;
+    if (w.met) this.toasts.push(`${w.name} t’a déjà donné ce qu’il avait`, 'info', 'walker');
+    else if (w.inRange) this.run(this.events.actions.talk(id));
+    else this.toasts.push(`${w.name}, à ${fmtDist(w.distanceM)} : approche-toi pour lui parler`, 'info', 'walker');
   }
 
   // ---------- Au-delà du contrat (menu, démo) ----------

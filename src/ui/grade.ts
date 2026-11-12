@@ -1,8 +1,9 @@
 // Écran de note après une livraison : le moment fort. Une grande lettre frappée comme un tampon,
 // puis le détail, les gains et les étoiles de l'abri. Plusieurs livraisons s'enchaînent.
-import type { DeliveryResult, Grade } from '../game/api';
+import type { ActionResult, DeliveryResult, Grade } from '../game/api';
 import { btn, fmtInt, h, reducedMotion } from './dom';
 import { icon } from './icons';
+import { ProofCamera, cameraAvailable } from './proof';
 import { NPC, starRow } from './shelter';
 
 const WORD: Record<Grade, string> = { S: 'Parfait', A: 'Excellent', B: 'Solide', C: 'Correct', D: 'Passable', E: 'Limite' };
@@ -32,8 +33,15 @@ export class GradeScreen {
   private lastFocus: Element | null = null;
   /** Appelé à chaque nouvelle note affichée (pour fermer les panneaux dessous). */
   onShow: (() => void) | null = null;
+  // Photo-preuve de la note affichée : la photo ne vit que dans cet écran, elle disparaît avec lui.
+  private camera = new ProofCamera();
+  private current: DeliveryResult | null = null;
+  private proofSlot: HTMLElement | null = null;
+  /** Faux dès que la caméra a été refusée ou s'est révélée absente : on ne repropose plus. */
+  private cameraOk = true;
 
-  constructor(parent: HTMLElement) {
+  /** `proof` : déclare au jeu qu'une photo-preuve a été prise (sans lui, la photo n'est pas proposée). */
+  constructor(parent: HTMLElement, private proof?: (orderId: string) => ActionResult) {
     this.el = h('div', 'dr-grade');
     this.el.hidden = true;
     this.el.tabIndex = -1;
@@ -53,6 +61,8 @@ export class GradeScreen {
   }
 
   private next(): void {
+    this.camera.close();
+    this.current = null; this.proofSlot = null;
     const r = this.queue.shift();
     if (!r) {
       this.el.hidden = true; this.total = 0; this.done = 0;
@@ -68,7 +78,7 @@ export class GradeScreen {
   private show(r: DeliveryResult): void {
     const count = h('span', 'dr-grade-count', this.total > 1 ? `${this.done} / ${this.total}` : '');
     const top = h('div', 'dr-grade-top',
-      h('div', 'dr-grade-kick', h('span', '', 'Colis livré'), count),
+      h('div', 'dr-grade-kick', h('span', '', r.special ? 'Colis spécial livré' : r.lostBy ? 'Colis retrouvé et livré' : 'Colis livré'), count),
       h('h2', 'dr-grade-order', r.orderName),
       h('p', 'dr-grade-dest', icon('pin'), h('span', '', r.shelterName)));
 
@@ -105,9 +115,45 @@ export class GradeScreen {
     const go = btn('dr-btn dr-btn-wide dr-grade-go', null, this.queue.length ? 'Suivant' : 'Continuer');
     go.addEventListener('click', () => this.next());
 
+    // Photo-preuve : proposée seulement si l'appareil a une caméra ; un refus la fait disparaître sans rien dire.
+    const proofSlot = h('div', 'dr-proof');
+    proofSlot.hidden = true;
+    this.current = r; this.proofSlot = proofSlot;
+    const bonus = r.proofBonus ?? 0;
+    if (this.proof && this.cameraOk && bonus > 0) {
+      void cameraAvailable().then((ok) => {
+        if (!ok) { this.cameraOk = false; return; }
+        if (this.current !== r) return;
+        const shoot = btn('dr-btn dr-btn-line dr-proof-btn', null, icon('camera'), h('span', '', 'Photo-preuve'), h('span', 'dr-cost', `+${fmtInt(bonus)} pts`));
+        shoot.addEventListener('click', () => { void this.shoot(r, shoot); });
+        proofSlot.replaceChildren(shoot);
+        proofSlot.hidden = false;
+      });
+    }
+
     this.el.dataset.grade = r.grade;
     this.el.hidden = false;
-    this.el.replaceChildren(top, h('div', 'dr-grade-mid', seal, word, notes), h('div', 'dr-grade-low', gains, shel, level), go);
+    this.el.replaceChildren(top, h('div', 'dr-grade-mid', seal, word, notes), h('div', 'dr-grade-low', gains, shel, level, proofSlot), go);
     this.el.focus({ preventScroll: true });
+  }
+
+  private async shoot(r: DeliveryResult, shootBtn: HTMLButtonElement): Promise<void> {
+    const slot = this.proofSlot;
+    shootBtn.disabled = true;
+    let photo: string | null = null;
+    try { photo = await this.camera.open(this.el); }
+    catch { this.cameraOk = false; if (this.current === r && slot) slot.hidden = true; return; } // refusée ou absente : l'option disparaît
+    if (this.current !== r || !slot) return;
+    if (!photo) { shootBtn.disabled = false; return; } // viseur fermé sans photo
+    if (!this.proof || !this.proof(r.orderId).ok) { slot.hidden = true; return; } // trop tard : pas de bonus, pas de photo
+    const img = h('img', 'dr-proof-photo');
+    img.src = photo; img.alt = `Photo-preuve de la livraison à ${r.shelterName}`;
+    slot.replaceChildren(img, h('span', 'dr-proof-txt', icon('check'), h('span', 'dr-proof-pts', `Photo-preuve : +${fmtInt(r.proofBonus ?? 0)} pts`)));
+    slot.classList.add('is-done');
+  }
+
+  /** Le jeu confirme le bonus de photo. Renvoie vrai si cet écran l'affiche déjà (sinon le HUD fait un toast). */
+  proofDone(orderId: string, _points: number): boolean {
+    return this.current !== null && this.current.orderId === orderId && !this.el.hidden;
   }
 }

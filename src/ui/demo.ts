@@ -1,9 +1,10 @@
 // Démo de l'interface seule, sans carte ni logique : faux état de jeu, actions factices.
 // Paramètres d'URL : ?ecran=abri|abri0|abri4|abri5|colis|colis2|note|noteB|competences|contrats|carnet|reglages|fiche|marche|vide|aide|toasts
+// Systèmes secondaires : ?ecran=special|inconnu|perdu|fiche2|cache|rodeur|lot|lot2|front|front2|arrimage|note2|preuve|preuve2|toasts2
 // puis &ambiance=clair et &t=9 (instant de départ du faux état : à 9, le scanner est prêt).
 import type { ActionResult, Ambiance, DeliveryResult, GameActions, GameView, HudEvents } from '../game/api';
 import type { LngLat } from '../core/geo';
-import { mockView } from '../game/mock';
+import { type MockEvents, mockView, withEvents } from '../game/mock';
 import { Hud } from './hud';
 
 const q = new URLSearchParams(location.search);
@@ -67,8 +68,44 @@ function view(): GameView {
     v.shelters[1].distanceM = 140; v.orders[2].distanceM = 140;
     v.player.balance = 0.72; v.weather.night = true;
   }
+  const x = EXTRAS[ecran];
+  if (x) {
+    withEvents(v, x, t);
+    for (const o of v.orders) {
+      if (known.has(o.id)) { o.inspected = true; o.canInspect = false; if (o.special) { o.special = { ...o.special, known: true }; o.name = o.special.label; } }
+      if (strapped.has(o.id)) { o.strap = 1; o.strapLeftS = 0; }
+    }
+    if (ecran === 'arrimage' || ecran === 'cache' || ecran === 'rodeur' || ecran === 'lot') for (const s of v.shelters) if (!(ecran === 'lot' && s.id === 's2')) s.inRange = false;
+  }
   if (ecran === 'vide') { v.orders = []; v.shelters = []; v.player.carriedKg = 0; v.player.mode = 'gps'; v.weather.kind = 'clair'; v.player.stamina = 0.18; }
   return v;
+}
+
+/** Éléments ajoutés au faux état pour chaque écran des systèmes secondaires. */
+const EXTRAS: Record<string, MockEvents> = {
+  special: { special: 'ruche' }, inconnu: { special: 'inconnu' }, perdu: { lost: true },
+  fiche2: { special: 'cryo', lost: true, carriedSpecial: 'boitenoire' },
+  cache: { cache: 'proche', front: true }, rodeur: { wanderer: 'proche' }, lot: { jam: 'proche' }, lot2: { jam: 'en cours', front: 'dedans' },
+  front: { front: true }, front2: { front: 'dedans' }, arrimage: { strap: true }, toasts2: {},
+};
+
+// ?ecran=preuve : fausse caméra (un dessin animé dans un canvas), pour montrer le viseur sans téléphone.
+if (ecran === 'preuve' || ecran === 'preuve2') {
+  const c = document.createElement('canvas'); c.width = 480; c.height = 640;
+  const g = c.getContext('2d')!;
+  const draw = (): void => {
+    g.fillStyle = '#6f8fa6'; g.fillRect(0, 0, 480, 640);
+    g.fillStyle = '#c9b48a'; g.fillRect(90, 220, 300, 420);
+    g.fillStyle = '#5a4630'; g.fillRect(200, 430, 80, 210);
+    g.fillStyle = '#e8a24a'; g.fillRect(120, 270, 70, 60); g.fillRect(290, 270, 70, 60);
+    g.fillStyle = '#3d5a45'; g.fillRect(0, 600, 480, 40);
+    requestAnimationFrame(draw);
+  };
+  draw();
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+    getUserMedia: async () => c.captureStream(15),
+    enumerateDevices: async () => [{ kind: 'videoinput' }],
+  } });
 }
 
 const hud = new Hud(document.getElementById('hud')!, events, { ambiance });
@@ -94,6 +131,25 @@ switch (ecran) {
   case 'carnet': hud.openPorter('carnet'); break;
   case 'reglages': hud.openPorter('reglages'); break;
   case 'fiche': hud.setSheetExpanded(true); break;
+  case 'special': case 'inconnu': hud.openOrder('o2'); break;
+  case 'perdu': hud.openOrder('o1'); break;
+  case 'fiche2': hud.setSheetExpanded(true); break;
+  case 'note2':
+    hud.handle({ type: 'delivery', result: result({ orderName: 'Ruche vivante', special: 'ruche', grade: 'A', points: 465, xp: 250, notes: ['État 93 %', 'À travers le front', 'Colis spécial'], starsBefore: 2, starsAfter: 2, unlock: null, levelUp: false, npc: 'mara', shelterName: 'École maternelle Le Corbusier', proofBonus: 47 }) });
+    break;
+  case 'preuve': case 'preuve2':
+    hud.handle({ type: 'delivery', result: result({ grade: 'A', points: 264, proofBonus: 26, starsBefore: 2, starsAfter: 2, unlock: null, levelUp: false }) });
+    // Sans doigt pour toucher : la démo ouvre le viseur, puis (preuve2) déclenche.
+    setTimeout(() => document.querySelector<HTMLButtonElement>('.dr-proof-btn')?.click(), 1500);
+    if (ecran === 'preuve2') setTimeout(() => document.querySelector<HTMLButtonElement>('.dr-cam-shutter')?.click(), 2600);
+    break;
+  case 'toasts2':
+    setTimeout(() => {
+      hud.handle({ type: 'scan', found: 0, caches: 1 });
+      hud.handle({ type: 'wanderer', id: 'w1', name: 'Lina', line: '« Il y a une cache à 100 m au nord-est. Je te la laisse. »', gift: 'cache' });
+      hud.handle({ type: 'front', phase: 'approche', etaS: 170 });
+    }, 1200);
+    break;
   case 'toasts':
     setTimeout(() => {
       hud.handle({ type: 'scan', found: 3 });
