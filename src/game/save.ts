@@ -34,6 +34,7 @@ export interface GameSave {
   /** Réputation des dépôts solidaires, sans conversion en points ou XP. */
   reputation?: number;
   missions?: Record<string, { cycle: number; progress: number; active: boolean }>;
+  threatsResolved?: string[];
   deliveries: number;
   distanceM: number;
   stamina: number;
@@ -72,7 +73,7 @@ export function emptyGameSave(day = ''): GameSave {
   return {
     version: 1, savedAt: 0, level: 1, xp: 0, skillPoints: 0, score: 0, reputation: 0, deliveries: 0, distanceM: 0, stamina: 1,
     skills: {}, shelters: {}, discovered: [], visited: [], day, orders: [], done: [], contracts: [], last: null,
-    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [], relays: {}, missions: {},
+    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [], relays: {}, missions: {}, threatsResolved: [],
   };
 }
 
@@ -153,7 +154,7 @@ export function parseGameSave(raw: unknown): GameSave | null {
     distanceM: num(o.distanceM, 0), stamina: num(o.stamina, 1, 0, 1), skills, shelters,
     discovered: strs(o.discovered), visited: strs(o.visited), day: typeof o.day === 'string' ? o.day : '',
     orders: (Array.isArray(o.orders) ? o.orders : []).map(order).filter((x): x is OrderSave => x !== null),
-    done: strs(o.done), contracts, last: pt(o.last),
+    done: strs(o.done), contracts, last: pt(o.last), threatsResolved: strs(o.threatsResolved),
     missions: Object.fromEntries(Object.entries(obj(o.missions) ?? {}).flatMap(([id, raw]) => {
       const m = obj(raw);
       return m ? [[id, { cycle: Math.floor(num(m.cycle, 0, 0, 100000)), progress: num(m.progress, 0, 0, 10000), active: m.active === true }]] : [];
