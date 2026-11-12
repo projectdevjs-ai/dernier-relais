@@ -17,6 +17,7 @@ try {
   const response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});
   if(!response?.ok())throw Error('Page de simulation indisponible : HTTP '+response?.status());
   await page.waitForSelector('.battleground canvas.rb-3d-canvas',{timeout:30000});
+  await page.waitForFunction(()=>document.getElementById('arena')?.dataset.assetsReady==='true',null,{timeout:45000});
   await page.waitForFunction(()=>{
     const c=document.querySelector('.battleground canvas');
     return c && c.width>120 && c.height>100;
@@ -36,6 +37,7 @@ try {
   await mkdir('/tmp/rebirth-test',{recursive:true});
   await page.screenshot({path:'/tmp/rebirth-test/cinematic-mobile.png',fullPage:true});
   await page.locator('button[data-kind="scavenger"]').click();
+  await page.waitForFunction(()=>document.getElementById('arena')?.dataset.assetsReady==='true',null,{timeout:45000});
   if(!(await page.locator('#enemy-name').innerText()).toLowerCase().includes('récupérateur'))
     throw Error('Changement d’ennemi impossible');
   await page.screenshot({path:'/tmp/rebirth-test/scavenger-mobile.png',fullPage:true});
