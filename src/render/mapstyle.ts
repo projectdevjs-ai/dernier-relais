@@ -106,6 +106,19 @@ export function windowPattern(): { width: number; height: number; data: Uint8Arr
   return { width: n, height: n, data };
 }
 
+/** Largeur d'une rue en pixels au zoom 20 (0 : largeur d'origine). Les liserés dépassent de chaque côté. */
+function roadWidth(id: string): number {
+  if (!(id.startsWith('road_') || id.startsWith('bridge_')) || id.includes('rail')) return 0;
+  const edge = id.endsWith('_casing') ? 12 : 0;
+  if (id.includes('path_pedestrian')) return 34;
+  if (/motorway_link|_link/.test(id)) return 90 + edge;
+  if (/motorway|trunk_primary/.test(id)) return 170 + edge;
+  if (id.includes('secondary_tertiary')) return 150 + edge;
+  if (id.includes('service_track')) return 64 + edge;
+  if (id.includes('minor') || id.includes('street')) return 112 + edge;
+  return 0;
+}
+
 /** Transforme le style « liberty » : ne garde que les couches utiles et note quelle couleur va où. */
 export function buildGameStyle(src: StyleSpecification): GameStyle {
   const layers: LayerSpecification[] = [];
@@ -115,7 +128,11 @@ export function buildGameStyle(src: StyleSpecification): GameStyle {
     layers.push(c); binds.push([l.id, 'fill-color', key]);
   };
   const line = (l: LayerSpecification, key: Key): void => {
-    const paint = { ...((l as { paint?: Record<string, unknown> }).paint ?? {}), 'line-color': '#000' };
+    const paint: Record<string, unknown> = { ...((l as { paint?: Record<string, unknown> }).paint ?? {}), 'line-color': '#000' };
+    // Rues à l'échelle du monde de jeu : leur largeur suit le sol (doublement par niveau de zoom),
+    // pour rester de vraies chaussées sous les pieds du porteur, bordées d'un liseré.
+    const w = roadWidth(l.id);
+    if (w) paint['line-width'] = ['interpolate', ['exponential', 2], ['zoom'], 14, w / 64, 20, w];
     layers.push({ ...l, paint } as LayerSpecification); binds.push([l.id, 'line-color', key]);
   };
   for (const l of src.layers) {

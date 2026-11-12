@@ -100,3 +100,65 @@ export class FakeServer {
     return fake as unknown as Db;
   }
 }
+
+/**
+ * Imite en mémoire les fonctions SQL du jeu (abris collectifs et chaîne de relais), avec les mêmes réponses que
+ * supabase/schema.sql, sans les limites de fréquence. Plusieurs faux serveurs peuvent partager les mêmes `tables`
+ * (un par joueur, chacun avec son `userId`) pour jouer une chaîne à plusieurs.
+ */
+export function installGameRpcs(server: FakeServer, opts: { thresholds?: readonly number[]; now?: () => number } = {}): void {
+  const th = opts.thresholds ?? [600, 3000, 10000, 25000, 60000], now = opts.now ?? (() => Date.now());
+  const level = (pts: number): number => th.filter(x => pts >= x).length;
+  const T = server.tables;
+  const list = (name: string): Row[] => (T[name] ??= []);
+  let seq = 0;
+  const stamp = (): string => new Date(now() + seq++).toISOString();
+  server.rpcs.deliver_to_shelter = a => {
+    const pts = Number(a.p_points) || 0;
+    if (!(pts > 0) || typeof a.p_shelter_id !== 'string') return { ok: false, reason: 'invalid' };
+    let sh = list('shelters').find(r => r.id === a.p_shelter_id);
+    if (!sh) { sh = { id: a.p_shelter_id, name: a.p_name, region: a.p_region, points: 0, level: 0, deliveries: 0 }; list('shelters').push(sh); }
+    const before = Number(sh.level) || 0;
+    sh.points = (Number(sh.points) || 0) + pts; sh.deliveries = (Number(sh.deliveries) || 0) + 1; sh.level = level(Number(sh.points));
+    return { ok: true, level: sh.level, level_before: before, points: sh.points };
+  };
+  server.rpcs.relay_drop = a => {
+    const uid = server.userId, at = a.p_at_shelter;
+    if (typeof at !== 'string' || !at) return { ok: false, reason: 'invalid' };
+    if (typeof a.p_relay_id === 'string') {
+      const r = list('relays').find(x => x.id === a.p_relay_id && x.state === 'carried' && x.carrier === uid && x.dest_shelter !== at);
+      if (!r) return { ok: false, reason: 'not_carrier' };
+      Object.assign(r, { state: 'waiting', at_shelter: at, last_shelter: at, carrier: null });
+      return { ok: true, id: r.id };
+    }
+    if (typeof a.p_dest_shelter !== 'string' || a.p_dest_shelter === at || !a.p_payload || typeof a.p_payload !== 'object') return { ok: false, reason: 'invalid' };
+    const id = `relais-${list('relays').length + 1}`;
+    list('relays').push({ id, payload: a.p_payload, dest_shelter: a.p_dest_shelter, at_shelter: at, last_shelter: at, carrier: null, carriers: [uid], state: 'waiting', created_at: stamp() });
+    return { ok: true, id };
+  };
+  server.rpcs.relay_take = a => {
+    const uid = server.userId;
+    if (list('relays').filter(x => x.carrier === uid && x.state === 'carried').length >= 3) return { ok: false, reason: 'limit' };
+    const r = list('relays').find(x => x.id === a.p_relay_id && x.state === 'waiting');
+    if (!r) return { ok: false, reason: 'taken' };
+    const carriers = r.carriers as string[];
+    Object.assign(r, { state: 'carried', carrier: uid, at_shelter: null, carriers: carriers.includes(uid) ? carriers : [...carriers, uid] });
+    return { ok: true, relay: { ...r } };
+  };
+  server.rpcs.relay_deliver = a => {
+    const uid = server.userId, pts = Math.min(400, Math.max(1, Math.round(Number(a.p_points) || 1)));
+    const r = list('relays').find(x => x.id === a.p_relay_id && x.state === 'carried' && x.carrier === uid);
+    if (!r) return { ok: false, reason: 'not_carrier' };
+    Object.assign(r, { state: 'delivered', carrier: null, at_shelter: null });
+    const carriers = [...new Set(r.carriers as string[])];
+    for (const player of carriers) {
+      list('relay_rewards').push({ id: list('relay_rewards').length + 1, relay_id: r.id, player, points: pts, hops: carriers.length, parcel: String((r.payload as Row).name ?? ''), created_at: stamp(), claimed_at: null });
+    }
+    return { ok: true, points: pts, hops: carriers.length };
+  };
+  server.rpcs.relay_claim_rewards = () => {
+    let points = 0, count = 0;
+    for (const w of list('relay_rewards')) if (w.player === server.userId && (w.claimed_at ?? null) === null) { w.claimed_at = stamp(); points += Number(w.points) || 0; count++; }
+    return { ok: true, points, count };
+  };
+}

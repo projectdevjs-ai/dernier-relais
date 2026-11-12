@@ -46,13 +46,19 @@ const quadVert = /* glsl */`
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const quadFrag = /* glsl */`
-uniform vec3 uColor; uniform float uTop; uniform float uStart; uniform float uAll; uniform float uVignette;
+uniform vec3 uColor; uniform vec3 uHorizon; uniform vec3 uVig; uniform float uTop; uniform float uStart; uniform float uAll; uniform float uVignette;
 varying vec2 vUv;
 void main() {
+  // Voile atmosphérique : le lointain (haut de l'écran) se fond dans la teinte de l'air,
+  // puis dans la lueur de l'horizon tout en haut ; les bords s'assombrissent un peu.
   float far = smoothstep(uStart, 1.0, vUv.y);
-  float vig = smoothstep(0.55, 1.15, length((vUv - 0.5) * vec2(1.0, 1.25)) * 1.5);
-  float a = clamp(uAll + uTop * far * far + uVignette * vig, 0.0, 1.0);
-  gl_FragColor = vec4(uColor, a);
+  float glow = smoothstep(0.80, 1.0, vUv.y);
+  float vig = smoothstep(0.55, 1.15, length((vUv - 0.5) * vec2(1.0, 1.25)) * 1.5) * uVignette;
+  float air = clamp(uAll + uTop * far * far, 0.0, 1.0);
+  vec3 c = mix(uColor, uHorizon, glow * glow);
+  float a = air + vig * (1.0 - air);
+  c = mix(uVig, c, air / max(a, 0.0001));
+  gl_FragColor = vec4(c, a);
   #include <colorspace_fragment>
 }`;
 
@@ -95,7 +101,7 @@ export class Sky {
     // Voile plein écran : estompe le lointain (haut de l'écran) et assombrit les bords la nuit.
     this.haze = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
       vertexShader: quadVert, fragmentShader: quadFrag, transparent: true, depthTest: false, depthWrite: false,
-      uniforms: { uColor: { value: new THREE.Color() }, uTop: { value: 0 }, uStart: { value: 0.5 }, uAll: { value: 0 }, uVignette: { value: 0 } },
+      uniforms: { uColor: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uVig: { value: new THREE.Color() }, uTop: { value: 0 }, uStart: { value: 0.5 }, uAll: { value: 0 }, uVignette: { value: 0 } },
     }));
     this.haze.frustumCulled = false; this.haze.renderOrder = 900; this.haze.layers.set(WORLD);
     scene.add(this.haze);

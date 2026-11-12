@@ -33,6 +33,8 @@ export interface RelayParcel {
   /** Points de base à la livraison. */
   reward: number;
   destId: string; destName: string; destAt: LngLat;
+  /** État du colis, 0 à 1 (absent : intact). */
+  condition?: number;
 }
 export interface Relay {
   id: string; parcel: RelayParcel; destId: string;
@@ -79,6 +81,13 @@ interface Outgoing { shelterId: string; name: string; lng: number; lat: number; 
 type Reply = Record<string, unknown>;
 
 const K_OUTBOX = 'dernier-relais/net/file', K_PSEUDO = 'dernier-relais/net/pseudo', K_REGIONS = 'dernier-relais/net/regions';
+const K_AUTO = 'dernier-relais/net/pseudo-auto';
+/** Noms de porteur proposés par défaut : « Porteur Lynx-42 ». */
+const BEASTS = ['Lynx', 'Renard', 'Héron', 'Loutre', 'Martre', 'Hibou', 'Castor', 'Chamois', 'Milan', 'Blaireau', 'Courlis', 'Hermine'];
+export function porterName(seed: number): string {
+  const n = Math.abs(Math.floor(seed)) || 0;
+  return `Porteur ${BEASTS[n % BEASTS.length]}-${10 + (Math.floor(n / BEASTS.length) % 90)}`;
+}
 const OUTBOX_MAX = 150, LEVEL_TTL_MS = 60_000, PLAYER_EVERY_MS = 60_000, POLL_MS = 90_000;
 const CRATES: CrateKind[] = ['bois', 'alu', 'plastique', 'carton'];
 
@@ -106,6 +115,7 @@ function parcelRow(v: unknown, destId: string): RelayParcel {
     name: text(o.name, 'Colis'), crate: CRATES.includes(o.crate as CrateKind) ? (o.crate as CrateKind) : 'carton',
     weightKg: Math.max(0, num(o.weightKg, 1)), fragile: o.fragile === true, reward: Math.max(0, num(o.reward, 0)),
     destId, destName: text(o.destName), destAt: [num(at[0]), num(at[1])],
+    condition: Math.min(1, Math.max(0, num(o.condition, 1))),
   };
 }
 
@@ -135,6 +145,7 @@ export class Network {
   private players: number | null = null;
 
   private name: string | null = null;
+  private autoName: string | null = null;
   private stats: PlayerStats | null = null;
   private region: RegionId | null = null;
   private playerDirty = false;
@@ -166,12 +177,20 @@ export class Network {
 
   // ───────── joueur
 
-  /** Pseudo actuel (un nom par défaut tant que le joueur n'en a pas choisi). */
+  /** Pseudo actuel (un nom de porteur généré tant que le joueur n'en a pas choisi : « Porteur Lynx-42 »). */
   pseudo(): string {
     if (this.name) return this.name;
-    const uid = this.client.userId;
-    return uid ? `Porteur ${1000 + (hash(uid) % 9000)}` : 'Porteur';
+    // Le nom généré est tiré une fois puis gardé sur le téléphone, pour rester le même hors ligne comme en ligne.
+    if (!this.autoName) {
+      const kept = cleanPseudo(this.read(K_AUTO) ?? '');
+      const uid = this.client.userId;
+      this.autoName = kept ?? porterName(uid ? hash(uid) : Math.floor(Math.random() * 1e6));
+      if (!kept) this.write(K_AUTO, this.autoName);
+    }
+    return this.autoName;
   }
+  /** Vrai si le joueur a choisi (ou confirmé) son pseudo. */
+  hasPseudo(): boolean { return !!this.name; }
   /** Change le pseudo (2 à 20 caractères). Renvoie faux s'il est refusé ; hors ligne, il sera envoyé plus tard. */
   async setPseudo(name: string): Promise<boolean> {
     try {
