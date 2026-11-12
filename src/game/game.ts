@@ -636,6 +636,7 @@ export class Game implements GameEngine {
     if (this.vehicle || this.speed > SPEED.moving) return no('Immobilise-toi dans un endroit sûr avant le combat.');
     if (this.rebirth.encounter) return no('Une rencontre est déjà en cours.');
     this.rebirth.encounter = spawnEncounter(zoneId);
+    this.emit({ type: 'combat', phase: 'start' });
     this.emit({ type: 'toast', text: 'Signal hostile verrouillé. Ouverture de la confrontation tactique.', tone: 'warn' });
     this.saveNow();
     return OK;
@@ -649,6 +650,7 @@ export class Game implements GameEngine {
     const result = combat(this.rebirth, move);
     if (result.outcome === 'invalid') return no(result.message);
     this.rebirth = result.state;
+    this.emit({ type: 'combat', phase: result.outcome === 'victory' ? 'victory' : result.outcome === 'defeat' ? 'defeat' : move });
     if (result.outcome === 'victory') {
       this.threatsResolved.add(id);
       this.reputation += 3;
