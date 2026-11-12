@@ -29,7 +29,7 @@ import { EXO, type Rig, SLOTS, SLOT_IDS, arrange, bestSlot, capacityKg, isSlot, 
 import { LORE, SURPRISE, SURPRISE_NOTE, loreFor, surpriseFor } from './surprises';
 import { SPECIALS, UNKNOWN_SPECIAL, specialDrainMult, specialWearPerSecond } from './specials';
 import { dayKey, nextDayMs, weekKey } from './time';
-import { type Rebirth, type Recipe, type CombatMove, RECIPES, cleanRebirth, freshRebirth, spawnEncounter, combat, craft } from './rebirth';
+import { type Rebirth, type Recipe, type CombatMove, RECIPES, cleanRebirth, freshRebirth, spawnEncounter, combat, craft, signalForCell } from './rebirth';
 import { type Wanderer, wanderGift, wanderLine, wanderSlot, wandererAt, wanderersFor, whereText } from './wanderers';
 
 const no = (why: string): ActionResult => ({ ok: false, why });
@@ -335,7 +335,17 @@ export class Game implements GameEngine {
       if (o.state === 'révélé' && o.pickedAt === null && o.cell && !o.jam && !o.lost?.net && !loadedNow.has(o.cell) && dist(o.at, p) > 1500) this.orders.delete(id);
     }
     const here = cellAt(p[0], p[1]).id;
-    if (!this.visited.has(here)) { this.visited.add(here); this.visitedList.push(here); this.dirty = true; }
+    if (!this.visited.has(here)) {
+      this.visited.add(here); this.visitedList.push(here); this.dirty = true;
+      // Une découverte de terrain peut révéler une transmission narrative, une seule à la fois.
+      const signal = signalForCell(here);
+      if (signal && !this.rebirth.radio && !this.rebirth.radioLog.some(s => s.startsWith(signal.id+'|'))) {
+        this.rebirth.radio = signal;
+        this.emit({ type: 'toast', text: 'RADIO LUMEN : nouvelle transmission interceptée dans la console de survie.', tone: 'info' });
+      }
+      // Les déplacements réels restent la source principale de matériaux, sans achats ni serveurs.
+      if (hash('loot:'+here)%4===0) this.rebirth.resources.scrap += 1;
+    }
     this.refreshPlace();
     this.autosave();
   }
@@ -653,7 +663,31 @@ export class Game implements GameEngine {
     return OK;
   }
 
-  craftItem(recipe: Recipe): ActionResult {
+  answerRadio(choice: 'secourir' | 'extraire'): ActionResult {
+    const signal=this.rebirth.radio;
+    if (!signal) return no('Aucune transmission en attente.');
+    if (this.vehicle || this.speed > SPEED.moving) return no('Arrête-toi pour répondre au signal.');
+    if (choice !== 'secourir' && choice !== 'extraire') return no('Réponse inconnue.');
+    const faction=signal.faction;
+    const text=choice==='secourir' ? 'Assistance envoyée' : 'Données et pièces récupérées';
+    if (choice==='secourir') {
+      this.rebirth.factions[faction]=Math.min(100,this.rebirth.factions[faction]+6);
+      const levels=this.gainXp(15);
+      for(const level of levels)this.emit({type:'levelUp',level});
+    } else {
+      this.rebirth.resources.scrap+=3;
+      this.rebirth.resources.circuits+=1;
+      this.rebirth.factions[faction]=Math.max(-100,this.rebirth.factions[faction]-3);
+    }
+    this.rebirth.radioLog.push(signal.id+'|'+signal.title+' — '+text);
+    this.rebirth.radioLog=this.rebirth.radioLog.slice(-30);
+    this.rebirth.radio=null;
+    this.emit({type:'toast',text:text+' · '+signal.title,tone:choice==='secourir'?'good':'info'});
+    this.saveNow();
+    return OK;
+  }
+
+  craftItem(recipe: Recipe) {
     if (!(recipe in RECIPES)) return no('Plan de fabrication inconnu.');
     const next = craft(this.rebirth, recipe);
     if (!next) return no('Ressources insuffisantes ou équipement déjà réparé.');
