@@ -89,7 +89,7 @@ export function porterName(seed: number): string {
   return `Porteur ${BEASTS[n % BEASTS.length]}-${10 + (Math.floor(n / BEASTS.length) % 90)}`;
 }
 const OUTBOX_MAX = 150, LEVEL_TTL_MS = 60_000, PLAYER_EVERY_MS = 60_000, POLL_MS = 90_000;
-const CRATES: CrateKind[] = ['bois', 'alu', 'plastique', 'carton'];
+const CRATES: CrateKind[] = ['bois', 'alu', 'plastique', 'carton', 'sac', 'fut', 'coffre'];
 
 const num = (v: unknown, d = 0): number => { const n = typeof v === 'string' ? Number(v) : v; return typeof n === 'number' && Number.isFinite(n) ? n : d; };
 const text = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);

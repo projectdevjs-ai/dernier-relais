@@ -17,7 +17,7 @@ export const PARCEL_TOP = 11;
 
 /** Modèle d'un colis : celui du colis spécial une fois identifié, sinon sa caisse. */
 export function parcelModel(o: OrderView): string {
-  return o.special?.known ? `spe_${o.special.kind}` : CRATE_MODEL[o.crate];
+  return o.special?.known ? `spe_${o.special.kind}` : CRATE_MODEL[o.crate] ?? 'carton';
 }
 /** Apparence d'un colis au sol : change quand il est identifié. */
 const lookOf = (o: OrderView): string => `${parcelModel(o)}|${o.special ? 'or' : o.lost ? 'bleu' : 'ambre'}`;

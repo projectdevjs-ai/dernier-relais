@@ -58,7 +58,7 @@ export class CameraRig {
   /** Geste à deux doigts en cours. */
   private two: { d: number; ang: number; last: number; turn: number; zoom: number; bearing: number; twisting: boolean } | null = null;
   /** Dernier toucher du sol, en attente : il part à l'échéance, sauf si un second appui en fait un double appui. */
-  private wait: { x: number; y: number; t: number; timer: number } | null = null;
+  private wait: { x: number; y: number; px: number; py: number; t: number } | null = null;
   /** Second appui d'un double appui, doigt encore posé : glisser = zoom. */
   private dbl: { y: number; zoom: number; moved: boolean } | null = null;
   private turning = false;
@@ -82,7 +82,9 @@ export class CameraRig {
   }
 
   /** Vrai pendant un geste. */
-  get active(): boolean { return this.pts.size > 0; }
+  get active(): boolean { return this.pts.size > 0 || this.wait !== null; }
+  /** Vrai tant qu'un doigt est posé. */
+  private get held(): boolean { return this.pts.size > 0; }
 
   setTilt(mode: TiltMode): void {
     this.mode = mode;
@@ -104,7 +106,11 @@ export class CameraRig {
    * Renvoie vrai si la caméra a changé (la carte doit être recalée).
    */
   update(dt: number, course: number | null): boolean {
-    if (this.followHeading && course !== null && !this.active) {
+    // Toucher du sol en attente : il part ici, à l'échéance. Les événements tactiles déjà reçus sont traités avant
+    // chaque image : même si le téléphone rame, un second appui arrivé à temps annule bien ce toucher.
+    const w = this.wait;
+    if (w && performance.now() - w.t >= DOUBLE_MS) { this.wait = null; this.o.onTap(w.px, w.py); }
+    if (this.followHeading && course !== null && !this.held) {
       const diff = wrap(course - this.tBearing), a = Math.abs(diff);
       if (a > HEADING_DEAD) this.turning = true;
       if (this.turning) {
@@ -118,14 +124,14 @@ export class CameraRig {
     } else { this.turning = false; this.rate = 0; }
 
     // Lissage : vif sous le doigt, doux pour les transitions (bascule 2D / 3D, recentrage).
-    const k = 1 - Math.exp(-dt * (this.active ? 22 : 7)), ks = 1 - Math.exp(-dt * 4.5);
+    const k = 1 - Math.exp(-dt * (this.held ? 22 : 7)), ks = 1 - Math.exp(-dt * 4.5);
     const db = wrap(this.tBearing - this.bearing), dz = this.tZoom - this.zoom, dp = this.tPitch - this.pitch;
     const df = (this.mode === '2d' ? 1 : 0) - this.flat;
     let changed = this.dirty;
     this.dirty = false;
     if (Math.abs(db) > 0.02) { this.bearing = wrap(this.bearing + db * k); changed = true; } else this.bearing = wrap(this.tBearing);
     if (Math.abs(dz) > 0.002) { this.zoom += dz * k; changed = true; } else this.zoom = this.tZoom;
-    if (Math.abs(dp) > 0.03) { this.pitch += dp * (this.active ? k : ks); changed = true; } else this.pitch = this.tPitch;
+    if (Math.abs(dp) > 0.03) { this.pitch += dp * (this.held ? k : ks); changed = true; } else this.pitch = this.tPitch;
     if (Math.abs(df) > 0.003) { this.flat += df * ks; changed = true; } else this.flat = this.mode === '2d' ? 1 : 0;
     return changed;
   }
@@ -150,9 +156,10 @@ export class CameraRig {
     try { this.el.setPointerCapture(e.pointerId); } catch { /* pointeur déjà relâché */ }
     if (this.pts.size === 1) {
       const w = this.wait;
-      if (w && performance.now() - w.t < DOUBLE_MS && Math.hypot(e.clientX - w.x, e.clientY - w.y) < DOUBLE_SLOP) {
+      // Heure de l'événement lui-même (et non de son traitement) : le délai est juste même quand l'affichage rame.
+      if (w && e.timeStamp - w.t < DOUBLE_MS && Math.hypot(e.clientX - w.x, e.clientY - w.y) < DOUBLE_SLOP) {
         // Second appui : le toucher du sol en attente est annulé, le geste devient un zoom.
-        clearTimeout(w.timer); this.wait = null; this.one = null;
+        this.wait = null; this.one = null;
         this.dbl = { y: e.clientY, zoom: this.tZoom, moved: false };
       } else this.startOne(e.clientX, e.clientY, true);
     } else if (this.pts.size === 2) {
@@ -212,10 +219,12 @@ export class CameraRig {
         if (!z.moved && e.type === 'pointerup') this.tZoom = clamp(this.tZoom + ZOOM_STEP, this.o.minZoom, this.o.maxZoom);
       } else if (g && g.tap && e.type === 'pointerup' && performance.now() - g.t < TAP_MS) {
         const r = this.el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-        if (this.wait) { clearTimeout(this.wait.timer); this.wait = null; }
-        // Objet interactif : réaction immédiate. Sol : court délai, pour ne pas partir en marche sur un double appui.
+        // Un toucher du sol encore en attente part d'abord (deux touchers éloignés l'un de l'autre).
+        const w = this.wait;
+        if (w) { this.wait = null; this.o.onTap(w.px, w.py); }
+        // Objet interactif : réaction immédiate. Sol : court délai (voir update), pour ne pas partir en marche sur un double appui.
         if (!this.o.isHot || this.o.isHot(x, y)) this.o.onTap(x, y);
-        else this.wait = { x: e.clientX, y: e.clientY, t: performance.now(), timer: window.setTimeout(() => { this.wait = null; this.o.onTap(x, y); }, DOUBLE_MS) };
+        else this.wait = { x: e.clientX, y: e.clientY, px: x, py: y, t: e.timeStamp };
       }
     } else if (this.pts.size === 1) {
       // Un doigt reste posé après un geste à deux doigts : il reprend la main, sans compter comme un toucher.

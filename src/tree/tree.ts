@@ -25,7 +25,7 @@ export interface SkillTreeOpts {
 /** Effet cumulé d'une compétence à un rang donné (mêmes chiffres que src/game/skills.ts). */
 const EFFECT: Record<string, (r: number) => string> = {
   'scan-portee': r => `Portée +${40 * r} m`,
-  'scan-recharge': r => `Recharge −${r} s`,
+  'scan-recharge': r => `Recharge −${2 * r} s`,
   'bras-long': r => `Ramassage +${10 * r} m`,
   sac: r => `Sac +${5 * r} kg`,
   calage: r => `Usure −${15 * r} %`,
