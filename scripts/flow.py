@@ -120,6 +120,16 @@ with sync_playwright() as p:
             check(f'{nom} : bouton présent', ok)
             if not ok: continue
             pg.evaluate(f"document.querySelector('.lab-panel [data-act={act}]').click()"); pg.wait_for_timeout(500)
+            if act in ('skills', 'tree'):
+                # Les compétences s'ouvrent dans l'atelier 3D (plateau), par-dessus le labo.
+                ouvert = wait(pg, "__dr.skillTree.isOpen", 15000)
+                check(f'{nom} : atelier 3D des compétences ouvert', ouvert)
+                check(f'{nom} : atelier par-dessus le labo', pg.evaluate("(() => { const e = document.elementFromPoint(innerWidth / 2, innerHeight * 0.5); return !!e && !!e.closest('[aria-label=\"Arbre de compétences\"]'); })()"))
+                pg.evaluate("document.querySelector('.tr-close')?.click()"); pg.wait_for_timeout(600)
+                check(f'{nom} : atelier refermé', not pg.evaluate("__dr.skillTree.isOpen"))
+                s = pg.evaluate(STATE)
+                check(f'{nom} : retour au labo intact', s['lab'] and s['labShown'] and s['paused'] and pg.evaluate(MAP_HUD) == 0, str(s))
+                continue
             t = panel_title(pg)
             check(f'{nom} : panneau « {t} » ouvert', t is not None and any(x in t for x in titres), str(t))
             top = pg.evaluate("(() => { const e = document.elementFromPoint(innerWidth / 2, innerHeight * 0.6); return !!e && !!e.closest('#hud .dr-modal'); })()")

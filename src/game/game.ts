@@ -559,6 +559,12 @@ export class Game implements GameEngine {
     return OK;
   }
 
+  /** Repos dans les quartiers de la Station Lumen : l'endurance revient au maximum. */
+  rest(): void {
+    this.stamina = 1;
+    this.emit({ type: 'toast', text: 'Reposé · endurance au maximum', tone: 'good' });
+  }
+
   /** Passager confirmé : plus de blocage jusqu'au retour à pied. La distance en véhicule ne compte toujours pas comme de la marche. */
   confirmPassenger(): ActionResult {
     if (!this.vehicle) return { ok: false, why: 'Tu es à pied.' };

@@ -10,6 +10,7 @@ import { fetchWeather } from './services/weather';
 import { playPrologue, shouldPlayPrologue } from './intro/prologue';
 import { Lab } from './lab/lab';
 import { Story } from './story/story';
+import { SkillTree } from './tree/tree';
 import { StoryUi } from './story/ui';
 import { FrancePanel } from './ui/france';
 import { Hud } from './ui/hud';
@@ -99,8 +100,9 @@ const hud = new Hud(hudRoot, {
   onUseGps: () => { stage.recenter(); locator.startGPS(); },
   onRecenter: () => stage.recenter(),
   // Vue 2D (de dessus) / 3D (inclinée) : le choix est mémorisé pour le prochain lancement.
+  onSkills: () => { void openSkills(); },
   onTilt: () => { pref.set('vue', stage.toggleTilt()); },
-  onAmbiance: a => { currentAmbiance = a; pref.set('ambiance', a); stage.setAmbiance(a); lab.setAmbiance(a); },
+  onAmbiance: a => { currentAmbiance = a; pref.set('ambiance', a); stage.setAmbiance(a); lab.setAmbiance(a); skillTree.setAmbiance(a); },
   onGoto: (at, label) => {
     simTarget = null;
     stage.jumpTo(at);
@@ -179,6 +181,7 @@ function frame(): void {
   sound.ambient(view);
   story.observe(view);
   if (inLab) lab.update(view);
+  if (skillTree.isOpen) skillTree.update(view);
 }
 
 // ---------- Station Lumen : le labo sert de menu principal, le prologue n'est joué qu'une fois ----------
@@ -186,11 +189,26 @@ let inLab = false;
 let gpsStarted = false;
 const lab = new Lab(document.body, {
   onDepart: () => { lab.close(); leaveLab(); },
-  onSkills: () => hud.openPorter('competences'),
+  onSkills: () => { void openSkills(); },
+  onSkillTree: () => { void openSkills(); },
   onNetwork: () => hud.openNetwork(),
   onContracts: () => hud.openPorter('contrats'),
   onJournal: () => hud.openPorter('carnet'),
+  // Les scientifiques parlent : voix enregistrée quand elle existe, sinon un petit son.
+  onVoice: (who, text) => { if (!voice.say(who, text)) sound.ui('open'); },
+  onRest: () => game.rest(),
 }, { ambiance });
+
+// ---------- Arbre de compétences : écran 3D à part entière (repli : la liste du panneau Porteur) ----------
+const skillTree = new SkillTree(document.body, {
+  learn: id => game.learn(id),
+  onUi: kind => sound.ui(kind),
+}, { ambiance, leger: new URLSearchParams(location.search).has('leger') });
+async function openSkills(): Promise<void> {
+  hud.closeAll();
+  try { await skillTree.open(view ?? game.view()); }
+  catch { skillTree.close(); hud.openPorter('competences'); }
+}
 
 /** Vrai tant que le joueur n'est pas sur la carte (écran de départ, prologue, labo) : les messages radio attendent. */
 let away = true;
@@ -204,7 +222,7 @@ function leaveLab(): void {
   if (!gpsStarted) { gpsStarted = true; locator.startGPS(); }
 }
 
-function closeEverything(): void { hud.closeAll(); france.close(); storyUi.closeJournal(); }
+function closeEverything(): void { hud.closeAll(); france.close(); storyUi.closeJournal(); skillTree.close(); }
 
 async function enterLab(): Promise<void> {
   closeEverything();
@@ -296,7 +314,7 @@ document.addEventListener('visibilitychange', () => {
 addEventListener('pagehide', flush);
 
 // Accès pour les essais automatiques (console du navigateur) : sans effet sur le jeu.
-Object.assign(window, { __dr: { game, stage, hud, world, sound, france, story, storyUi, lab, net: online.net, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
+Object.assign(window, { __dr: { game, stage, hud, world, sound, france, story, storyUi, lab, skillTree, net: online.net, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
 
 // Version web : cache des fichiers lourds pour les lancements suivants (inutile dans l'APK, où tout est déjà sur le téléphone).
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !('Capacitor' in window)) {

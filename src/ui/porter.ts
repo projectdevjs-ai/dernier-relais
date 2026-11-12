@@ -105,6 +105,11 @@ export class PorterPanel {
     // Compétences
     const pg = this.pages.get('competences')!;
     pg.append(h('div', 'dr-points', this.points, this.pointsLabel));
+    if (this.ctx.events.onSkills) {
+      const b3d = btn('dr-btn dr-btn-take dr-btn-wide', null, icon('xp'), h('span', '', 'Ouvrir l’atelier en 3D'));
+      b3d.addEventListener('click', () => { this.ctx.ui('open'); this.ctx.events.onSkills?.(); });
+      pg.append(b3d);
+    }
     for (const b of BRANCH) {
       const listEl = h('div', 'dr-list');
       const sec = h('div', 'dr-branch', h('div', 'dr-sec', h('h3', 'dr-sec-title', icon(b.ic), b.label)), listEl);

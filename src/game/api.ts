@@ -456,6 +456,8 @@ export interface HudEvents {
   onUi?(kind: UiKind): void;
   /** Bascule la carte entre la vue à plat (2D) et la vue inclinée (3D). Le bouton n'apparaît que si ce rappel est fourni. */
   onTilt?(): void;
+  /** Ouvre l'arbre de compétences en 3D (l'atelier de Noé). Sans ce crochet, la liste du panneau suffit. */
+  onSkills?(): void;
   /** Réglage « Ramassage rapide » changé par le joueur (la mémorisation est faite par l'appelant). */
   onQuickPickup?(on: boolean): void;
   /** Une couche plein écran de l'interface (séquence de ramassage) s'ouvre ou se ferme : l'appelant peut mettre la carte en veille. */

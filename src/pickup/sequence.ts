@@ -352,7 +352,7 @@ export class PickupSequence {
     v.scene.add(g);
     const r = Math.random;
     const manualYaw = r() * 360;
-    this.st = { phase: 'reperage', crate, group: g, target: null, manualYaw, manualPitch: -22, lockT: 0, drag: null };
+    this.st = { phase: 'reperage', crate, group: g, target: null, manualYaw, manualPitch: -18, lockT: 0, drag: null };
     if (this.opts.demo?.aim) { this.placeCrate(this.st, (manualYaw + 2.5) % 360); this.st.lockT = LOCK_S * 0.55; }
     this.setPhase('reperage');
     setText(this.kick, 'Repérage · balaie autour de toi');
