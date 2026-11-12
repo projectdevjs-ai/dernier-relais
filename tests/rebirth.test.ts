@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cellAt, cellsAround } from '../src/core/geo';
+import { cellAt, cellsAround, cellCenter } from '../src/core/geo';
 import { dangerInCell } from '../src/game/dangers';
-import { cleanRebirth, combat, craft, freshRebirth, spawnEncounter, canCraft, RECIPES } from '../src/game/rebirth';
+import { cleanRebirth, combat, craft, freshRebirth, spawnEncounter, canCraft, RECIPES, signalForCell } from '../src/game/rebirth';
 import { dayKey } from '../src/game/time';
 import { BASE, T0, place, rig, world } from './game.helpers';
 
@@ -49,6 +49,22 @@ describe('PROJECT REBIRTH — tactique déterministe', () => {
 });
 
 describe('PROJECT REBIRTH — intégration GPS',()=>{
+  it('intercepte une transmission procédurale, sauvegarde le choix et la réputation de faction', async ()=>{
+    const tile=cellsAround(cellAt(BASE[0],BASE[1]),8).find(c=>signalForCell(c.id)!==null)!;
+    const signal=signalForCell(tile.id)!;
+    expect(signalForCell(tile.id)).toEqual(signal);
+    const r=await rig();
+    r.game.setWorld(world([],[],[tile.id]));
+    place(r,cellCenter(tile));
+    expect(r.game.view().player.rebirth?.radio?.id).toBe(signal.id);
+    expect(r.game.answerRadio('secourir')).toEqual({ok:true});
+    expect(r.game.view().player.rebirth?.factions[signal.faction]).toBe(6);
+    expect(r.game.answerRadio('secourir').ok).toBe(false);
+    await r.game.flush();
+    const reloaded=await rig({store:r.store,t:r.clock.t});
+    expect(reloaded.game.view().player.rebirth?.radio).toBeNull();
+    expect(reloaded.game.view().player.rebirth?.radioLog.length).toBe(1);
+  });
   it('enregistre fabrication et bataille tactique dans les sauvegardes existantes', async ()=>{
     const r = await rig();
     expect(r.game.craftItem('ration')).toEqual({ok:true});
