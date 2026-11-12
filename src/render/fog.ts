@@ -28,7 +28,8 @@ void main() {
   float n1 = noise(c * 9.0 + vec2(uTime * 0.05, uTime * 0.02));
   float n2 = noise(c * 26.0 - vec2(uTime * 0.07, -uTime * 0.04));
   float m = texture2D(uMask, uv).r + (n1 - 0.5) * 0.10;
-  float edge = smoothstep(0.30, 0.72, m);
+  // La lisière commence au bord de la case visitée et s'épaissit sur une cinquantaine de mètres au-delà.
+  float edge = smoothstep(0.52, 0.96, m);
   float a = edge * (0.80 + 0.20 * n1) * uOpacity;
   vec3 col = mix(uColor, uLight, n1 * 0.55 + n2 * 0.25);
   gl_FragColor = vec4(col, a);

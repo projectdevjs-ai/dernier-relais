@@ -264,7 +264,7 @@ export class Stage implements StageApi {
     this.map.setSky({ 'sky-color': pal.sky, 'horizon-color': pal.horizon, 'fog-color': pal.haze, 'sky-horizon-blend': 0.75, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.5, 'atmosphere-blend': 0 });
     // Fenêtres allumées dès que le jour baisse.
     if (this.map.getLayer('building-win')) this.map.setLayoutProperty('building-win', 'visibility', (clair ? n >= 0.5 : true) ? 'visible' : 'none');
-    this.fog.applyColors(pal.veil, pal.haze, clair && n < 0.5 ? 0.78 : 0.84);
+    this.fog.applyColors(pal.veil, pal.haze, clair && n < 0.5 ? 0.76 : 0.74);
     this.sky.apply(env, w, pal);
     this.kit.applyEnv(env);
     this.shelters.applyEnv(env);
