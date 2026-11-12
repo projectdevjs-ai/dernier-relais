@@ -317,6 +317,8 @@ export type GameEvent =
   | { type: 'levelUp'; level: number }
   | { type: 'contract'; contract: ContractView }
   | { type: 'danger'; entered: boolean }
+  /** Son de combat tactique généré localement, sans dépendance externe. */
+  | { type: 'combat'; phase: 'start' | 'strike' | 'guard' | 'pulse' | 'evade' | 'victory' | 'defeat' }
   | { type: 'toast'; text: string; tone?: 'info' | 'good' | 'warn' }
   /** Vitesse de véhicule détectée ('début') ou retour à pied ('fin'). L'interface demande alors si le joueur est passager. */
   | { type: 'vehicle'; phase: 'début' | 'fin' }
