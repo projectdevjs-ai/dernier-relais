@@ -91,6 +91,27 @@ function tameMaterial(mat: THREE.Material): void {
   s.roughness = Math.max(s.roughness, 0.85);
   s.envMapIntensity = 0;
   if (s.map) s.map.anisotropy = 4;
+  capTexture(s.map); capTexture(s.normalMap); capTexture(s.emissiveMap); capTexture(s.roughnessMap); capTexture(s.metalnessMap); capTexture(s.aoMap);
+}
+
+/** Côté maximal des textures des modèles, en pixels : au-delà, elles sont réduites une fois chargées. */
+const MAX_TEXTURE = 1024;
+const capped = new WeakSet<THREE.Texture>();
+/** Réduit une texture trop grande (mémoire vidéo des téléphones) ; sans effet sur les autres. */
+function capTexture(t: THREE.Texture | null): void {
+  if (!t || capped.has(t)) return;
+  capped.add(t);
+  const img = t.image as (CanvasImageSource & { width: number; height: number; close?: () => void }) | undefined;
+  if (!img || !(img.width > MAX_TEXTURE || img.height > MAX_TEXTURE) || typeof document === 'undefined') return;
+  const k = MAX_TEXTURE / Math.max(img.width, img.height);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+  const g = c.getContext('2d');
+  if (!g) return;
+  g.drawImage(img, 0, 0, c.width, c.height);
+  img.close?.();
+  t.image = c;
+  t.needsUpdate = true;
 }
 
 /** Allège les animations : on garde les rotations, et la translation du bassin sans sa dérive. */

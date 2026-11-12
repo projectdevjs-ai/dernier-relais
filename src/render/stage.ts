@@ -11,7 +11,7 @@ import { Fronts } from './fronts';
 import { Celebration, Dangers, FxKit, ScanPulse } from './fx';
 import { Jams } from './jams';
 import { LAYER_ID, Layer3D } from './layer';
-import { applyPalette, BUILDING_LAYERS, buildGameStyle, type GameStyle, paletteFor, SOURCE, STYLE_URL, windowPattern } from './mapstyle';
+import { applyPalette, BUILDING_LAYERS, buildGameStyle, type GameStyle, paletteFor, STYLE_URL, windowPattern } from './mapstyle';
 import { PARCEL_TOP, Parcels, parcelModel } from './parcels';
 import { Porter } from './porter';
 import { Router } from './route';
@@ -29,8 +29,6 @@ const PITCH = 62;
 const TOP_PADDING = 0.46;
 /** Au-delà de cette distance à l'ancre (mètres), on recale le repère local. */
 const REANCHOR_M = 4000;
-/** Rayon (mètres) autour d'un abri dans lequel les immeubles de la carte sont aplatis. */
-const CLEAR_M = 20;
 // Listes vides partagées : une vue sans systèmes secondaires n'alloue rien.
 const NO_CACHES: CacheView[] = [], NO_WANDERERS: WandererView[] = [], NO_FRONTS: FrontView[] = [], NO_JAMS: JamView[] = [];
 
@@ -56,12 +54,9 @@ export class Stage implements StageApi {
   private readonly router: Router;
   /** Cible du fil d'Ariane. */
   private readonly guideTo: LngLat = [0, 0];
+  private guideKey = '';
   private guideTone: TrailTone = 'blue';
   private guideFar = false;
-  /** Immeubles de la carte aplatis au pied des abris (identifiants des entités). */
-  private readonly hidden = new Set<string | number>();
-  private readonly hiddenNow = new Set<string | number>();
-  private hideTimer = 0;
   private dark = true;
   /** Dernier instant où quelque chose a bougé (porteur, carte, effet) : au-delà, le rendu ralentit. */
   private lastBusy = 0;
@@ -132,8 +127,6 @@ export class Stage implements StageApi {
     this.map.on('load', () => this.onLoad());
     this.map.on('resize', () => this.applyPadding());
     this.map.on('dragstart', () => { this.follow = false; });
-    // Nouvelles tuiles de bâtiments : on revérifie ce qui dépasse au pied des abris.
-    this.map.on('sourcedata', e => { if (e.sourceId === SOURCE && e.isSourceLoaded) this.scheduleHide(); });
     this.map.on('click', e => this.onTap(e.point.x, e.point.y, [e.lngLat.lng, e.lngLat.lat]));
     this.raf = requestAnimationFrame(this.tick);
   }
@@ -275,41 +268,15 @@ export class Stage implements StageApi {
     }
     if (!best || !at) { this.trail.clear(); return; }
     const to = carried ? best.destAt : best.at;
-    const key = `${to[0].toFixed(5)},${to[1].toFixed(5)}`;
-    this.guideTo[0] = to[0]; this.guideTo[1] = to[1];
+    // La clé de cible n'est refaite que si la cible change (pas de chaîne créée à chaque synchronisation).
+    if (to[0] !== this.guideTo[0] || to[1] !== this.guideTo[1] || !this.guideKey) {
+      this.guideTo[0] = to[0]; this.guideTo[1] = to[1];
+      this.guideKey = `${to[0].toFixed(5)},${to[1].toFixed(5)}`;
+    }
     this.guideTone = carried ? 'blue' : 'amber';
     // Tout près du but, la ligne n'apporte plus rien.
     this.guideFar = best.distanceM > 14;
-    this.trail.set(this.router.get(at, this.guideTo, key, performance.now()), this.guideTo, this.guideTone);
-  }
-
-  /** Demande (une fois le calme revenu) de revérifier les immeubles de la carte au pied des abris. */
-  private scheduleHide(): void {
-    if (this.hideTimer) return;
-    this.hideTimer = window.setTimeout(() => { this.hideTimer = 0; this.hideUnderShelters(); }, 350);
-  }
-
-  /**
-   * Retire les immeubles de la carte dont l'emprise touche le pied d'un abri : sans cela ils traversent
-   * le modèle 3D. On parcourt les entités chargées et on pose un état « hide » lu par le style (hauteur nulle).
-   */
-  private hideUnderShelters(): void {
-    const map = this.map;
-    if (!this.style || !map.getSource(SOURCE)) return;
-    const now = this.hiddenNow;
-    now.clear();
-    let any = false;
-    for (const _ of this.shelters.all) { any = true; break; }
-    if (any) for (const f of map.querySourceFeatures(SOURCE, { sourceLayer: 'building' })) {
-      if (f.id === undefined || now.has(f.id)) continue;
-      const g = f.geometry;
-      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : null;
-      if (!polys) continue;
-      for (const s of this.shelters.all) if (polys.some(p => touches(p as LngLat[][], s.at, CLEAR_M))) { now.add(f.id); break; }
-    }
-    // (Un filtre par identifiant viderait toute la couche avec ces tuiles : on passe par l'état des entités.)
-    for (const id of now) if (!this.hidden.has(id)) { this.hidden.add(id); map.setFeatureState({ source: SOURCE, sourceLayer: 'building', id }, { hide: true }); }
-    for (const id of this.hidden) if (!now.has(id)) { this.hidden.delete(id); map.removeFeatureState({ source: SOURCE, sourceLayer: 'building', id }, 'hide'); }
+    this.trail.set(this.router.get(at, this.guideTo, this.guideKey, performance.now()), this.guideTo, this.guideTone);
   }
 
   // ---------------------------------------------------------------- Synchronisation
@@ -343,9 +310,7 @@ export class Stage implements StageApi {
     this.carried.length = 0;
     for (const o of view.orders) if (o.state === 'porté') this.carried.push(parcelModel(o));
     this.porter.setCarried(this.carried);
-    const shelterCount = this.shelters.count;
     this.shelters.sync(view.shelters);
-    if (this.shelters.count !== shelterCount || this.shelters.moved) this.scheduleHide();
     this.parcels.sync(view.orders);
     this.dangers.sync(view.dangers);
     this.caches.sync(view.caches ?? NO_CACHES);
@@ -374,7 +339,7 @@ export class Stage implements StageApi {
     this.kit.update(this.timeS);
     this.scan.update(dt);
     this.party.update(dt);
-    this.parcels.update(this.timeS);
+    this.parcels.update(this.timeS, dt);
     this.dangers.update(this.timeS);
     this.caches.update(this.timeS);
     this.wanderers.update(dt, this.timeS, this.porter.pos);
@@ -446,21 +411,4 @@ export class Stage implements StageApi {
     else if (kind === 'colis') this.events.onTapOrder(id);
     else this.events.onTapGround(at);
   }
-}
-
-/** Vrai si l'emprise (anneaux de coordonnées) passe à moins de `r` mètres du point, ou le contient. */
-function touches(rings: LngLat[][], at: LngLat, r: number): boolean {
-  const kx = Math.cos((at[1] * Math.PI) / 180) * 111320, ky = 110540;
-  let inside = false;
-  for (const ring of rings) {
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const ax = (ring[j][0] - at[0]) * kx, ay = (ring[j][1] - at[1]) * ky, bx = (ring[i][0] - at[0]) * kx, by = (ring[i][1] - at[1]) * ky;
-      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
-      const t = len > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len)) : 0;
-      if (Math.hypot(ax + dx * t, ay + dy * t) < r) return true;
-      // Lancer de rayon vers l'est depuis le point (origine) : parité des croisements.
-      if ((ay > 0) !== (by > 0) && ax + ((0 - ay) / (by - ay)) * dx > 0) inside = !inside;
-    }
-  }
-  return inside;
 }

@@ -1,12 +1,15 @@
 // Brume d'exploration : les cases jamais parcourues sont noyées dans une nappe de brume qui ondule,
 // les cases visitées restent nettes, avec une lisière douce entre les deux.
-// Une petite texture (un point par case) sert de masque ; son filtrage lisse la transition.
+// Une petite texture (4 x 4 points par case) sert de masque ; son filtrage lisse la transition.
 import * as THREE from 'three';
 import { CELL_Z, cellAt, tileLngLat, type LngLat } from '../core/geo';
 import { type Layer3D, WORLD } from './layer';
 
 /** Côté de la grille de cases couverte, centrée sur le joueur. */
 const N = 16;
+/** Points de masque par côté de case : assez pour que la lisière suive le bord des cases, coins compris. */
+const K = 4;
+const T = N * K;
 const vert = /* glsl */`
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
@@ -25,7 +28,7 @@ void main() {
   float n1 = noise(c * 9.0 + vec2(uTime * 0.05, uTime * 0.02));
   float n2 = noise(c * 26.0 - vec2(uTime * 0.07, -uTime * 0.04));
   float m = texture2D(uMask, uv).r + (n1 - 0.5) * 0.10;
-  float edge = smoothstep(0.40, 0.58, m);
+  float edge = smoothstep(0.30, 0.72, m);
   float a = edge * (0.80 + 0.20 * n1) * uOpacity;
   vec3 col = mix(uColor, uLight, n1 * 0.55 + n2 * 0.25);
   gl_FragColor = vec4(col, a);
@@ -33,7 +36,7 @@ void main() {
 }`;
 
 export class ExploreFog {
-  private readonly data = new Uint8Array(N * N);
+  private readonly data = new Uint8Array(T * T);
   private readonly tex: THREE.DataTexture;
   private readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
   private readonly seen = new Set<string>();
@@ -43,7 +46,7 @@ export class ExploreFog {
   private readonly a = new THREE.Vector3(); private readonly b = new THREE.Vector3();
 
   constructor(scene: THREE.Scene, private readonly layer: Layer3D) {
-    this.tex = new THREE.DataTexture(this.data, N, N, THREE.RedFormat, THREE.UnsignedByteType);
+    this.tex = new THREE.DataTexture(this.data, T, T, THREE.RedFormat, THREE.UnsignedByteType);
     this.tex.magFilter = THREE.LinearFilter; this.tex.minFilter = THREE.LinearFilter;
     this.tex.wrapS = this.tex.wrapT = THREE.ClampToEdgeWrapping;
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
@@ -72,8 +75,8 @@ export class ExploreFog {
     this.any = false;
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const fog = !this.seen.has(`${this.x0 + i}/${this.y0 + j}`);
-      this.data[j * N + i] = fog ? 255 : 0;
       if (fog) this.any = true;
+      for (let b = 0; b < K; b++) this.data.fill(fog ? 255 : 0, (j * K + b) * T + i * K, (j * K + b) * T + i * K + K);
     }
     this.tex.needsUpdate = true;
     this.mesh.visible = this.any;

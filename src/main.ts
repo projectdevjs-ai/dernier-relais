@@ -7,6 +7,8 @@ import { OnlineLink, createOnline } from './net/index';
 import { type Fix, Locator } from './player/gps';
 import { Stage } from './render/stage';
 import { fetchWeather } from './services/weather';
+import { playPrologue, shouldPlayPrologue } from './intro/prologue';
+import { Lab } from './lab/lab';
 import { Story } from './story/story';
 import { StoryUi } from './story/ui';
 import { FrancePanel } from './ui/france';
@@ -94,7 +96,7 @@ const hud = new Hud(hudRoot, {
   actions: game,
   onUseGps: () => { stage.recenter(); locator.startGPS(); },
   onRecenter: () => stage.recenter(),
-  onAmbiance: a => { pref.set('ambiance', a); stage.setAmbiance(a); },
+  onAmbiance: a => { pref.set('ambiance', a); stage.setAmbiance(a); lab.setAmbiance(a); },
   onGoto: (at, label) => {
     simTarget = null;
     stage.jumpTo(at);
@@ -117,7 +119,8 @@ const hud = new Hud(hudRoot, {
     hud.setCanInstall(false);
     void p.prompt().catch(() => { /* invite refusée ou déjà montrée */ });
   },
-  /*LAB-HOOKS*/
+  onReplayIntro: () => { void runPrologue(); },
+  onLab: () => { void enterLab(); },
 }, { ambiance, settings: { ...prefs, canInstall: false } });
 
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e as InstallPrompt; hud.setCanInstall(true); });
@@ -168,15 +171,73 @@ function frame(): void {
   hud.render(view);
   sound.ambient(view);
   story.observe(view);
+  if (inLab) lab.update(view);
 }
 
-game.load().then(() => {
+// ---------- Station Lumen : le labo sert de menu principal, le prologue n'est joué qu'une fois ----------
+let inLab = false;
+let gpsStarted = false;
+const lab = new Lab(document.body, {
+  onDepart: () => {
+    lab.close();
+    inLab = false;
+    stage.setPaused?.(false);
+    document.body.classList.remove('dr-in-lab');
+    stage.recenter();
+    if (!gpsStarted) { gpsStarted = true; locator.startGPS(); }
+  },
+  onSkills: () => hud.openPorter('competences'),
+  onNetwork: () => hud.openNetwork(),
+  onContracts: () => hud.openPorter('contrats'),
+  onJournal: () => hud.openPorter('carnet'),
+}, { ambiance });
+
+async function enterLab(): Promise<void> {
+  inLab = true;
+  document.body.classList.add('dr-in-lab');
+  stage.setPaused?.(true);
+  try { await lab.open(view ?? game.view()); }
+  catch { inLab = false; stage.setPaused?.(false); document.body.classList.remove('dr-in-lab'); if (!gpsStarted) { gpsStarted = true; locator.startGPS(); } }
+}
+
+/** Prologue, avec la narration en voix française calée sur les textes à l'écran. */
+async function runPrologue(): Promise<void> {
+  const lines: [number, string, string][] = [
+    [1.2, 'narrateur', 'Tu es tombé du ciel.'],
+    [14.4, 'iris', 'Dehors, les villes sont coupées les unes des autres.'],
+    [18.9, 'iris', 'Plus de routes sûres, plus de liaisons.'],
+    [23.3, 'iris', 'Il ne reste que des gens comme toi, qui portent.'],
+  ];
+  const timers = lines.map(([t, who, text]) => setTimeout(() => voice.say(who, text), t * 1000));
+  stage.setPaused?.(true);
+  await playPrologue(document.body, { ambiance });
+  if (!inLab) stage.setPaused?.(false);
+  timers.forEach(clearTimeout);
+  voice.stop();
+}
+
+/** Écran de départ du tout premier lancement : un toucher est nécessaire pour que le son soit autorisé. */
+function splash(): Promise<void> {
+  return new Promise(done => {
+    const el = document.createElement('button');
+    el.id = 'splash';
+    el.type = 'button';
+    el.innerHTML = '<span class="k">Station Lumen</span><strong>Dernier Relais</strong><span class="go">Toucher pour commencer</span>';
+    el.addEventListener('click', () => { sound.unlock(); voice.unlock(); el.classList.add('out'); setTimeout(() => { el.remove(); done(); }, 450); }, { once: true });
+    document.body.append(el);
+  });
+}
+
+game.load().then(async () => {
   const saved = game.view().player.at ?? game.snapshot().last ?? START;
   stage.jumpTo(saved);
   locator.simulate(saved[0], saved[1]);
-  locator.startGPS();
   setInterval(frame, 200);
   frame();
+  // Essais automatiques : « ?direct » saute le prologue et le labo.
+  if (new URLSearchParams(location.search).has('direct')) { gpsStarted = true; locator.startGPS(); return; }
+  if (shouldPlayPrologue()) { await splash(); await runPrologue(); }
+  await enterLab();
 });
 const flush = () => { void game.flush().then(() => online.store.flush()); };
 document.addEventListener('visibilitychange', () => {
@@ -185,7 +246,7 @@ document.addEventListener('visibilitychange', () => {
 addEventListener('pagehide', flush);
 
 // Accès pour les essais automatiques (console du navigateur) : sans effet sur le jeu.
-Object.assign(window, { __dr: { game, stage, hud, world, sound, france, story, storyUi, net: online.net, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
+Object.assign(window, { __dr: { game, stage, hud, world, sound, france, story, storyUi, lab, net: online.net, teleport: (at: LngLat) => locator.simulate(at[0], at[1]) } });
 
 // Version web : cache des fichiers lourds pour les lancements suivants (inutile dans l'APK, où tout est déjà sur le téléphone).
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !('Capacitor' in window)) {

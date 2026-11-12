@@ -37,6 +37,9 @@ interface Item {
   inRange: boolean;
   alive: boolean;
   seed: number;
+  /** Apparition (0 à 1) ; repart vers 0 quand le colis disparaît, puis il est retiré. */
+  show: number;
+  dying: boolean;
 }
 
 export class Parcels {
@@ -55,6 +58,7 @@ export class Parcels {
       this.seen.add(o.id);
       let it = this.items.get(o.id);
       if (it && it.look !== lookOf(o)) { this.remove(it); it = undefined; }
+      if (it) it.dying = false;
       if (!it) it = this.create(o);
       if (it.at[0] !== o.at[0] || it.at[1] !== o.at[1]) { it.at = [o.at[0], o.at[1]]; this.layer.toLocal(it.at, it.group.position); }
       if (it.inRange !== o.inRange) {
@@ -63,7 +67,8 @@ export class Parcels {
         if (!o.inRange) { it.holder.scale.setScalar(1); it.ring.scale.set(RING, 1, RING); }
       }
     }
-    for (const it of [...this.items.values()]) if (!this.seen.has(it.id)) this.remove(it);
+    // Disparition en fondu : le colis rétrécit, puis est retiré par update().
+    for (const it of this.items.values()) if (!this.seen.has(it.id)) it.dying = true;
   }
 
   private create(o: OrderView): Item {
@@ -100,7 +105,8 @@ export class Parcels {
 
     let seed = 0;
     for (let i = 0; i < o.id.length; i++) seed = (seed * 31 + o.id.charCodeAt(i)) % 628;
-    const it: Item = { id: o.id, at: [o.at[0], o.at[1]], look: lookOf(o), group, model: null, holder, gem, gem2, pulse, ring, inRange: false, alive: true, seed: seed / 100 };
+    const it: Item = { id: o.id, at: [o.at[0], o.at[1]], look: lookOf(o), group, model: null, holder, gem, gem2, pulse, ring, inRange: false, alive: true, seed: seed / 100, show: 0, dying: false };
+    group.scale.setScalar(0.001);
     this.items.set(o.id, it);
     void spawn(parcelModel(o), 'caisse', { height: o.special?.known ? CRATE_HEIGHT * 1.25 : CRATE_HEIGHT, maxWidth: CRATE_WIDTH * 1.1 }).then(inst => {
       if (!it.alive) { disposeInstance(inst); return; }
@@ -122,9 +128,16 @@ export class Parcels {
 
   reposition(): void { for (const it of this.items.values()) this.layer.toLocal(it.at, it.group.position); }
 
-  update(timeS: number): void {
+  update(timeS: number, dt: number): void {
     const phase = this.kit.phase;
     for (const it of this.items.values()) {
+      if (it.dying || it.show < 1) {
+        it.show = Math.min(1, Math.max(0, it.show + (it.dying ? -dt * 3.5 : dt * 2.6)));
+        if (it.dying && it.show <= 0) { this.remove(it); continue; }
+        // Léger dépassement à l'apparition, comme un objet qui se pose.
+        const e = 1 - (1 - it.show) ** 3;
+        it.group.scale.setScalar(Math.max(0.001, e * (1 + 0.12 * Math.sin(it.show * Math.PI))));
+      }
       it.gem.position.y = PARCEL_TOP - 1.6 + Math.sin(timeS * 2.4 + it.seed) * 0.6;
       it.gem.rotation.y = timeS * 1.6 + it.seed;
       if (it.gem2) { it.gem2.position.y = PARCEL_TOP + 1.7 + Math.sin(timeS * 2.4 + it.seed + 1.2) * 0.6; it.gem2.rotation.y = -timeS * 2.2; }

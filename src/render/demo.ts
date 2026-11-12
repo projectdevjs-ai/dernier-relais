@@ -4,7 +4,7 @@
 //                    &arret=1 (joueur immobile)  &fete=1 (gerbe sur un abri)  &brume=1 (cases non visitées)
 // Systèmes secondaires : &special=cryo|ruche|batterie|boitenoire|inconnu  &porte=cryo|… (colis spécial au dos)
 //                    &perdu=1  &cache=1|proche  &rodeur=1|proche  &front=1|dedans  &lot=1  &tout=1 (un de chaque)
-//                    &calme=1 (pas d'onde de scanner, pour les captures)
+//                    &calme=1 (pas d'onde de scanner, pour les captures)  &decal=est,nord (décalage du joueur en mètres)
 import { cellAt, cellsAround, type LngLat } from '../core/geo';
 import type { Ambiance, SpecialKind, WeatherKind } from '../game/api';
 import { type MockEvents, mockView, withEvents } from '../game/mock';
@@ -42,7 +42,8 @@ function push(): void {
   const view = mockView(centre, t);
   // ?abri=s3 : le joueur se promène au pied de cet abri.
   const near = view.shelters.find(s => s.id === q.get('abri'));
-  const base: LngLat = near ? [near.at[0] + 35 / 75000, near.at[1] + 10 / 111000] : centre;
+  const [de, dn] = (q.get('decal') ?? '0,0').split(',').map(Number);
+  const base: LngLat = near ? [near.at[0] + 35 / 75000, near.at[1] + 10 / 111000] : [centre[0] + (de || 0) / 75000, centre[1] + (dn || 0) / 111000];
   // Le joueur fait lentement le tour d'un pâté de maisons (cercle de 40 m, 1,3 m/s).
   const a = still ? 0.6 : 0.6 + (t * 1.3) / 40;
   view.player.at = [base[0] + (Math.sin(a) * 40 - 45) / 75000, base[1] + (Math.cos(a) * 40 - 75) / 111000];

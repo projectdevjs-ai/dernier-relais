@@ -2,6 +2,7 @@
 // léger, chargement des modèles GLB sans cache (pour pouvoir tout libérer), acteurs animés,
 // textures procédurales et petites fonctions de mise en scène.
 import * as THREE from 'three';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -199,7 +200,7 @@ export interface FitOpts {
 
 /** Suit l'avancement d'un lot de chargements et libère tout ce qui a été chargé. */
 export class Loader3D {
-  private readonly gltf = new GLTFLoader();
+  private readonly gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   private readonly parts: number[] = [];
   private readonly owned: THREE.Object3D[] = [];
   private dead = false;

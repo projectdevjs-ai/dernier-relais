@@ -198,7 +198,7 @@ export class Sky {
       this.hemi.intensity = THREE.MathUtils.lerp(1.9, 1.25, n);
       this.sun.color.set(0xffc98a).lerp(tc.set(0x86a4ff), n);
       this.sun.intensity = THREE.MathUtils.lerp(2.3 * cover, 0.5, n);
-      u.uTop.value = 0.8 + env.fog * 0.2; u.uStart.value = 0.5 - env.fog * 0.3;
+      u.uTop.value = 0.72 + env.fog * 0.25; u.uStart.value = 0.56 - env.fog * 0.3;
       u.uAll.value = env.fog * 0.14; u.uVignette.value = 0.24 + n * 0.22;
     }
     // Le voile prend la teinte de l'air de la palette ; par temps bouché il perd sa lueur d'horizon.

@@ -52,10 +52,6 @@ export class Shelters {
   constructor(private readonly scene: THREE.Scene, private readonly kit: FxKit, private readonly layer: Layer3D) {}
 
   get all(): IterableIterator<Item> { return this.items.values(); }
-  get count(): number { return this.items.size; }
-  /** Vrai une fois si un abri a été créé, retiré ou déplacé depuis la dernière lecture. */
-  get moved(): boolean { const m = this.dirty; this.dirty = false; return m; }
-  private dirty = false;
   get(id: string): Item | undefined { return this.items.get(id); }
 
   sync(list: ShelterView[]): void {
@@ -66,7 +62,7 @@ export class Shelters {
       if (it && it.npcId !== s.npc) { this.remove(it); it = undefined; }
       if (!it) it = this.create(s);
       if (it.at[0] !== s.at[0] || it.at[1] !== s.at[1]) {
-        it.at = [s.at[0], s.at[1]]; this.layer.toLocal(it.at, it.group.position); this.dirty = true;
+        it.at = [s.at[0], s.at[1]]; this.layer.toLocal(it.at, it.group.position);
       }
       const stars = Math.max(0, Math.min(5, Math.floor(s.stars))), deliverable = s.deliverable.length > 0;
       if (stars !== it.stars || deliverable !== it.deliverable || s.inRange !== it.inRange) {
@@ -138,11 +134,12 @@ export class Shelters {
       arcs, pips, pipRow, beacon, chevron, pulse, glow, halo, height: SHELTER_HEIGHT, stars: -1, deliverable: false, inRange: false, alive: true,
     };
     this.items.set(s.id, it);
-    this.dirty = true;
     void spawn(BUILDING[s.npc], 'batiment', { height: SHELTER_HEIGHT, maxWidth: SHELTER_WIDTH, ownMaterials: true }).then(inst => {
       if (!it.alive) { disposeInstance(inst); return; }
       it.building = inst; it.height = inst.size.y;
-      setLayer(inst.root, WORLD);
+      // Dessiné par-dessus la carte (calque TOP) : les immeubles de la carte qui chevauchent son emprise
+      // ne le traversent plus, et l'abri reste lisible de partout, comme le porteur.
+      setLayer(inst.root, TOP);
       group.add(inst.root);
       it.pipRow.position.y = it.height + 3.5;
       it.halo.position.y = it.height * 0.6;
@@ -179,7 +176,7 @@ export class Shelters {
         it.npcLoading = false;
         if (!it.alive || it.npc) { disposeInstance(inst); return; }
         it.npc = inst;
-        setLayer(inst.root, WORLD);
+        setLayer(inst.root, TOP);
         const b = it.building;
         inst.root.position.set(b ? b.size.x * 0.2 : 4, 0, b ? Math.min(RING_RADIUS - 5, b.size.z / 2 + 4) : RING_RADIUS - 6);
         inst.root.visible = it.stars > 0;
@@ -197,7 +194,6 @@ export class Shelters {
     disposeInstance(it.building); disposeInstance(it.npc);
     it.group.removeFromParent();
     this.items.delete(it.id);
-    this.dirty = true;
   }
 
   applyEnv(env: Env): void {
@@ -212,6 +208,8 @@ export class Shelters {
     const phase = this.kit.phase;
     for (const it of this.items.values()) {
       it.pipRow.rotation.y = -bearingRad;
+      // Halo au sol : il respire lentement, comme un feu de camp vu de loin.
+      if (it.glow.visible) { const g = RING_RADIUS * (3.4 + 0.22 * Math.sin(timeS * 0.9 + it.group.position.x)); it.glow.scale.set(g, 1, g); }
       if (it.halo.visible) it.halo.rotation.set(pitchRad, -bearingRad, 0);
       if (it.npc && it.npc.root.visible) {
         it.mixer?.update(dt);

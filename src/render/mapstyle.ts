@@ -20,10 +20,10 @@ const KEYS: Key[] = ['land', 'urban', 'park', 'wood', 'water', 'sand', 'road', '
 /** Palettes de jour. « crépuscule » : heure bleue, sol ardoise, toits froids, horizon encore chaud. */
 const DAY: Record<Ambiance, Palette> = {
   'crépuscule': {
-    land: '#1e2c30', urban: '#223237', park: '#22483a', wood: '#1c4030', water: '#1b5a78', sand: '#454330',
-    road: '#3b5058', roadMajor: '#4d6772', roadEdge: '#6c8a92', path: '#a08548', rail: '#7a6540',
-    bLow: '#3d555c', bHigh: '#6a8f98', roofLow: '#56737a', roofHigh: '#8fb4ba', text: '#f0ead8', halo: '#1e2c30', veil: '#4a5d66',
-    sky: '#22325a', horizon: '#e79a6a', haze: '#5c6f8a',
+    land: '#1b2d36', urban: '#20343e', park: '#1f4a3c', wood: '#194233', water: '#1a5f86', sand: '#4a4532',
+    road: '#3a5463', roadMajor: '#4c6b7c', roadEdge: '#7397a6', path: '#b08f4a', rail: '#806a40',
+    bLow: '#34505e', bHigh: '#5f8ea0', roofLow: '#4f7888', roofHigh: '#8dbfcc', text: '#f0ead8', halo: '#1b2d36', veil: '#4a6070',
+    sky: '#1f3160', horizon: '#f0a070', haze: '#5a7090',
   },
   clair: {
     land: '#f3ecda', urban: '#ede4cf', park: '#bfe09a', wood: '#a3d188', water: '#86cdea', sand: '#f6e3a8',
@@ -80,8 +80,6 @@ function heightExpr(prop: 'render_height' | 'render_min_height'): unknown {
   return ['*', 0.8, ['coalesce', ['get', prop], prop === 'render_height' ? 6 : 0]];
 }
 
-/** Vrai pour les bâtiments masqués au pied d'un abri (état posé par Stage.hideUnderShelters). */
-const HIDDEN = ['==', ['feature-state', 'hide'], true];
 const byHeight = (low: string, high: string): unknown => ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6], 3, low, 14, mixHex(low, high, 0.55), 34, high];
 function mixHex(a: string, b: string, k: number): string { return '#' + ca.set(a).lerp(cb.set(b), k).getHexString(); }
 
@@ -89,16 +87,19 @@ export const BUILDING_LAYERS = ['building-3d', 'building-win', 'building-roof'];
 /** Épaisseur de la dalle de toit, en mètres. */
 const ROOF = 0.45;
 
-/** Motif des fenêtres allumées (transparent ailleurs), plaqué sur les murs à la tombée du jour. */
-export function windowPattern(): { width: number; height: number; data: Uint8Array } {
+/** Motif des murs à la tombée du jour : la teinte du mur, percée de quelques fenêtres allumées. */
+export function windowPattern(wall = '#33464d'): { width: number; height: number; data: Uint8Array } {
   const n = 64, data = new Uint8Array(n * n * 4);
+  ca.set(wall);
+  const wr = Math.round(ca.r * 255), wg = Math.round(ca.g * 255), wb = Math.round(ca.b * 255);
+  for (let i = 0; i < n * n * 4; i += 4) { data[i] = wr; data[i + 1] = wg; data[i + 2] = wb; data[i + 3] = 255; }
   // Grille de 4 x 4 fenêtres ; tirage fixe pour un rendu identique partout.
   const lit = [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0];
   const warm = [[255, 206, 128], [255, 180, 96], [255, 226, 170], [190, 226, 240]];
   for (let k = 0; k < 16; k++) {
     if (!lit[k]) continue;
     const cx = (k % 4) * 16 + 5, cy = Math.floor(k / 4) * 16 + 4, col = warm[(k * 7) % warm.length];
-    for (let y = cy; y < cy + 8; y++) for (let x = cx; x < cx + 5; x++) {
+    for (let y = cy; y < cy + 9; y++) for (let x = cx; x < cx + 6; x++) {
       const i = (y * n + x) * 4;
       data[i] = col[0]; data[i + 1] = col[1]; data[i + 2] = col[2]; data[i + 3] = 255;
     }
@@ -164,8 +165,7 @@ export function buildGameStyle(src: StyleSpecification): GameStyle {
   // Bâtiments extrudés en 3D, reconstruits à notre façon : murs en dégradé vertical, fenêtres allumées
   // le soir, et une fine dalle de toit d'une autre teinte qui découpe chaque volume.
   const h = heightExpr('render_height'), base = heightExpr('render_min_height');
-  // Bâtiment masqué : hauteur nulle (il ne reste qu'une dalle au sol, de la couleur du terrain).
-  const wall = { 'fill-extrusion-height': ['case', HIDDEN, 0, h], 'fill-extrusion-base': base };
+  const wall = { 'fill-extrusion-height': h, 'fill-extrusion-base': base };
   const common = { type: 'fill-extrusion', source: SOURCE, 'source-layer': 'building', filter: ['!', ['has', 'hide_3d']] };
   layers.push({ ...common, id: 'building-3d', minzoom: 14, paint: { 'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true, ...wall } } as unknown as LayerSpecification);
   layers.push({ ...common, id: 'building-win', minzoom: 16.5, layout: { visibility: 'none' }, paint: { 'fill-extrusion-pattern': 'fenetres', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': false, ...wall } } as unknown as LayerSpecification);
@@ -173,7 +173,7 @@ export function buildGameStyle(src: StyleSpecification): GameStyle {
     ...common, id: 'building-roof', minzoom: 15,
     paint: {
       'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': false,
-      'fill-extrusion-height': ['case', HIDDEN, 0, ['+', h, ROOF]], 'fill-extrusion-base': ['case', HIDDEN, 0, h],
+      'fill-extrusion-height': ['+', h, ROOF], 'fill-extrusion-base': h,
     },
   } as unknown as LayerSpecification);
   const sources: StyleSpecification['sources'] = {};
@@ -187,6 +187,7 @@ export function applyPalette(map: MlMap, style: GameStyle | null, p: Palette): v
   if (map.getLayer('veil')) map.setPaintProperty('veil', 'fill-color', p.veil);
   if (!style) return;
   for (const [layer, prop, key] of style.binds) if (map.getLayer(layer)) map.setPaintProperty(layer, prop, p[key]);
-  if (map.getLayer('building-3d')) map.setPaintProperty('building-3d', 'fill-extrusion-color', ['case', HIDDEN, p.urban, byHeight(p.bLow, p.bHigh)]);
-  if (map.getLayer('building-roof')) map.setPaintProperty('building-roof', 'fill-extrusion-color', ['case', HIDDEN, p.urban, byHeight(p.roofLow, p.roofHigh)]);
+  if (map.hasImage('fenetres')) map.updateImage('fenetres', windowPattern(mixHex(p.bLow, p.bHigh, 0.7)));
+  if (map.getLayer('building-3d')) map.setPaintProperty('building-3d', 'fill-extrusion-color', byHeight(p.bLow, p.bHigh));
+  if (map.getLayer('building-roof')) map.setPaintProperty('building-roof', 'fill-extrusion-color', byHeight(p.roofLow, p.roofHigh));
 }

@@ -16,6 +16,8 @@ interface Item {
   ring: THREE.Mesh; pulse: THREE.Mesh; mark: THREE.Mesh;
   target: THREE.Vector3; heading: number; targetHeading: number;
   moving: boolean; met: boolean; inRange: boolean; alive: boolean; placed: boolean;
+  /** Apparition en fondu d'échelle, de 0 à 1. */
+  show: number;
 }
 
 export class Wanderers {
@@ -61,8 +63,9 @@ export class Wanderers {
     this.scene.add(group);
     const it: Item = {
       id: w.id, at: [w.at[0], w.at[1]], group, model: null, mixer: null, walk: null, idle: null, ring, pulse, mark,
-      target: new THREE.Vector3(), heading: 0, targetHeading: 0, moving: true, met: false, inRange: false, alive: true, placed: false,
+      target: new THREE.Vector3(), heading: 0, targetHeading: 0, moving: true, met: false, inRange: false, alive: true, placed: false, show: 0,
     };
+    group.scale.setScalar(0.001);
     this.items.set(w.id, it);
     void spawn('porteur_civil', 'perso', { height: WANDERER_HEIGHT }).then(inst => {
       if (!it.alive) { disposeInstance(inst); return; }
@@ -108,6 +111,7 @@ export class Wanderers {
     const k = 1 - Math.exp(-dt * 3.2), phase = this.kit.phase;
     for (const it of this.items.values()) {
       const p = it.group.position;
+      if (it.show < 1) { it.show = Math.min(1, it.show + dt * 2.2); it.group.scale.setScalar(Math.max(0.001, 1 - (1 - it.show) ** 3)); }
       p.x += (it.target.x - p.x) * k; p.z += (it.target.z - p.z) * k;
       // À l'arrêt et tout près du porteur : il se tourne vers lui.
       const px = player.x - p.x, pz = player.z - p.z;

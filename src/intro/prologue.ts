@@ -156,6 +156,8 @@ interface World {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   porter: Actor;
+  /** La Station Lumen au loin : cachée pendant le réveil, pour garder la découverte. */
+  station: THREE.Group;
   sun: THREE.DirectionalLight;
   ember: THREE.PointLight;
   smoke: THREE.Sprite[];
@@ -354,7 +356,7 @@ async function buildWorld(vp: Viewport, loader: Loader3D, pal: Pal): Promise<Wor
   dust.frustumCulled = false;
   scene.add(dust);
 
-  return { scene, camera, porter, sun, ember, smoke, sparks, dust, beam, sky, pal, env };
+  return { scene, camera, porter, station: lab, sun, ember, smoke, sparks, dust, beam, sky, pal, env };
 }
 
 const _p = new THREE.Vector3(), _l = new THREE.Vector3();
@@ -426,6 +428,8 @@ function applyTime(w: World, t: number, aspect: number, still: boolean): void {
   cam.position.copy(_p);
   cam.lookAt(_l);
   if (cam.fov !== fov) { cam.fov = fov; cam.updateProjectionMatrix(); }
+
+  w.station.visible = t >= T.cutB;
 
   // --- Soleil : la carte d'ombres suit le porteur ---
   const dir = w.sun.userData.dir as THREE.Vector3;
