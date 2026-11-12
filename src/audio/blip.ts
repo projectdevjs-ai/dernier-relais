@@ -42,26 +42,28 @@ export interface Persona {
   /** Douceur de l'attaque : 0 = nette, 1 = très progressive. */
   soft: number;
   pan: number;
+  /** Niveau propre au personnage, réglé d'après les mesures pour que toutes les voix aient la même force. */
+  gain: number;
 }
 
 /** Les sept personnages et la voix par défaut (rôdeurs, inconnus). */
 export const PERSONAS: Record<string, Persona> = {
   // Mara : femme chaleureuse, « ah » qui monte.
-  mara: { f0: 212, vowel: 'a', tract: 1.15, syllables: [{ at: 0, dur: 0.34, c: [0.93, 0.97, 1.05, 1.13] }], h: 0.1, breath: 0.35, soft: 0.6, pan: -0.08 },
+  mara: { f0: 212, vowel: 'a', tract: 1.15, syllables: [{ at: 0, dur: 0.34, c: [0.93, 0.97, 1.05, 1.13] }], h: 0.1, breath: 0.35, soft: 0.6, pan: -0.08, gain: 0.67 },
   // Tomas : homme bourru, « hm » grave et court.
-  tomas: { f0: 98, vowel: 'm', tract: 0.96, syllables: [{ at: 0, dur: 0.22, c: [1.04, 1.0, 0.93] }], h: 0.25, breath: 0.3, soft: 0.25, pan: 0.08 },
+  tomas: { f0: 98, vowel: 'm', tract: 0.96, syllables: [{ at: 0, dur: 0.22, c: [1.04, 1.0, 0.93] }], h: 0.25, breath: 0.3, soft: 0.25, pan: 0.08, gain: 0.62 },
   // Agathe : femme précise, « hm-hm » net (deux syllabes, la seconde plus haute).
-  agathe: { f0: 228, vowel: 'm', tract: 1.16, syllables: [{ at: 0, dur: 0.12, c: [1.0, 0.97] }, { at: 0.16, dur: 0.16, c: [1.16, 1.2, 1.14], gain: 0.9 }], h: 0.05, breath: 0.15, soft: 0.15, pan: -0.05 },
+  agathe: { f0: 228, vowel: 'm', tract: 1.16, syllables: [{ at: 0, dur: 0.12, c: [1.0, 0.97] }, { at: 0.16, dur: 0.16, c: [1.16, 1.2, 1.14], gain: 0.9 }], h: 0.05, breath: 0.15, soft: 0.15, pan: -0.05, gain: 0.575 },
   // Kenji : jeune homme rêveur, « oh » doux.
-  kenji: { f0: 136, vowel: 'o', tract: 1.02, syllables: [{ at: 0, dur: 0.42, c: [0.98, 1.04, 1.02, 0.94] }], h: 0, breath: 0.45, soft: 1, pan: 0.06 },
+  kenji: { f0: 136, vowel: 'o', tract: 1.02, syllables: [{ at: 0, dur: 0.42, c: [0.98, 1.04, 1.02, 0.94] }], h: 0, breath: 0.45, soft: 1, pan: 0.06, gain: 0.575 },
   // Iris : femme posée, autorité calme, « hm » qui descend.
-  iris: { f0: 188, vowel: 'm', tract: 1.13, syllables: [{ at: 0, dur: 0.36, c: [1.09, 1.04, 0.95, 0.87] }], h: 0.1, breath: 0.2, soft: 0.5, pan: 0 },
+  iris: { f0: 188, vowel: 'm', tract: 1.13, syllables: [{ at: 0, dur: 0.36, c: [1.09, 1.04, 0.95, 0.87] }], h: 0.1, breath: 0.2, soft: 0.5, pan: 0, gain: 0.437 },
   // Noé : homme enjoué, « hé » bref.
-  noe: { f0: 152, vowel: 'e', tract: 1.0, syllables: [{ at: 0, dur: 0.2, c: [1.0, 1.13, 1.07] }], h: 0.7, breath: 0.25, soft: 0.2, pan: 0.07 },
+  noe: { f0: 152, vowel: 'e', tract: 1.0, syllables: [{ at: 0, dur: 0.2, c: [1.0, 1.13, 1.07] }], h: 0.7, breath: 0.25, soft: 0.2, pan: 0.07, gain: 0.82 },
   // Selma : femme ironique et tendre, « ha » léger.
-  selma: { f0: 222, vowel: 'a', tract: 1.14, syllables: [{ at: 0, dur: 0.24, c: [1.08, 1.05, 0.97] }], h: 0.9, breath: 0.6, soft: 0.4, pan: -0.07 },
+  selma: { f0: 222, vowel: 'a', tract: 1.14, syllables: [{ at: 0, dur: 0.24, c: [1.08, 1.05, 0.97] }], h: 0.9, breath: 0.6, soft: 0.4, pan: -0.07, gain: 0.76 },
   // Défaut neutre : « huh » court, à mi-hauteur.
-  '': { f0: 160, vowel: 'oe', tract: 1.06, syllables: [{ at: 0, dur: 0.26, c: [0.98, 1.0, 1.05] }], h: 0.6, breath: 0.35, soft: 0.4, pan: 0 },
+  '': { f0: 160, vowel: 'oe', tract: 1.06, syllables: [{ at: 0, dur: 0.26, c: [0.98, 1.0, 1.05] }], h: 0.6, breath: 0.35, soft: 0.4, pan: 0, gain: 0.58 },
 };
 
 /** Nombre de variantes par personnage, tirées à tour de rôle. */
@@ -141,7 +143,7 @@ export function playBlip(rig: Rig, who: string, mood: BlipMood, variant: number,
 
   // Conduit vocal : formants en parallèle, plus un peu de poitrine (le grave de la voix).
   const mouth = ctx.createGain();
-  mouth.gain.value = LEVEL;
+  mouth.gain.value = LEVEL * p.gain;
   const f1 = vowel.f[0] * p.tract;
   vowel.f.forEach((f, i) => {
     const bp = ctx.createBiquadFilter(), g = ctx.createGain(), target = f * p.tract * (0.98 + 0.04 * r());

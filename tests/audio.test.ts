@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContractView, DeliveryResult, GameEvent, GameView, Grade, OrderView, WeatherKind } from '../src/game/api';
 import { Ambience } from '../src/audio/ambience';
 import { Audio, HAPTICS, HAPTIC_MAX_MS, MAX_VOICES, Sound, clampPattern } from '../src/audio/audio';
+import { BLIP_VARIANTS, PERSONAS, VOWELS, blipPlan, personaKey, playBlip } from '../src/audio/blip';
+import { MUSIC, Music } from '../src/audio/music';
 import { Rig, seeded } from '../src/audio/rig';
 import { SOUNDS, SOUND_NAMES, n, play } from '../src/audio/sounds';
 
@@ -342,10 +344,10 @@ describe('son : nappe d\'ambiance', () => {
   it('n\'ajoute que des boucles par temps clair à l\'arrêt, et aucune boucle de pluie', () => {
     const ctx = run(view({ kind: 'clair', wind: 10 }));
     expect(oneShots(ctx)).toBe(0);
-    expect(ctx.sources.filter(x => x.loop)).toHaveLength(1); // le vent seul
+    expect(ctx.sources.filter(x => x.loop)).toHaveLength(3); // le vent et les deux côtés du fond de l'air
   });
   it('ajoute la pluie quand il pleut, et un fond tonal la nuit', () => {
-    expect(run(view({ kind: 'pluie' })).sources.filter(x => x.kind === 'buffer' && x.loop).length).toBe(3);
+    expect(run(view({ kind: 'pluie' })).sources.filter(x => x.kind === 'buffer' && x.loop).length).toBe(5);
     expect(run(view({ kind: 'clair' })).sources.filter(x => x.kind === 'osc')).toHaveLength(0);
     expect(run(view({ kind: 'clair', night: true })).sources.filter(x => x.kind === 'osc' && x.stopAt === null)).toHaveLength(3);
   });
@@ -354,10 +356,13 @@ describe('son : nappe d\'ambiance', () => {
       // Même graine à chaque fois : la rafale du moment est identique, seul le vent change.
       const ctx = new FakeContext(), rig = new Rig(ctx as unknown as BaseAudioContext, { rand: seeded(3) }), amb = new Ambience(rig);
       amb.update({ weather: { kind: 'nuages', windKmh: wind, tempC: 10, night: false, sunAltDeg: 30 }, speedMps: 0, moving: false, load: 0, balance: 0 });
-      return Math.max(...ctx.gains.filter(g => !g.outs.includes(rig.amb as unknown as Node)).flatMap(g => g.gain.events.filter(e => e.kind === 'target').map(e => e.v)));
+      // Somme des niveaux visés par toutes les couches : le fond de l'air est le même dans les trois cas, seul le vent change.
+      return ctx.gains.filter(g => !g.outs.includes(rig.amb as unknown as Node)).flatMap(g => g.gain.events.filter(e => e.kind === 'target').map(e => e.v)).reduce((a, b) => a + b, 0);
     };
-    expect(level(60)).toBeGreaterThan(level(20) * 3);
+    const calm = level(0);
+    expect(level(60) - calm).toBeGreaterThan((level(20) - calm) * 3);
     expect(level(20)).toBeGreaterThan(level(2));
+    expect(calm).toBeGreaterThan(0); // sans vent, il reste le fond de l'air : la nappe n'est jamais vide
   });
   it('cadence les pas sur la vitesse, et n\'en joue pas à l\'arrêt', () => {
     const steps = (speed: number): number => {
@@ -393,9 +398,9 @@ describe('son : nappe d\'ambiance', () => {
     const { s, ctx } = unlocked();
     for (let i = 0; i < 5; i++) { s.ambient(view({ kind: 'pluie' })); ctx.currentTime += 0.2; }
     const rain = ctx.sources.filter(x => x.loop);
-    expect(rain.filter(x => x.stopAt === null)).toHaveLength(3);
+    expect(rain.filter(x => x.stopAt === null)).toHaveLength(5);
     for (let i = 0; i < 30; i++) { s.ambient(view({ kind: 'clair' })); ctx.currentTime += 0.2; }
-    expect(rain.filter(x => x.stopAt === null)).toHaveLength(1);
+    expect(rain.filter(x => x.stopAt === null)).toHaveLength(3);
   });
   it('accepte une météo inconnue et des valeurs aberrantes', () => {
     const { rig } = fakeRig(), amb = new Ambience(rig);
@@ -446,6 +451,215 @@ describe('son : catalogue', () => {
     expect(n(5)).toBeCloseTo(587.33, 1);
     expect(n(-5)).toBeCloseTo(146.83, 1);
     expect(n(1) / n(0)).toBeCloseTo(2 ** (3 / 12), 5);
+  });
+});
+
+describe('son : pas', () => {
+  const stepGain = (v: number): number => {
+    const ctx = new FakeContext(), rig = new Rig(ctx as unknown as BaseAudioContext, { rand: seeded(9) }), base = ctx.gains.length;
+    play(rig, 'step', 0.1, v, 0);
+    return Math.max(...ctx.gains.slice(base).flatMap(g => g.gain.events.map(e => e.v)));
+  };
+  it('sont plus discrets à vide que chargé, et bien plus bas que les sons du jeu', () => {
+    expect(stepGain(0)).toBeLessThan(stepGain(1) * 0.85);
+    expect(stepGain(1)).toBeLessThan(0.06);
+  });
+  it('varient d\'un pas à l\'autre et alternent gauche et droite', () => {
+    const { s, ctx } = unlocked();
+    for (let t = 0; t < 4; t += 0.2) { s.ambient(view({ speed: 1.4, load: 0.3 })); ctx.currentTime += 0.2; }
+    const steps = ctx.sources.filter(x => x.kind === 'osc' && x.stopAt !== null);
+    expect(steps.length).toBeGreaterThan(4);
+    expect(new Set(steps.map(x => x.frequency.events[0].v.toFixed(1))).size).toBeGreaterThan(steps.length / 2);
+    // Aucune attaque de moins de 10 ms dans un pas : pas de claquement.
+    const envs = ctx.gains.filter(g => g.gain.events.length >= 3 && g.gain.events[0].kind === 'set' && g.gain.events[0].t > 0);
+    for (const g of envs) expect(g.gain.events[1].t - g.gain.events[0].t).toBeGreaterThanOrEqual(0.0099);
+  });
+});
+
+describe('son : interjections (blip)', () => {
+  const oscs = (ctx: FakeContext): Source[] => ctx.sources.filter(x => x.kind === 'osc');
+  it('ne fait rien avant unlock(), ni quand le son est coupé', () => {
+    const s = new Sound();
+    expect(() => s.blip('mara')).not.toThrow();
+    expect(FakeContext.made).toHaveLength(0);
+    const { s: m, ctx } = unlocked({ muted: true });
+    m.blip('mara', 'content');
+    expect(ctx.sources).toHaveLength(0);
+  });
+  it('donne à chaque personnage une voix à lui : hauteur, voyelle, durée entre 0,2 et 0,5 s', () => {
+    const sig = new Set<string>();
+    for (const who of Object.keys(PERSONAS)) for (const mood of ['neutre', 'content', 'grave'] as const) for (let v = 0; v < BLIP_VARIANTS; v++) {
+      const plan = blipPlan(who, mood, v);
+      expect(plan.dur, who).toBeGreaterThanOrEqual(0.2);
+      expect(plan.dur, who).toBeLessThanOrEqual(0.5);
+      expect(plan.f0, who).toBeGreaterThan(80); expect(plan.f0, who).toBeLessThan(300);
+      if (mood === 'neutre' && v === 0) sig.add(`${plan.persona.f0}|${plan.persona.vowel}|${plan.persona.syllables.length}`);
+    }
+    expect(sig.size).toBe(Object.keys(PERSONAS).length);
+    // Femmes plus haut que les hommes ; Tomas le plus grave ; voyelles conformes au caractère.
+    expect(PERSONAS.tomas.f0).toBeLessThan(110);
+    for (const f of ['mara', 'agathe', 'iris', 'selma']) for (const h of ['tomas', 'kenji', 'noe']) expect(PERSONAS[f].f0).toBeGreaterThan(PERSONAS[h].f0);
+    expect([PERSONAS.mara.vowel, PERSONAS.tomas.vowel, PERSONAS.agathe.vowel, PERSONAS.kenji.vowel, PERSONAS.iris.vowel, PERSONAS.noe.vowel, PERSONAS.selma.vowel]).toEqual(['a', 'm', 'm', 'o', 'm', 'e', 'a']);
+    expect(PERSONAS.agathe.syllables).toHaveLength(2);
+    const ends = (who: string): number => { const c = PERSONAS[who].syllables[0].c; return c[c.length - 1] - c[0]; };
+    expect(ends('mara')).toBeGreaterThan(0.1); expect(ends('iris')).toBeLessThan(-0.1);
+    for (const v of Object.values(VOWELS)) expect(v.f[0]).toBeLessThan(v.f[1]);
+  });
+  it('prend la voix neutre pour un nom inconnu, et ignore la casse et les accents', () => {
+    expect(personaKey('Noé')).toBe('noe'); expect(personaKey('MARA')).toBe('mara');
+    expect(personaKey('rôdeur')).toBe(''); expect(personaKey('')).toBe(''); expect(personaKey(undefined as unknown as string)).toBe('');
+    const { s, ctx } = unlocked();
+    expect(() => { s.blip('un inconnu'); s.blip('rôdeur', 'humeur inconnue' as unknown as 'neutre'); }).not.toThrow();
+    expect(oscs(ctx)).toHaveLength(2);
+  });
+  it('est une voix : source en dent de scie, trois formants, hauteur qui glisse, enveloppe de 0 à 0', () => {
+    const { ctx, rig } = fakeRig(), gains = ctx.gains.length;
+    const h = playBlip(rig, 'mara', 'neutre', 0, 0.5)!;
+    expect(h.end).toBeGreaterThan(0.7); expect(h.end).toBeLessThan(1.05);
+    const o = oscs(ctx);
+    expect(o).toHaveLength(1);
+    expect(o[0].type).toBe('sawtooth');
+    const f = o[0].frequency.events.map(e => e.v);
+    expect(f.length).toBeGreaterThanOrEqual(3);
+    expect(f[f.length - 1]).toBeGreaterThan(f[0] * 1.1); // « ah » montant
+    expect(ctx.sources.filter(x => x.kind === 'buffer')).toHaveLength(1); // le souffle
+    for (const src of ctx.sources) { expect(src.startAt).toBe(0.5); expect(src.stopAt!).toBeGreaterThan(h.end); }
+    const env = ctx.gains.slice(gains).filter(g => g.gain.events.length > 8)[0];
+    expect(env.gain.value).toBe(0);
+    expect(env.gain.events[0].v).toBe(0); expect(env.gain.events[env.gain.events.length - 1].v).toBe(0);
+    expect(rig.voices).toBe(1);
+  });
+  it('infléchit le contour selon l\'humeur', () => {
+    const last = (mood: 'neutre' | 'content' | 'grave'): number => {
+      const ctx = new FakeContext(), rig = new Rig(ctx as unknown as BaseAudioContext, { rand: seeded(4) });
+      playBlip(rig, 'iris', mood, 0, 0.1);
+      const e = ctx.sources.find(x => x.kind === 'osc')!.frequency.events;
+      return e[e.length - 1].v / e[0].v;
+    };
+    expect(last('content')).toBeGreaterThan(last('neutre'));
+    expect(last('grave')).toBeLessThan(last('neutre'));
+    expect(blipPlan('iris', 'content').f0).toBeGreaterThan(blipPlan('iris', 'grave').f0);
+  });
+  it('fait tourner deux ou trois variantes par personnage', () => {
+    const { s, ctx } = unlocked();
+    for (let i = 0; i < 4; i++) { s.blip('tomas'); later(ctx, 2); }
+    const durs = oscs(ctx).map(o => (o.stopAt! - o.startAt!).toFixed(3));
+    expect(new Set(durs.slice(0, 3)).size).toBe(BLIP_VARIANTS);
+    expect(durs[3]).toBe(durs[0]);
+    expect(BLIP_VARIANTS).toBeGreaterThanOrEqual(2);
+  });
+  it('ne superpose jamais deux interjections : la nouvelle coupe la précédente en fondu', () => {
+    const { s, ctx } = unlocked();
+    s.blip('kenji');
+    const first = oscs(ctx)[0], planned = first.stopAt!;
+    ctx.currentTime += 0.1;
+    s.blip('mara');
+    const second = oscs(ctx)[1];
+    expect(first.stopAt!).toBeLessThan(planned);
+    expect(first.stopAt!).toBeLessThanOrEqual(ctx.currentTime + 0.06);
+    // Le fondu de la première (30 ms) est fini quand la seconde commence à sonner.
+    expect(second.startAt!).toBeGreaterThanOrEqual(ctx.currentTime + 0.03);
+    const fades = ctx.gains.filter(g => g.gain.events.length === 2 && g.gain.events[0].t === ctx.currentTime && g.gain.events[1].v === 0);
+    expect(fades).toHaveLength(1);
+    // Une interjection terminée n'est pas « coupée » : pas de retard pour la suivante.
+    later(ctx, 3);
+    s.blip('noe');
+    expect(oscs(ctx)[2].startAt!).toBeLessThan(ctx.currentTime + 0.03);
+  });
+  it('compte pour une seule voix et respecte la limite', () => {
+    const { rig } = fakeRig();
+    for (let i = 0; i < 40; i++) rig.claim(0, 5, 2);
+    expect(playBlip(rig, 'mara', 'neutre', 0, 0.1)).toBeNull();
+  });
+});
+
+describe('son : jingles (cue)', () => {
+  it('joue un jingle court et distinct pour chaque moment, à la suite des phrases en cours', () => {
+    const sigs = new Set<string>();
+    for (const c of ['chargement', 'depart', 'labo', 'passeur', 'chapitre'] as const) {
+      const { s, ctx } = unlocked();
+      s.cue(c);
+      expect(ctx.sources.length, c).toBeGreaterThan(3);
+      const end = Math.max(...ctx.sources.map(x => x.stopAt!));
+      expect(end, c).toBeLessThanOrEqual(2.1);
+      sigs.add(ctx.sources.map(x => `${x.kind}${x.startAt!.toFixed(2)}`).join(','));
+      const before = Math.max(...ctx.sources.map(x => x.startAt!));
+      s.cue(c);
+      expect(Math.max(...ctx.sources.map(x => x.startAt!))).toBeGreaterThan(before + 0.5);
+    }
+    expect(sigs.size).toBe(5);
+  });
+  it('ignore un nom inconnu, et ne joue rien avant unlock() ni son coupé', () => {
+    const s = new Sound();
+    expect(() => s.cue('depart')).not.toThrow();
+    expect(FakeContext.made).toHaveLength(0);
+    const { s: u, ctx } = unlocked();
+    expect(() => u.cue('inconnu' as unknown as 'depart')).not.toThrow();
+    u.setMuted(true); u.cue('labo');
+    expect(ctx.sources).toHaveLength(0);
+  });
+});
+
+describe('son : musique générative (music)', () => {
+  const drones = (ctx: FakeContext): Source[] => ctx.sources.filter(x => x.kind === 'osc' && x.stopAt === null);
+  it('lance un bourdon et sème des notes lentes dans la gamme, sans motif répété', () => {
+    const { s, ctx } = unlocked();
+    s.music('labo');
+    expect(drones(ctx)).toHaveLength(MUSIC.labo.drone.length);
+    for (let i = 0; i < 140; i++) { ctx.currentTime += 0.45; vi.advanceTimersByTime(450); }
+    const notes = ctx.sources.filter(x => x.kind === 'osc' && x.stopAt !== null && x.frequency.events.length === 1 && x.frequency.events[0].v > 250 && x.frequency.events[0].v < 1300);
+    expect(notes.length).toBeGreaterThan(8);
+    expect(notes.length).toBeLessThan(45); // quelques notes lentes : moins d'une toutes les 1,4 s
+    const scale = MUSIC.labo.degrees.map(d => n(d));
+    for (const x of notes) expect(scale.some(f => Math.abs(x.frequency.events[0].v / f - 1) < 0.001)).toBe(true);
+    const gaps = notes.slice(1).map((x, i) => (x.startAt! - notes[i].startAt!).toFixed(2));
+    expect(new Set(gaps).size).toBeGreaterThan(gaps.length * 0.8);
+    expect(s.peakVoices).toBeLessThanOrEqual(6);
+  });
+  it('change de scène en fondu et s\'arrête avec null', () => {
+    const { s, ctx } = unlocked();
+    s.music('prologue');
+    const first = drones(ctx);
+    s.music('carte');
+    for (const o of first) expect(o.stopAt).not.toBeNull();
+    expect(drones(ctx)).toHaveLength(MUSIC.carte.drone.length);
+    s.music('carte'); // même scène : rien ne redémarre
+    expect(drones(ctx)).toHaveLength(MUSIC.carte.drone.length);
+    s.music(null);
+    expect(drones(ctx)).toHaveLength(0);
+    const n0 = ctx.sources.length;
+    for (let i = 0; i < 40; i++) { ctx.currentTime += 0.45; vi.advanceTimersByTime(450); }
+    expect(ctx.sources.length).toBe(n0); // plus de minuterie, plus de notes
+    expect(() => s.music('inconnue' as unknown as 'labo')).not.toThrow();
+    expect(drones(ctx)).toHaveLength(0);
+  });
+  it('ne tourne jamais à volume nul ni en arrière-plan, et reprend toute seule', () => {
+    const s = new Sound();
+    s.music('labo'); // avant le premier geste : mémorisée, rien n'est créé
+    expect(FakeContext.made).toHaveLength(0);
+    s.unlock();
+    const ctx = FakeContext.made[0];
+    expect(drones(ctx)).toHaveLength(MUSIC.labo.drone.length);
+    for (const off of [(): void => s.setMuted(true), (): void => s.suspend(), (): void => s.setVolume(0)]) {
+      off();
+      expect(drones(ctx)).toHaveLength(0);
+      const n0 = ctx.sources.length;
+      for (let i = 0; i < 20; i++) { ctx.currentTime += 0.45; vi.advanceTimersByTime(450); }
+      expect(ctx.sources.length).toBe(n0);
+      s.setMuted(false); s.resume(); s.setVolume(0.8);
+      expect(drones(ctx)).toHaveLength(MUSIC.labo.drone.length);
+    }
+  });
+  it('la classe Music se pilote sans minuterie (rendu hors ligne)', () => {
+    const { ctx, rig } = fakeRig(), m = new Music(rig);
+    expect(() => { m.tick(); m.stop(); }).not.toThrow();
+    m.set('prologue');
+    expect(m.playing).toBe('prologue');
+    for (let i = 0; i < 60; i++) { ctx.currentTime += 0.45; m.tick(); }
+    expect(ctx.sources.filter(x => x.stopAt !== null).length).toBeGreaterThan(2);
+    m.set(null);
+    expect(m.playing).toBeNull();
+    expect(ctx.sources.filter(x => x.stopAt === null)).toHaveLength(0);
   });
 });
 

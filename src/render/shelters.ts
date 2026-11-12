@@ -26,7 +26,8 @@ const SITE_RETRY_MS = 1200, SITE_GIVE_UP_MS = 9000;
 /** Implantation transmise par le jeu quand le contrat la porte (champs facultatifs de ShelterView). */
 type Sited = ShelterView & { site?: LngLat; facing?: number };
 /** Donne l'implantation d'un abri d'après les rues de la carte, ou null si elles ne sont pas encore chargées. */
-export type SiteResolver = (at: LngLat) => Site | null;
+/** `keep` : vrai lieu de la carte (il garde sa position s'il est déjà à l'écart de la rue). */
+export type SiteResolver = (at: LngLat, keep: boolean) => Site | null;
 
 interface Item {
   id: string;
@@ -106,7 +107,7 @@ export class Shelters {
   private place(it: Item, s: Sited): void {
     const now = performance.now();
     let st: Site | null = s.site ? { site: s.site, facing: s.facing ?? 180 } : null;
-    if (!st && this.resolve && now - it.lastTry > SITE_RETRY_MS) { it.lastTry = now; st = this.resolve(s.at); }
+    if (!st && this.resolve && now - it.lastTry > SITE_RETRY_MS) { it.lastTry = now; st = this.resolve(s.at, s.kind !== 'carrefour' && s.kind !== 'hameau'); }
     if (!st && (!this.resolve || now - it.born > SITE_GIVE_UP_MS)) st = { site: s.at, facing: 180 };
     if (!st) return;
     it.site = [st.site[0], st.site[1]]; it.sited = true;

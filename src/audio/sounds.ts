@@ -44,15 +44,14 @@ export interface SoundDef {
 /** Réglages de niveau, ajustés d'après les mesures hors ligne (demo-audio.html) pour équilibrer les sons entre eux. */
 export const TRIM: Record<SoundName, number> = {
 //TRIM-BEGIN
-  scan: 1, scanEmpty: 1, pickup: 1, drop: 1,
-  deliveryE: 1, deliveryD: 1, deliveryC: 1, deliveryB: 1, deliveryA: 1, deliveryS: 1,
-  star: 1, levelUp: 1, contract: 1, dangerIn: 0.67, dangerOut: 1,
-  toastInfo: 1.5, toastGood: 1.15, toastWarn: 1.1,
-  uiTap: 1.3, uiOpen: 1.45, uiClose: 1.45, uiError: 1, uiConfirm: 1,
-  step: 0.4, pulse: 0.5, nightNote: 0.7, thunder: 1.6,
-  special: 0.9, cacheOpen: 0.95, wanderer: 1, frontNear: 0.9, frontIn: 0.9, frontOut: 0.95,
-  jamStart: 0.95, jamWon: 0.9, jamLost: 1, inspect: 1.1, strap: 1.05, proof: 1.05,
-  cueChargement: 1, cueDepart: 1, cueLabo: 1, cuePasseur: 1, cueChapitre: 1,
+  scan: 1.973, scanEmpty: 1.718, pickup: 1.778, drop: 1.584, deliveryE: 1.365, deliveryD: 1.513,
+  deliveryC: 1.738, deliveryB: 1.462, deliveryA: 1.514, deliveryS: 1.148, star: 1.274, levelUp: 1.071,
+  contract: 1.861, dangerIn: 0.769, dangerOut: 1.585, toastInfo: 2.296, toastGood: 1.909, toastWarn: 1.572,
+  uiTap: 1.346, uiOpen: 2.608, uiClose: 1.956, uiError: 1.274, uiConfirm: 1.778, step: 0.11,
+  pulse: 0.69, nightNote: 0.759, thunder: 2.208, special: 1.601, cacheOpen: 1.342, wanderer: 1.738,
+  frontNear: 1.394, frontIn: 1.022, frontOut: 1.769, jamStart: 1.985, jamWon: 1.46, jamLost: 1.549,
+  inspect: 1.703, strap: 2.548, proof: 2.144, cueChargement: 1.445, cueDepart: 1.071, cueLabo: 1.365,
+  cuePasseur: 1.318, cueChapitre: 1.148,
 //TRIM-END
 };
 
@@ -313,7 +312,7 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
   uiTap: {
     dur: 0.25, next: 0.05, prio: 1, family: 'jeu',
     make(k, t) {
-      tick(k, t, 2400, 0.2);
+      k.noise({ t, dur: 0.02, gain: 0.2, f: 2400 * (0.92 + 0.16 * k.rand()), q: 4, attack: 0.001 });
       k.tone({ f: n(10), t, dur: 0.045, gain: 0.09, attack: 0.002 });
       k.tone({ f: 230, to: 170, t, dur: 0.04, gain: 0.08, attack: 0.003 });
     },
@@ -357,11 +356,11 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
   },
   // Pas : un appui feutré et grave, presque sans claquement (attaque lente, peu d'aigu), un léger froissement de sol.
   // Chaque pas diffère un peu (hauteur, timbre, appui talon-pointe). v = charge (plus grave, plus appuyé ; à vide le pas
-  // est deux fois plus discret), w = sol mouillé. Le niveau reste sous celui de la nappe (mesuré dans la démo).
+  // est nettement plus discret), w = sol mouillé. Le niveau reste sous celui de la nappe (mesuré dans la démo).
   step: {
     dur: 0.4, next: 0.2, prio: 0, family: 'ambiance',
     make(k, t, v, w) {
-      const weight = 0.5 + 0.5 * v, hum = 0.85 + 0.3 * k.rand(), pitch = 0.88 + 0.24 * k.rand(), soft = k.rand();
+      const weight = 0.72 + 0.28 * v, hum = 0.85 + 0.3 * k.rand(), pitch = 0.88 + 0.24 * k.rand(), soft = k.rand();
       // Corps : souffle grave, attaque arrondie.
       k.noise({ t, dur: 0.09 + 0.05 * v, gain: 0.26 * weight * hum, f: (430 - 140 * v) * pitch, type: 'lowpass', q: 0.6 + 0.3 * soft, attack: 0.014, prio: 0 });
       // Appui : un sinus sourd qui tombe, plus présent quand la charge est lourde.

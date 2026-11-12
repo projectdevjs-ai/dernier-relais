@@ -12,26 +12,27 @@ export const BRANCH_HEX: Record<SkillBranch, string> = { scanner: '#7fc7d9', por
 export const BRANCH_NAME: Record<SkillBranch, string> = { scanner: 'Scanner', portage: 'Portage', endurance: 'Endurance', 'réseau': 'Réseau' };
 /** Centre de la zone de chaque branche sur le plateau (teinte du tapis) et place de son nom imprimé. */
 const ZONE: Record<SkillBranch, { at: [number, number]; label: [number, number] }> = {
-  scanner: { at: [-1.2, -1.9], label: [-1.77, -2.1] }, portage: { at: [0.7, -2.2], label: [1.77, -2.1] },
+  scanner: { at: [-1.2, -2.4], label: [-1.77, -2.5] }, portage: { at: [0.7, -2.6], label: [1.77, -2.5] },
   endurance: { at: [-1.2, 1.9], label: [-1.77, 1.85] }, 'réseau': { at: [1.2, 1.9], label: [1.77, 1.85] },
 };
 
 /**
- * Place de chaque module sur le plateau (x vers la droite, z vers le joueur) : trois colonnes.
+ * Place de chaque module sur le plateau (x vers la droite, z vers le joueur) : trois colonnes. La colonne du centre
+ * est décalée d'une demi-rangée : chaque module a sous lui la place de son étiquette (nom, état, effet).
  * À gauche le scanner (au fond) et l'endurance (devant) ; à droite l'exosquelette et le réseau ; au centre, le sac.
  */
 const LAYOUT: Record<string, [number, number]> = {
-  'scan-recharge': [-1.2, -0.72], 'scan-portee': [-1.2, -2.1], 'bras-long': [-1.2, -3.5],
-  'exo-bras': [1.2, -0.72], 'exo-jambes': [1.2, -2.1], 'exo-gyro': [1.2, -3.5],
-  sac: [0, -1.74], calage: [-0.42, -3.02], sangles: [0.42, -3.02],
+  'scan-recharge': [-1.2, -0.9], 'scan-portee': [-1.2, -2.5], 'bras-long': [-1.2, -4.1],
+  'exo-bras': [1.2, -0.9], 'exo-jambes': [1.2, -2.5], 'exo-gyro': [1.2, -4.1],
+  sac: [0, -1.75], calage: [-0.45, -3.35], sangles: [0.45, -4.3],
   souffle: [-1.2, 0.66], foulee: [-1.2, 1.9], 'tout-terrain': [-1.2, 3.14],
   carnet: [1.2, 0.66], relais: [1.2, 1.9], reputation: [1.2, 3.14],
 };
 /** Étendue du plateau à cadrer (modules, étiquettes et noms de branche). */
-export const EXTENT = { x: 1.68, zFar: -4.1, zNear: 3.95 };
+export const EXTENT = { x: 1.68, zFar: -4.8, zNear: 3.95 };
 /** Places de secours pour une compétence que le plan ne connaît pas encore. */
 const SPARE: [number, number][] = [[0, 1.6], [0, 2.85], [0, 4.1], [0, -4.6], [-1.2, 4.38], [1.2, 4.38], [-1.2, -4.38], [1.2, -4.38]];
-export const MAT_W = 3.9, MAT_D = 9.0;
+export const MAT_W = 3.9, MAT_D = 10.0;
 const NODE_R = 0.34, BASE_H = 0.1, CAP_H = 0.07, CORE_R = 0.62;
 
 export interface NodeInput { id: string; branch: SkillBranch; rank: number; maxRank: number; available: boolean; locked: boolean; parent: string | null }

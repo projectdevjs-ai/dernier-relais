@@ -38,6 +38,25 @@ const EFFECT: Record<string, (r: number) => string> = {
   reputation: r => `Contrats +${15 * r} %`,
 };
 
+/** Nom court affiché sous le module en vue d'ensemble (le nom complet reste dans la fiche). */
+const SHORT: Record<string, string> = {
+  'scan-portee': 'Antenne', 'scan-recharge': 'Condensateur', 'bras-long': 'Perche',
+  sac: 'Armature', calage: 'Calage', sangles: 'Sangles',
+  'exo-bras': 'Attaches bras', 'exo-jambes': 'Att. jambes', 'exo-gyro': 'Gyroscopes',
+  foulee: 'Foulée', souffle: 'Souffle', 'tout-terrain': 'Tout-terrain',
+  carnet: 'Carnet', relais: 'Voix réseau', reputation: 'Réputation',
+};
+/** Abrège proprement un nom que la table ne connaît pas : les premiers mots qui tiennent en 13 caractères. */
+function shortName(id: string, name: string): string {
+  if (SHORT[id]) return SHORT[id];
+  if (name.length <= 13) return name;
+  let out = '';
+  for (const w of name.split(' ')) { if (out && (out + ' ' + w).length > 13) break; out = out ? `${out} ${w}` : w; }
+  return out.length > 13 ? `${out.slice(0, 12)}…` : out;
+}
+/** Ce que le module apporte en une ligne courte, pour les paliers d'exosquelette (pas de chiffre par rang). */
+const EXO_FX: Record<string, string> = { 'exo-bras': 'Bras 2 × 12 kg', 'exo-jambes': 'Cuisses 2 × 9 kg', 'exo-gyro': 'Dérive −20 %' };
+
 type State = 'max' | 'dispo' | 'verrou' | 'attente';
 interface Need { id: string; rank: number; name: string }
 interface Cam { tx: number; tz: number; yaw: number; zoom: number; off: number }
@@ -58,7 +77,7 @@ export class SkillTree {
   private readonly legend: HTMLDivElement;
   private readonly card: HTMLElement;
   private readonly loading: HTMLDivElement;
-  private readonly tags = new Map<string, { el: HTMLButtonElement; name: HTMLSpanElement; rank: HTMLSpanElement }>();
+  private readonly tags = new Map<string, { el: HTMLButtonElement; name: HTMLSpanElement; rank: HTMLSpanElement; sub: HTMLSpanElement }>();
   private readonly legs = new Map<SkillBranch, { bar: HTMLElement; n: HTMLElement; el: HTMLButtonElement }>();
   // fiche
   private readonly cBranch: HTMLSpanElement;
@@ -358,15 +377,24 @@ export class SkillTree {
         b.type = 'button';
         b.dataset.id = s.id;
         b.style.setProperty('--bc', BRANCH_HEX[s.branch]);
-        const name = el('span', 'tr-tag-name'), rank = el('span', 'tr-tag-rank');
-        b.append(name, rank);
+        const name = el('span', 'tr-tag-name'), rank = el('span', 'tr-tag-rank'), sub = el('span', 'tr-tag-sub');
+        b.append(name, rank, sub);
         b.addEventListener('click', () => { this.events.onUi?.('tap'); this.select(s.id); });
         this.tagsEl.append(b);
-        t = { el: b, name, rank };
+        t = { el: b, name, rank, sub };
         this.tags.set(s.id, t);
       }
       const st = this.stateOf(s);
-      t.name.textContent = s.name;
+      t.name.textContent = shortName(s.id, s.name);
+      // Sous le nom : ce que le module apporte et son prix s'il est à portée, sinon ce qui manque pour l'obtenir.
+      const lock = this.lockedBy(s), gain = EFFECT[s.id]?.(1) ?? EXO_FX[s.id] ?? '';
+      const pts = `${s.cost} pt${s.cost > 1 ? 's' : ''}`;
+      const sub = st === 'max' ? ''
+        : st === 'verrou' ? (lock ? (lock.rank > 1 ? `${shortName(lock.id, lock.name)} rang ${lock.rank}` : `Après ${shortName(lock.id, lock.name)}`) : `Niv. ${s.needsLevel}`)
+          : st === 'dispo' ? (gain ? `${gain} · ${pts}` : pts)
+            : `Il faut ${pts}`;
+      t.sub.textContent = sub;
+      t.sub.hidden = !sub;
       t.rank.replaceChildren(st === 'verrou' ? icon('cadenas') : st === 'max' ? icon('coche') : document.createTextNode(`${s.rank}/${s.maxRank}`));
       t.el.dataset.state = st;
       t.el.dataset.rank = String(s.rank);
@@ -537,13 +565,13 @@ export class SkillTree {
 
   /**
    * Pose les étiquettes sous leur module, puis les écarte en espace écran : aucune étiquette ne doit en toucher
-   * une autre ni recouvrir un module. En vue d'ensemble, seuls les modules acquis ou disponibles montrent leur nom ;
-   * les autres le montrent quand on s'approche ou qu'on les touche.
+   * une autre ni recouvrir un module. Tous les modules montrent leur nom et leur état, même verrouillés
+   * (plus discrets) : on lit l'arbre entier sans rien toucher.
    */
   private placeTags(): void {
     const vp = this.vp, tree = this.tree;
     if (!vp || !tree) return;
-    const w = vp.width, h = vp.height, near = this.cur.zoom < 0.8, cam = this.camera;
+    const w = vp.width, h = vp.height, cam = this.camera;
     const sx = (): number => (_v.x * 0.5 + 0.5) * w, sy = (): number => (-_v.y * 0.5 + 0.5) * h;
     const obst: { x0: number; y0: number; x1: number; y1: number }[] = [];
     const items: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
@@ -555,15 +583,13 @@ export class SkillTree {
       _v.set(n.x + 0.37, 0.1, n.z).project(cam);
       const rx = Math.abs(sx() - cx) * 0.92, ry = rx * 0.66;
       obst.push({ x0: cx - rx, y0: cy - ry, x1: cx + rx, y1: cy + ry });
-      const show = near || id === this.selected || n.shown > 0 || n.rank > 0 || n.available;
-      if (t.el.hidden === show) t.el.hidden = !show;
-      if (!show) continue;
+      if (t.el.hidden) t.el.hidden = false;
       _v.set(n.x, 0, n.z + 0.43).project(cam);
       const tw = t.el.offsetWidth, th = t.el.offsetHeight;
       items.push({ el: t.el, x: sx() - tw / 2, y: Math.max(sy(), cy + ry + 2), w: tw, h: th });
     }
     const G = 3;
-    for (let pass = 0; pass < 14; pass++) {
+    for (let pass = 0; pass < 40; pass++) {
       let moved = false;
       for (let i = 0; i < items.length; i++) {
         const a = items[i];

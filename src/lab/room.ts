@@ -16,7 +16,7 @@ const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(
 /** Centre de la chambre des quartiers (pièce à part, derrière la porte : on y entre par un fondu). */
 export const CHAMBER = V(SX[2], 0, -26);
 /** Le râtelier de l'exosquelette : à gauche du Passeur, derrière l'épaule du porteur (il ne masque ni l'anneau ni Noé). */
-export const EXO_AT = V(-1.5, 0, -1.85);
+export const EXO_AT = V(-1.38, 0, -2.0);
 export const DOOR_AT = V(SX[2] - 0.2, 0, ROOM.back + 0.12);
 
 const SCI_AT: Record<SciId, { at: THREE.Vector3; ry: number; st: number }> = {

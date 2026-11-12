@@ -41,7 +41,7 @@ const MOOD_DEFAULT = MOODS.nuages;
 /** Niveau général de la nappe : volontairement bas, bien en dessous des sons du jeu. */
 const BED = 0.4;
 /** Fond de l'air (ville lointaine le jour, silence feutré la nuit) : le plancher de la nappe, toujours au-dessus des pas. */
-const FOND = 0.5;
+const FOND = 0.175;
 const FIFTHS = [220.4, 196.2, 261.9, 174.8]; // la, sol, do, fa : la voix mobile du fond tonal
 const PATTER_S = 6.1;
 
@@ -102,7 +102,7 @@ export class Ambience {
     // la nuit, la même matière plus grave et plus basse, feutrée. Sous la neige et le brouillard, elle s'étouffe.
     if (this.layer('fond', true, now)) {
       const l = this.fond!, muffle = mood.cut < 3000 ? 0.75 : 1;
-      l.gains.forEach((g, i) => this.set(g.gain, FOND * (night ? 0.8 : 1) * (0.7 + 0.5 * drift(T, 0.043 + 0.017 * i, 0.101 + 0.029 * i, ph + 8 + 3 * i)), 2));
+      l.gains.forEach((g, i) => this.set(g.gain, FOND * (0.7 + 0.5 * drift(T, 0.043 + 0.017 * i, 0.101 + 0.029 * i, ph + 8 + 3 * i)), 2));
       l.bands.forEach((b, i) => this.set(b.frequency, (night ? 250 : 390) * (1 + 0.32 * i) * muffle * (0.9 + 0.2 * drift(T, 0.031 + 0.011 * i, 0.077, ph + 11 + i)), 3));
     }
     // Vent : niveau proportionnel au vent, avec des rafales lentes ; le filtre s'ouvre quand il forcit.

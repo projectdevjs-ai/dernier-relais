@@ -1,12 +1,16 @@
 // Écran de rangement (« Chargement » dans l'ancien jeu) : la silhouette du porteur vue de dos, ses cinq emplacements
 // (dos, bras, jambes), la répartition gauche/droite, et le déplacement d'un colis d'un emplacement à l'autre.
 // On touche un colis, puis un emplacement en vert. Les fixations de bras et de jambes s'installent chez Noé, au labo.
+// Avec WebGL, la silhouette laisse la place au banc de charge en 3D (load3d.ts) : le porteur sur son socle, ses attaches
+// lumineuses, les colis en vrais modèles, des étiquettes flottantes ; mêmes règles, mêmes textes. Sans WebGL : l'écran 2D.
 import type { GameActions, GameView, OrderView, SlotId, SlotView } from '../game/api';
-import { type Rig, SLOT_RULES, type Stowed, leanText, moveTo, slotRule, specialSlotNote } from '../game/slots';
+import { crateLabel } from '../game/crates';
+import { EXO, type Rig, SLOTS, SLOT_RULES, type Stowed, leanText, moveTo, slotRule, specialSlotNote } from '../game/slots';
 import { btn, fmtDist, fmtKg, fmtPct, h, setText } from '../ui/dom';
 import { icon } from '../ui/icons';
+import { modelOf } from './crate';
+import { LoadStage } from './load3d';
 
-const CRATE: Record<string, string> = { bois: 'Caisse en bois', alu: 'Caisse en aluminium', plastique: 'Bac plastique', carton: 'Carton' };
 const ORDER: SlotId[] = ['brasG', 'brasD', 'jambeG', 'jambeD', 'dos'];
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -16,6 +20,7 @@ export interface LoadHost {
   /** Appelé à la fermeture de l'écran. */
   closed?(): void;
 }
+function urlHas(k: string): boolean { try { return new URLSearchParams(location.search).has(k); } catch { return false; } }
 
 const stowed = (o: OrderView): Stowed => ({ id: o.id, weightKg: o.weightKg, fragile: o.fragile, special: o.special?.kind, slot: o.slot ?? 'dos' });
 
@@ -87,6 +92,15 @@ export class LoadScreen {
   private lastFocus: Element | null = null;
   /** Ouverture demandée sans état du jeu : l'écran se montre au premier état reçu. */
   private pending = false;
+  // ── Banc de charge en 3D (absent sans WebGL : l'écran 2D reste)
+  /** Essais : image figée (pas d'animation), rendu allégé, écran 2D imposé, rotation de départ du porteur. */
+  still = urlHas('fige'); leger = urlHas('leger'); flat = urlHas('plat'); turnDeg = 0;
+  private stage: LoadStage | null = null;
+  private stageBox = h('div', 'pk-stage');
+  private lines = svg('svg', { class: 'pk-st-lines', 'aria-hidden': 'true', focusable: 'false' });
+  private line = new Map<SlotId, SVGLineElement>();
+  private chips = h('div', 'pk-items pk-st-items');
+  private box!: HTMLElement;
 
   constructor(parent: HTMLElement, private host: LoadHost) {
     const back = btn('dr-iconbtn pk-load-back', 'Fermer le chargement', icon('close'));
@@ -98,8 +112,8 @@ export class LoadScreen {
     for (const k of ORDER) {
       const el = h('div', `pk-slot pk-slot-${k}`);
       el.dataset.slot = k;
-      el.addEventListener('click', e => { if (!(e.target as Element).closest('.pk-item')) this.tapSlot(k); });
-      el.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === el) { e.preventDefault(); this.tapSlot(k); } });
+      el.addEventListener('click', e => { if (!(e.target as Element).closest('.pk-item')) this.tapSlot(k, true); });
+      el.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === el) { e.preventDefault(); this.tapSlot(k, true); } });
       this.slots.set(k, el);
     }
     this.grid.append(this.slots.get('brasG')!, h('div', 'pk-sil-wrap', this.sil.el), this.slots.get('brasD')!, this.slots.get('jambeG')!, this.slots.get('jambeD')!, this.slots.get('dos')!);
@@ -115,7 +129,10 @@ export class LoadScreen {
     this.msg.hidden = true;
     const help = h('p', 'pk-load-help', 'Dos : charges lourdes et fragiles. Bras : 12 kg max, la charge tangue plus. Jambes : 9 kg max, fatiguent davantage. Garde le même poids à gauche et à droite.');
     this.foot = h('div', 'pk-load-foot', this.ok);
-    const box = h('div', 'pk-load-box', head, balance, this.bal, this.grid, this.msg, this.detail, this.hint, this.auto, this.exo, help);
+    for (const k of ORDER) { const l = svg('line', { 'data-slot': k }); this.line.set(k, l); this.lines.append(l); }
+    this.stageBox.append(this.lines, h('p', 'pk-st-tip', 'Glisse pour tourner le porteur'));
+    this.stageBox.hidden = true; this.chips.hidden = true;
+    const box = this.box = h('div', 'pk-load-box', head, balance, this.bal, this.stageBox, this.grid, this.chips, this.msg, this.detail, this.hint, this.auto, this.exo, help);
     this.el = h('section', 'pk-load', box, this.foot);
     this.el.hidden = true;
     this.el.tabIndex = -1;
@@ -143,6 +160,7 @@ export class LoadScreen {
     this.pending = false;
     this.el.hidden = false;
     this.el.scrollTop = 0;
+    this.mount();
     this.el.focus({ preventScroll: true });
     this.host.ui('open');
   }
@@ -150,10 +168,59 @@ export class LoadScreen {
     if (this.el.hidden && !this.pending) return;
     this.pending = false;
     this.el.hidden = true;
+    this.unmount();
     this.sel = null; this.fresh = null;
     if (this.lastFocus instanceof HTMLElement && this.lastFocus.isConnected) this.lastFocus.focus({ preventScroll: true });
     this.host.ui('close');
     this.host.closed?.();
+  }
+
+  /** Ouvre le banc de charge en 3D si WebGL le permet ; sinon l'écran 2D reste tel quel. */
+  private mount(): void {
+    if (this.stage || this.flat) return;
+    const clair = this.el.closest<HTMLElement>('[data-ambiance]')?.dataset.ambiance === 'clair';
+    this.stageBox.hidden = false;
+    try {
+      this.stage = new LoadStage(this.stageBox, { still: this.still, leger: this.leger, clair, turnDeg: this.turnDeg }, {
+        parcel: id => this.pick(id),
+        slot: k => this.tapSlot(k, true),
+        drop: (id, k) => { this.sel = id; this.tapSlot(k, false); },
+        anchors: pts => this.trace(pts),
+      });
+    } catch (e) {
+      console.warn('[rangement] 3D indisponible, écran 2D', e);
+      this.stage = null; this.stageBox.hidden = true;
+      return;
+    }
+    // Les cinq emplacements deviennent des étiquettes flottantes sur la scène ; les colis, une rangée de pastilles dessous.
+    for (const k of ORDER) this.stageBox.append(this.slots.get(k)!);
+    this.grid.hidden = true; this.chips.hidden = false;
+    this.el.classList.add('is-3d');
+    this.box.dataset.vue = '3d';
+  }
+  private unmount(): void {
+    if (!this.stage) return;
+    this.stage.dispose(); this.stage = null;
+    this.stageBox.hidden = true; this.chips.hidden = true; this.grid.hidden = false;
+    this.grid.append(this.slots.get('brasG')!, this.grid.querySelector('.pk-sil-wrap')!, this.slots.get('brasD')!, this.slots.get('jambeG')!, this.slots.get('jambeD')!, this.slots.get('dos')!);
+    this.el.classList.remove('is-3d');
+    delete this.box.dataset.vue;
+  }
+  /** Traits de rappel : de chaque étiquette à son attache sur le porteur. */
+  private trace(pts: Record<SlotId, { x: number; y: number }>): void {
+    for (const k of ORDER) {
+      const el = this.slots.get(k)!, l = this.line.get(k)!, p = pts[k];
+      if (!p) continue;
+      const x = k === 'dos' ? el.offsetLeft + el.offsetWidth / 2 : SLOTS[k].side < 0 ? el.offsetLeft + el.offsetWidth : el.offsetLeft;
+      const y = k === 'dos' ? el.offsetTop + el.offsetHeight : el.offsetTop + Math.min(22, el.offsetHeight / 2);
+      l.setAttribute('x1', x.toFixed(1)); l.setAttribute('y1', y.toFixed(1)); l.setAttribute('x2', p.x.toFixed(1)); l.setAttribute('y2', p.y.toFixed(1));
+    }
+  }
+  private pick(id: string): void {
+    this.sel = this.sel === id ? null : id;
+    this.host.ui('tap');
+    this.refresh();
+    if (this.view) this.render(this.view);
   }
 
   /** À rappeler avec l'état le plus récent du jeu. Ne reconstruit l'écran que si quelque chose a changé. */
@@ -214,6 +281,22 @@ export class LoadScreen {
       el.className = `pk-slot pk-slot-${k}${locked ? ' is-locked' : ''}${ok ? ' is-ok' : ''}${why ? ' is-no' : ''}`;
       plate.setAttribute('class', `pk-plate${locked ? ' is-locked' : ''}${items.length ? ' is-full' : ''}${ok ? ' is-ok' : ''}${sel && (sel.slot ?? 'dos') === k ? ' is-sel' : ''}`);
       const name = s?.name ?? k, head = h('div', 'pk-slot-head', h('span', 'pk-slot-name', name));
+      this.line.get(k)!.setAttribute('class', locked ? 'is-locked' : ok ? 'is-ok' : items.length ? 'is-full' : '');
+      if (this.stage) {
+        // Étiquette flottante : nom, charge / capacité, puis l'état (verrou et palier requis, colis accroché, accroche possible ou non).
+        const tier = EXO[SLOTS[k].tier];
+        let state: HTMLElement;
+        if (locked) state = h('p', 'pk-slot-empty pk-st-lock', icon('lock'), h('span', '', tier ? tier.name : 'verrouillé'));
+        else if (why) state = h('p', 'pk-slot-why', why);
+        else if (ok) state = h('p', 'pk-slot-go', 'Accrocher ici');
+        else state = h('p', 'pk-slot-empty', items.length ? (items.length > 1 ? `${items.length} colis` : items[0].name) : 'Libre');
+        head.append(h('small', '', locked ? `${SLOTS[k].maxKg ?? ''} kg max` : `${fmtKg(s!.kg).replace(' kg', '')} / ${fmtKg(s!.maxKg)}`));
+        el.replaceChildren(head, state);
+        el.setAttribute('role', 'button');
+        if (locked) { el.setAttribute('aria-disabled', 'true'); el.tabIndex = -1; el.setAttribute('aria-label', `${name}, verrouillé. ${s?.lockedWhy ?? (tier ? `Palier requis : ${tier.name}` : '')}`); }
+        else { el.removeAttribute('aria-disabled'); el.tabIndex = 0; el.setAttribute('aria-label', ok ? `Accrocher ${sel!.name} : ${name}` : `${name}, ${fmtKg(s!.kg)} sur ${fmtKg(s!.maxKg)}${why ? `. ${why}` : ''}`); }
+        continue;
+      }
       if (locked) {
         head.append(h('small', '', icon('lock'), 'verrouillé'));
         el.replaceChildren(head, h('p', 'pk-slot-empty', s?.lockedWhy ?? (k.startsWith('bras') ? 'Attaches de bras à installer chez Noé, au labo' : 'Attaches de jambes à installer chez Noé, au labo')));
@@ -231,6 +314,15 @@ export class LoadScreen {
       else { el.removeAttribute('role'); el.removeAttribute('tabindex'); el.removeAttribute('aria-label'); }
     }
 
+    if (this.stage) {
+      this.chips.replaceChildren(...bag.map(o => this.item(o, slots.find(x => x.id === (o.slot ?? 'dos'))?.name)));
+      this.chips.hidden = bag.length === 0;
+      this.stage.set({
+        parcels: bag.map(o => ({ id: o.id, model: modelOf({ crate: o.crate, special: o.special?.known ? o.special.kind : null }), kg: o.weightKg, slot: o.slot ?? 'dos', special: !!o.special })),
+        slots: ORDER.map(k => ({ id: k, locked: !slots.find(x => x.id === k)?.unlocked, ok: this.slots.get(k)!.classList.contains('is-ok') })),
+        lean: lat, sel: sel?.id ?? null,
+      });
+    }
     // Colis sélectionné
     if (sel) {
       const sp = sel.special, slotName = slots.find(s => s.id === (sel.slot ?? 'dos'))?.name ?? 'Dos';
@@ -245,10 +337,10 @@ export class LoadScreen {
       });
       const note = sp?.known ? [sp.rule, specialSlotNote(sp.kind)].filter(Boolean).join(' ') : '';
       this.detail.replaceChildren(
-        h('div', 'pk-det-row', h('div', '', h('div', 'pk-det-kick', `${this.fresh === sel.id ? 'Accroché · ' : ''}${slotName} · ${sp ? 'Colis spécial' : CRATE[sel.crate] ?? ''}`), h('strong', 'pk-det-name', sel.name)), cancel),
+        h('div', 'pk-det-row', h('div', '', h('div', 'pk-det-kick', `${this.fresh === sel.id ? 'Accroché · ' : ''}${slotName} · ${sp ? 'Colis spécial' : crateLabel(sel.crate)}`), h('strong', 'pk-det-name', sel.name)), cancel),
         h('p', 'pk-det-txt', `${fmtKg(sel.weightKg)} · état ${fmtPct(sel.condition)} · pour ${sel.destName}, à ${fmtDist(sel.distanceM)}${sel.fragile ? ' · fragile' : ''}${(sel.strap ?? 0) >= 1 ? ' · bien arrimé' : ''}`),
         note ? h('p', 'pk-det-spe', note) : '',
-        h('p', 'pk-det-how', open > 1 ? 'Touche un emplacement en vert pour l’y accrocher' : 'Un seul emplacement pour l’instant : les fixations de bras et de jambes s’installent chez Noé, au labo'),
+        h('p', 'pk-det-how', open > 1 ? (this.stage ? 'Touche un emplacement en vert pour l’y accrocher, ou fais glisser le colis jusqu’à lui' : 'Touche un emplacement en vert pour l’y accrocher') : 'Un seul emplacement pour l’instant : les fixations de bras et de jambes s’installent chez Noé, au labo'),
         h('div', 'pk-det-acts', drop) as HTMLElement);
       this.detail.dataset.look = sp ? 'special' : '';
     }
@@ -264,25 +356,27 @@ export class LoadScreen {
     this.el.classList.toggle('has-foot', !!this.fresh);
   }
 
-  private item(o: OrderView): HTMLButtonElement {
+  private item(o: OrderView, where?: string): HTMLButtonElement {
     const sp = !!o.special;
     const b = btn(`pk-item${o.id === this.sel ? ' is-on' : ''}${sp ? ' is-special' : ''}`, null,
       h('b', '', o.name),
-      h('span', '', `${fmtKg(o.weightKg)} · ${fmtPct(o.condition)}${o.minutesLeft !== null ? ` · ${Math.max(0, Math.round(o.minutesLeft))} min` : ''}`));
+      h('span', '', `${where ? `${where} · ` : ''}${fmtKg(o.weightKg)} · ${fmtPct(o.condition)}${o.minutesLeft !== null ? ` · ${Math.max(0, Math.round(o.minutesLeft))} min` : ''}`));
     if (o.minutesLeft !== null && o.minutesLeft < 5) b.classList.add('is-late');
     b.setAttribute('aria-pressed', String(o.id === this.sel));
     b.setAttribute('aria-label', `${o.name}, ${fmtKg(o.weightKg)}${o.fragile ? ', fragile' : ''}. ${o.id === this.sel ? 'Sélectionné' : 'Sélectionner pour le déplacer'}`);
-    b.addEventListener('click', () => {
-      this.sel = this.sel === o.id ? null : o.id;
-      this.host.ui('tap');
-      this.refresh();
-      if (this.view) this.render(this.view);
-    });
+    b.addEventListener('click', () => this.pick(o.id));
     return b;
   }
 
-  private tapSlot(k: SlotId): void {
+  /** `choose` : sans colis sélectionné, toucher un emplacement occupé sélectionne son colis (banc 3D). */
+  private tapSlot(k: SlotId, choose = false): void {
     const v = this.view, sel = v?.orders.find(o => o.id === this.sel && o.state === 'porté');
+    if (v && !sel && choose && this.stage) {
+      const first = v.orders.find(o => o.state === 'porté' && (o.slot ?? 'dos') === k);
+      if (first) this.pick(first.id);
+      else if (v.player.slots?.find(s => s.id === k)?.unlocked === false) { this.host.ui('error'); this.say(v.player.slots.find(s => s.id === k)?.lockedWhy ?? 'Emplacement verrouillé', 'bad'); }
+      return;
+    }
     if (!v || !sel || (sel.slot ?? 'dos') === k) return;
     const r = this.host.actions.stow?.(sel.id, k) ?? { ok: false as const, why: slotRule(stowed(sel), k, this.rig(v).tier) || 'Emplacement indisponible' };
     if (r.ok) { this.sel = null; this.host.ui('confirm'); this.say(`${sel.name} accroché · ${v.player.slots?.find(s => s.id === k)?.name ?? k}`, 'good'); }

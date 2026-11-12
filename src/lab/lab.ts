@@ -698,7 +698,7 @@ export class Lab {
       return { pos: V(CHAMBER.x - 0.2, 1.5, CHAMBER.z + (wide ? 3.0 : 3.6)), look: V(CHAMBER.x - 0.6, 0.75, CHAMBER.z - 1.6), fov: wide ? 46 : 58, off: wide ? 0 : 0.16, offX: wide ? -0.18 : 0 };
     }
     if (this.mode === 'exo') {
-      return { pos: V(EXO_AT.x + 2.5, 1.4, EXO_AT.z + 3.5), look: V(EXO_AT.x, EXO_H * 0.56, EXO_AT.z), fov: wide ? 36 : 54, off: wide ? 0 : 0.2, offX: wide ? -0.2 : 0 };
+      return { pos: V(EXO_AT.x + 3.0, 1.4, EXO_AT.z + 2.9), look: V(EXO_AT.x, EXO_H * 0.56, EXO_AT.z), fov: wide ? 36 : 54, off: wide ? 0 : 0.2, offX: wide ? -0.2 : 0 };
     }
     // En vertical, l'image est décalée vers le haut ; en paysage, vers la droite (le panneau est à gauche).
     return wide

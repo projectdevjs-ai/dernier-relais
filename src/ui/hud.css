@@ -788,7 +788,7 @@
 .dr-next[data-kind="carry"] .dr-next-ic { background: color-mix(in srgb, var(--blue-fill) 16%, transparent); border-color: color-mix(in srgb, var(--blue) 55%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--blue-fill) 22%, transparent); }
 .dr-next[data-kind="reveal"] .dr-next-ic { background: color-mix(in srgb, var(--amber-fill) 16%, transparent); border-color: color-mix(in srgb, var(--amber) 55%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--amber-fill) 22%, transparent); }
 .dr-next-title { font-weight: 650; letter-spacing: .005em; }
-.dr-next-sub { font: 600 11px/1.2 var(--f-title); letter-spacing: .12em; text-transform: uppercase; }
+.dr-next-sub { font: 600 10.5px/1.2 var(--f-title); letter-spacing: .06em; text-transform: uppercase; }
 .dr-next-dist { font-size: 21px; letter-spacing: .02em; }
 .dr-next[data-kind="carry"] .dr-next-dist { color: var(--blue); }
 .dr-next-delay { font: 700 11.5px/1 var(--f-title); letter-spacing: .08em; text-transform: uppercase; }

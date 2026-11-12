@@ -28,11 +28,11 @@ interface SceneDef {
 const D2 = 73.416, D3 = 146.83, A3 = 220;
 export const MUSIC: Record<MusicScene, SceneDef> = {
   // Labo : un atelier qui ronronne. Bourdon ré-la, notes médium régulières, parfois une réponse.
-  labo: { drone: [[D3, 'triangle', 0.05, -0.3], [A3, 'sine', 0.035, 0.3], [D2, 'sawtooth', 0.02, 0]], lp: 500, degrees: [0, 1, 2, 3, 5, 6], every: [2.6, 5], noteGain: 0.055, noteDur: 2.6, attack: 0.06, answer: 0.35, level: 1 },
+  labo: { drone: [[D3, 'triangle', 0.05, -0.3], [A3, 'sine', 0.035, 0.3], [D2, 'sawtooth', 0.02, 0]], lp: 500, degrees: [0, 1, 2, 3, 5, 6], every: [2.6, 5], noteGain: 0.055, noteDur: 2.6, attack: 0.06, answer: 0.35, level: 0.7 },
   // Prologue : plus sombre et plus lent. Bourdon grave, notes basses et longues.
-  prologue: { drone: [[D2, 'sawtooth', 0.035, 0], [D3, 'triangle', 0.045, -0.25], [A3 * 0.5, 'sine', 0.04, 0.25]], lp: 380, degrees: [-5, -3, -2, 0, 1, 3], every: [3.8, 7], noteGain: 0.06, noteDur: 3.4, attack: 0.25, answer: 0.2, level: 1 },
+  prologue: { drone: [[D2, 'sawtooth', 0.035, 0], [D3, 'triangle', 0.045, -0.25], [A3 * 0.5, 'sine', 0.04, 0.25]], lp: 380, degrees: [-5, -3, -2, 0, 1, 3], every: [3.8, 7], noteGain: 0.06, noteDur: 3.4, attack: 0.25, answer: 0.2, level: 0.62 },
   // Carte : presque rien, pour ne pas couvrir la nappe d'ambiance. Bourdon ténu, notes hautes et rares.
-  carte: { drone: [[D3, 'sine', 0.03, -0.2], [A3, 'sine', 0.02, 0.2]], lp: 600, degrees: [3, 4, 5, 6, 8, 10], every: [5, 10], noteGain: 0.04, noteDur: 3, attack: 0.12, answer: 0.25, level: 0.8 },
+  carte: { drone: [[D3, 'sine', 0.03, -0.2], [A3, 'sine', 0.02, 0.2]], lp: 600, degrees: [3, 4, 5, 6, 8, 10], every: [5, 10], noteGain: 0.04, noteDur: 3, attack: 0.12, answer: 0.25, level: 0.55 },
 };
 
 interface Bed { bus: GainNode; oscs: OscillatorNode[]; gains: GainNode[] }

@@ -74,7 +74,7 @@
   animation: pk-rise .22s ease-out;
 }
 @keyframes pk-rise { from { opacity: 0; transform: translateY(14px); } }
-.pk-load-box { max-width: 560px; margin: 0 auto; display: grid; gap: 10px; }
+.pk-load-box { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .pk-load.has-foot { padding-bottom: calc(var(--sab) + 96px); }
 .pk-load-head { display: flex; align-items: center; gap: 10px; }
 .pk-load-ttl { flex: 1 1 0; min-width: 0; display: grid; gap: 2px; }
@@ -190,4 +190,46 @@
   .pk-plate.is-ok rect { animation: none; }
   .pk-bal-bar i { transition: none; }
   .pk-chip:active:not(:disabled) { transform: none; }
+}
+
+/* ---------- Banc de charge en 3D (rangement) ---------- */
+.pk-stage {
+  position: relative; height: clamp(350px, 53vh, 540px); margin: 2px -6px 0; border-radius: 18px; overflow: hidden; isolation: isolate;
+  background: #0a100f; border: 1px solid var(--line-strong); box-shadow: var(--shadow); touch-action: none;
+}
+.dr-hud[data-ambiance="clair"] .pk-stage { background: #cfc6b1; }
+.pk-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+.pk-st-lines { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.pk-st-lines line { stroke: var(--amber); stroke-width: 1.5; stroke-linecap: round; opacity: .8; }
+.pk-st-lines line.is-locked { stroke: var(--muted); stroke-dasharray: 3 4; opacity: .7; }
+.pk-st-lines line.is-ok { stroke: var(--green); stroke-width: 2; opacity: 1; }
+.pk-st-tip {
+  position: absolute; z-index: 1; left: 50%; bottom: 8px; transform: translateX(-50%); margin: 0; padding: 4px 10px; border-radius: 10px; white-space: nowrap; pointer-events: none;
+  font-size: 11.5px; font-weight: 600; color: var(--muted); background: color-mix(in srgb, var(--panel-solid) 82%, transparent);
+}
+.pk-stage .pk-slot {
+  position: absolute; z-index: 2; width: 112px; min-height: 48px; padding: 6px 8px; gap: 3px; border-radius: 12px; cursor: pointer; text-align: left;
+  background: color-mix(in srgb, var(--panel-solid) 90%, transparent); border: 1px solid var(--amber); box-shadow: var(--shadow);
+}
+.pk-stage .pk-slot-dos { top: 8px; left: 50%; margin-left: -66px; width: 132px; min-height: 48px; }
+.pk-stage .pk-slot-brasG { left: 8px; top: 30%; } .pk-stage .pk-slot-brasD { right: 8px; top: 30%; }
+.pk-stage .pk-slot-jambeG { left: 8px; top: 60%; } .pk-stage .pk-slot-jambeD { right: 8px; top: 60%; }
+.pk-stage .pk-slot-head { display: grid; gap: 1px; }
+.pk-stage .pk-slot-name { font-size: 12.5px; letter-spacing: .02em; white-space: nowrap; }
+.pk-stage .pk-slot-head small { font-size: 12px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.pk-stage .pk-slot-empty, .pk-stage .pk-slot-why, .pk-stage .pk-slot-go { margin: 0; font-size: 11.5px; line-height: 1.25; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.pk-stage .pk-slot.is-locked { background: color-mix(in srgb, var(--panel-solid) 72%, transparent); border: 1px dashed var(--line-strong); box-shadow: none; cursor: default; }
+.pk-stage .pk-slot.is-locked .pk-slot-name, .pk-stage .pk-slot.is-locked small { color: var(--muted); }
+.pk-stage .pk-st-lock { display: flex; align-items: flex-start; gap: 4px; color: var(--muted); font-weight: 600; }
+.pk-st-lock .dr-ic { flex: none; width: 13px; height: 13px; margin-top: 1px; }
+.pk-stage .pk-slot.is-ok { border: 2px solid var(--green); padding: 5px 7px; background: color-mix(in srgb, var(--green) 20%, var(--panel-solid)); }
+.pk-stage .pk-slot.is-no { opacity: 1; border-color: var(--line-strong); }
+.pk-st-items .pk-item { flex: 1 1 150px; }
+.pk-load.is-3d .pk-load-help { text-align: left; }
+@media (max-width: 380px) {
+  .pk-stage { margin: 2px -4px 0; }
+  .pk-stage .pk-slot { width: 100px; padding: 5px 6px; }
+  .pk-stage .pk-slot-dos { width: 124px; margin-left: -62px; }
+  .pk-stage .pk-slot-brasG, .pk-stage .pk-slot-jambeG { left: 5px; } .pk-stage .pk-slot-brasD, .pk-stage .pk-slot-jambeD { right: 5px; }
+  .pk-stage .pk-slot-name { font-size: 11.5px; letter-spacing: 0; }
 }

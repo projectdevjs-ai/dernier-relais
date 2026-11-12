@@ -95,12 +95,13 @@ async function main(): Promise<void> {
   };
 
   if (etape.startsWith('rangement')) {
+    flow.load.still = frozen; flow.load.leger = q.has('leger'); flow.load.flat = q.get('plat') === '1' || q.get('sans3d') === '1'; flow.load.turnDeg = Number(q.get('tourne') ?? 0) || 0;
     // Sac déjà chargé : quelques colis ramassés par le vrai moteur, rangés d'office ou de travers.
     const all = view!.orders.filter(o => o.state === 'révélé').sort((a, b) => b.weightKg - a.weightKg);
     // Un lourd, un moyen, deux légers (dont un fragile si possible) : de quoi remplir dos, bras et jambes.
     const want = [all[0], all[Math.floor(all.length / 2)], all.find(o => o.fragile && o.weightKg <= 9), all[all.length - 1], all[all.length - 2]].filter((o, i, l): o is NonNullable<typeof o> => !!o && l.indexOf(o) === i);
     let n = 0;
-    for (const o of want) { if (n >= (etape === 'rangement0' ? 2 : 4)) break; if (game.pickup(o.id).ok) n++; }
+    for (const o of want) { if (n >= (etape === 'rangementvide' ? 0 : etape === 'rangement0' ? 2 : 4)) break; if (game.pickup(o.id).ok) n++; }
     if (etape === 'rangement2') { for (const o of game.view().orders.filter(x => x.state === 'porté')) game.stow(o.id, o.weightKg <= 9 && palier >= 2 ? 'jambeD' : palier >= 1 ? 'brasD' : 'dos'); }
     tick();
     const carried = view!.orders.filter(o => o.state === 'porté');

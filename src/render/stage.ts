@@ -133,7 +133,7 @@ export class Stage implements StageApi {
     const scene = this.layer.scene;
     this.sky = new Sky(scene);
     this.porter = new Porter(scene, this.kit);
-    this.shelters = new Shelters(scene, this.kit, this.layer, at => this.siteFor(at));
+    this.shelters = new Shelters(scene, this.kit, this.layer, (at, keep) => this.siteFor(at, keep));
     this.parcels = new Parcels(scene, this.kit, this.layer);
     this.dangers = new Dangers(scene, this.kit, this.layer);
     this.caches = new Caches(scene, this.kit, this.layer);
@@ -460,7 +460,7 @@ export class Stage implements StageApi {
   private hitId = '';
 
   /** Rues de la carte autour d'un point (tuiles déjà chargées), pour implanter un abri hors chaussée. */
-  private siteFor(at: LngLat): Site | null {
+  private siteFor(at: LngLat, keep: boolean): Site | null {
     if (!this.style || !this.map.getSource(SOURCE)) return null;
     const dLat = 220 / 111320, dLng = dLat / Math.cos((at[1] * Math.PI) / 180);
     const roads: LngLat[][] = [];
@@ -473,7 +473,7 @@ export class Stage implements StageApi {
       }
     }
     // Aucune rue : les tuiles ne sont pas encore là (ou c'est la pleine campagne) — l'abri réessaiera.
-    return roads.length ? shelterSite(at, roads) : null;
+    return roads.length ? shelterSite(at, roads, keep) : null;
   }
 
   /** Vrai si un objet interactif est sous ce point de l'écran (son identité est gardée pour onTap). */

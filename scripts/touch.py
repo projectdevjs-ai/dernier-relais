@@ -1,6 +1,6 @@
 # Essai tactile de la caméra (émulation téléphone, gestes par CDP) : python3 scripts/touch.py [url]
 # Vérifie : pincement (zoom), rotation à deux doigts et glisser à un doigt (cap), tenue 3 s plus tard pendant que
-# « sync » continue, suivi du centre quand le joueur avance, caméra derrière le porteur, bascule 2D / 3D, toucher du sol.
+# « sync » continue, zoom à un doigt (double appui, double appui + glisser) tenu pendant la marche, suivi du centre quand le joueur avance, caméra derrière le porteur, bascule 2D / 3D, toucher du sol.
 import os, sys, json, math
 from playwright.sync_api import sync_playwright
 url = sys.argv[1] if len(sys.argv) > 1 else 'http://localhost:4212/?direct'
@@ -58,6 +58,23 @@ with sync_playwright() as p:
     ok = lambda r: abs(r[1]['zoom'] - r[0]['zoom']) > 0.3 and abs((r[2]['cap'] - r[1]['cap'] + 540) % 360 - 180) > 15 and abs(r[4]['zoom'] - r[2]['zoom']) < 0.05 and abs((r[4]['cap'] - r[3]['cap'] + 540) % 360 - 180) < 3
     print('\nRÉSULTAT gestes immobile :', 'OK' if ok(r1) else 'ÉCHEC', '| gestes en marche :', 'OK' if ok(r2) else 'ÉCHEC', '| centre suit le joueur :', 'OK' if j1['ecartCentreJoueurM'] < 6 else 'ÉCHEC')
 
+    # Zoom à un doigt, joueur EN MARCHE : double appui = +1 cran ; double appui puis glisser (doigt posé) = zoom continu.
+    print('\n== ZOOM À UN DOIGT (en marche)')
+    gx, gy = cx + 60, cy - 80
+    def tap(x, y, hold=40): touch('touchStart', [(x, y)]); pg.wait_for_timeout(hold); touch('touchEnd', [])
+    def double_drag(dy, n=16):
+        tap(gx, gy); pg.wait_for_timeout(90); touch('touchStart', [(gx, gy)])
+        for i in range(1, n + 1): pg.wait_for_timeout(16); touch('touchMove', [(gx, gy + dy * i / n)])
+        pg.wait_for_timeout(30); touch('touchEnd', [])
+    pg.evaluate("__dr.stage.recenter()"); pg.wait_for_timeout(1800); z0 = st(); show('départ (recentré)', z0)
+    tap(gx, gy); pg.wait_for_timeout(90); tap(gx, gy); pg.wait_for_timeout(1200); z1 = st(); show('double appui', diff(z0, z1))
+    double_drag(-220); pg.wait_for_timeout(900); z2 = st(); show('double appui + glisser HAUT 220 px', diff(z1, z2))
+    pg.wait_for_timeout(3000); z3 = st(); show('3 s de marche plus tard', {**diff(z2, z3), 'écart': z3['ecartCentreJoueurM']})
+    double_drag(140); pg.wait_for_timeout(900); z4 = st(); show('double appui + glisser BAS 140 px', diff(z3, z4))
+    pg.wait_for_timeout(3000); z5 = st(); show('3 s de marche plus tard', {**diff(z4, z5), 'écart': z5['ecartCentreJoueurM']})
+    okz = 0.8 < z1['zoom'] - z0['zoom'] < 1.2 and z2['zoom'] - z1['zoom'] < -1.5 and abs(z3['zoom'] - z2['zoom']) < 0.05 and z4['zoom'] - z3['zoom'] > 1 and abs(z5['zoom'] - z4['zoom']) < 0.05 and abs(z5['cap'] - z0['cap']) < 25
+    print('RÉSULTAT zoom à un doigt :', 'OK' if okz else 'ÉCHEC', '(double appui +1 cran, haut = arrière, bas = avant, tenu pendant la marche)')
+
     if pg.evaluate("typeof __dr.stage.toggleTilt === 'function'"):
         print('\n== SUITE (nouvelle caméra)')
         pg.evaluate("__dr.stage.recenter()"); pg.wait_for_timeout(6000); s = st(); show('recentrer, puis 6 s de marche NE', s)
@@ -72,4 +89,8 @@ with sync_playwright() as p:
         # Toucher du sol : en mode simulé, le porteur doit se mettre en route vers le point touché.
         a = st(); gesture([[(cx + 60, cy - 80)], [(cx + 60, cy - 80)]], 60); pg.wait_for_timeout(2500); e = st()
         print('toucher du sol → le joueur a avancé de (m) :', round(math.hypot((e['joueur'][0] - a['joueur'][0]) * 75000, (e['joueur'][1] - a['joueur'][1]) * 111000), 1))
+        # Double appui sur le sol, joueur arrêté : il zoome et ne doit PAS envoyer le porteur en marche.
+        pg.wait_for_timeout(6000); a = st(); tap(cx - 70, cy - 60); pg.wait_for_timeout(90); tap(cx - 70, cy - 60); pg.wait_for_timeout(2500); e = st()
+        d = math.hypot((e['joueur'][0] - a['joueur'][0]) * 75000, (e['joueur'][1] - a['joueur'][1]) * 111000)
+        print('double appui sur le sol → dZoom', round(e['zoom'] - a['zoom'], 2), '| joueur déplacé de (m) :', round(d, 1), '→', 'OK' if d < 1.5 and e['zoom'] - a['zoom'] > 0.5 else 'ÉCHEC')
     print('erreurs', errs[:6]); b.close()

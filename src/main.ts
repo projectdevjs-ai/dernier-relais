@@ -40,8 +40,15 @@ function applyAmbiance(a: Ambiance): void {
 }
 /** En « auto » : clair quand le soleil est levé, crépuscule sinon. Appelée à chaque rendu, sans effet tant que rien ne change. */
 let weatherSeen = false;
+let weatherSig: string | null = null;
 function autoAmbiance(v: GameView): void {
   if (ambianceMode !== 'auto') return;
+  // Une météo différente de celle du tout premier rendu vaut météo reçue (essais, sauvegarde relue).
+  if (!weatherSeen) {
+    const w0 = v.weather as GameView['weather'] & { sunAltDeg?: number };
+    const sig = `${w0.sunAltDeg}|${w0.night}|${w0.tempC}|${w0.kind}`;
+    if (weatherSig === null) weatherSig = sig; else if (sig !== weatherSig) weatherSeen = true;
+  }
   if (!weatherSeen) { applyAmbiance(byClock()); return; } // hors ligne ou météo pas encore reçue : l'heure du téléphone
   const w = v.weather as GameView['weather'] & { sunAltDeg?: number };
   const day = typeof w.sunAltDeg === 'number' && Number.isFinite(w.sunAltDeg) ? w.sunAltDeg > 6 : !w.night;

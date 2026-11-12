@@ -76,6 +76,14 @@ with sync_playwright() as p:
     c.add_init_script("""window.__geo = 0; window.__says = [];
       try { const g = navigator.geolocation, w = g.watchPosition.bind(g), o = g.getCurrentPosition.bind(g);
         g.watchPosition = (...a) => { window.__geo++; return w(...a); }; g.getCurrentPosition = (...a) => { window.__geo++; return o(...a); }; } catch {}
+      // La carte ne doit jamais se voir avant le départ du labo : on la surveille dès la toute première image.
+      window.__mapWatch = true; window.__mapSeen = 0; window.__bootAtFirstPaint = null; window.__t0 = performance.now();
+      const mapVisible = () => { const s = document.querySelector('#stage'); if (!s) return false; const c = getComputedStyle(s);
+        if (c.visibility === 'hidden' || c.display === 'none') return false;
+        const top = document.elementFromPoint(innerWidth / 2, innerHeight / 2); return !!top && !!top.closest('#stage, #hud'); };
+      const watch = () => { if (window.__mapWatch && document.body && mapVisible()) window.__mapSeen++; requestAnimationFrame(watch); };
+      requestAnimationFrame(watch);
+      document.addEventListener('DOMContentLoaded', () => { const b = document.querySelector('#boot'); window.__bootAtFirstPaint = !!b && getComputedStyle(b).display !== 'none' && +getComputedStyle(b).opacity === 1 && document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.closest('#boot') !== null; });
       const play = HTMLMediaElement.prototype.play; HTMLMediaElement.prototype.play = function () { window.__says.push(this.src || ''); return play.call(this); };""")
     pg = c.new_page(); pg.set_default_timeout(10000)
     pg.on('pageerror', lambda e: errs.append('ERREUR ' + str(e)[:300]))
@@ -84,11 +92,15 @@ with sync_playwright() as p:
     try:
         print('1. Premier lancement', flush=True)
         pg.goto(url + '?leger')
-        check('écran de départ affiché', wait(pg, "!!document.querySelector('#splash')", 20000))
+        check('écran de chargement présent dès la première image (avant tout script)', wait(pg, "window.__bootAtFirstPaint === true", 5000), str(pg.evaluate("window.__bootAtFirstPaint")))
+        check('lignes d’état du chargement', pg.evaluate("document.querySelectorAll('#boot .bt-lines span').length") >= 3)
+        check('écran de départ affiché', wait(pg, "(() => { const s = document.querySelector('#splash'); return !!s && !s.hidden; })()", 20000))
+        check('chargement d’au moins 2,5 s', pg.evaluate("performance.now() - window.__t0") >= 2500, str(pg.evaluate("performance.now() - window.__t0")))
         check('carte en pause derrière l’écran de départ', pg.evaluate("__dr.stage.paused === true"))
         check('GPS pas encore demandé', pg.evaluate("window.__geo") == 0)
         shot(pg, 'flow-1-depart.png')
         pg.click('#splash')
+        check('l’écran de chargement s’efface après le toucher', wait(pg, "!document.querySelector('#boot') || document.querySelector('#boot').classList.contains('out')", 4000))
         check('prologue lancé', wait(pg, "!!document.querySelector('.s3-prologue')", 5000))
         check('bouton Passer visible', wait(pg, "(() => { const s = document.querySelector('.pl-skip'); return !!s && !s.hidden; })()", 60000))
         check('aucun message radio pendant le prologue', pg.evaluate("(() => { const r = document.querySelector('.st-radio'); return !r || r.hidden; })()"))
@@ -152,10 +164,14 @@ with sync_playwright() as p:
         check('retour à la salle des cartes', pg.evaluate(TITLE) == 'Salle des cartes', str(pg.evaluate(TITLE)))
 
         print('3. Partir', flush=True)
+        check('la carte n’a jamais été visible avant le départ du labo', pg.evaluate("window.__mapSeen") == 0, str(pg.evaluate("window.__mapSeen")))
+        check('carte masquée au labo (visibility:hidden)', pg.evaluate("getComputedStyle(document.querySelector('#stage')).visibility") == 'hidden')
+        pg.evaluate("window.__mapWatch = false")
         pg.evaluate("document.querySelector('.lab-go').click()")
         check('arrivée sur la carte', wait(pg, "!document.body.classList.contains('dr-in-lab')", 30000))
         s = pg.evaluate(STATE)
         check('labo caché, carte reprise', not s['labShown'] and not s['paused'], str(s))
+        check('carte visible une fois le labo quitté', pg.evaluate("getComputedStyle(document.querySelector('#stage')).visibility") == 'visible')
         check('HUD complet', pg.evaluate(SHOWN + "('#hud .dr-top')") == 1 and pg.evaluate(SHOWN + "('#hud .dr-scan')") == 1 and pg.evaluate(SHOWN + "('#hud .dr-sheet')") >= 1)
         check('GPS demandé au départ seulement', wait(pg, "window.__geo >= 1", 3000))
         check('carte dessinée', wait(pg, "!!document.querySelector('#stage canvas') && document.querySelector('#stage canvas').width > 0", 5000))
@@ -191,13 +207,19 @@ with sync_playwright() as p:
             pg.evaluate("document.querySelector('#hud .dr-near-btn').click()")
             check('la séquence se rouvre', wait(pg, LAYER + " === 'reperage'", 8000))
             check('rouverte en 3D (pas de repli à plat)', not pg.evaluate("document.querySelector('#hud .pk-layer').classList.contains('is-flat')"))
+            # Rangement : banc de charge en 3D, image figée pour l'essai.
+            pg.evaluate("__dr.hud.pickupFlow.load.still = true")
             pg.evaluate("__dr.hud.pickupFlow.seq.complete(96)")
             check('le colis est dans le sac, avec un emplacement', wait(pg, f"(() => {{ const o = __dr.game.view().orders.find(o => o.id === '{oid}'); return !!o && o.state === 'porté' && o.slot === 'dos' && o.strap === 1; }})()", 3000))
             check('événements « pickup » puis « strap » émis', pg.evaluate("window.__evts.filter(t => t === 'pickup' || t === 'strap').join(',')") == 'pickup,strap', str(pg.evaluate("window.__evts")))
             check('l’écran de rangement s’ouvre sur le colis', wait(pg, LOAD, 3000) and wait(pg, "document.querySelectorAll('#hud .pk-load .pk-item.is-on').length === 1 && !document.querySelector('#hud .pk-load-foot').hidden", 3000))
             check('bras et jambes verrouillés au départ', pg.evaluate("document.querySelectorAll('#hud .pk-load .pk-slot.is-locked').length") == 4)
-            pg.wait_for_timeout(400); shot(pg, 'flow-3-rangement.png')
+            check('rangement en 3D : porteur sur son banc, cinq étiquettes flottantes', pg.evaluate("!!document.querySelector('#hud .pk-load.is-3d .pk-stage canvas') && document.querySelectorAll('#hud .pk-stage .pk-slot').length === 5 && document.querySelector('#hud .pk-grid').hidden"))
+            check('étiquette du dos : charge et capacité lisibles', bool(pg.evaluate("/\\d+ \\/ \\d+ kg/.test(document.querySelector('#hud .pk-stage .pk-slot-dos small').textContent)")), str(pg.evaluate("document.querySelector('#hud .pk-stage .pk-slot-dos').textContent")))
+            check('emplacement verrouillé : palier requis affiché', 'Attaches de bras' in pg.evaluate("document.querySelector('#hud .pk-stage .pk-slot-brasG').textContent"))
+            pg.wait_for_timeout(1200); shot(pg, 'flow-3-rangement.png')
             pg.evaluate("document.querySelector('#hud .pk-load-foot .dr-btn').click()")
+            check('rangement fermé : la scène 3D est libérée', pg.evaluate("!document.querySelector('#hud .pk-stage canvas') && document.querySelector('#hud .pk-stage').hidden"))
             check('« C’est rangé » referme l’écran et rend la carte', wait(pg, "!(" + LOAD + ")", 3000) and wait(pg, "__dr.stage.paused !== true", 3000))
             pg.evaluate("__dr.game.drop('" + oid + "')"); pg.wait_for_timeout(500)
             # Ramassage rapide : réglage des options, puis « Ramasser » sans séquence.
@@ -225,7 +247,10 @@ with sync_playwright() as p:
 
         print('4. Second lancement', flush=True)
         pg.goto(url + '?leger')
-        check('pas d’écran de départ ni de prologue', wait(pg, "document.body.classList.contains('dr-in-lab')", 20000) and pg.evaluate("!document.querySelector('#splash') && !document.querySelector('.s3-prologue')"))
+        check('second lancement : écran de chargement dès la première image', wait(pg, "window.__bootAtFirstPaint === true", 5000))
+        check('pas d’écran de départ ni de prologue', wait(pg, "document.body.classList.contains('dr-in-lab')", 20000) and pg.evaluate("(!document.querySelector('#splash') || document.querySelector('#splash').hidden) && !document.querySelector('.s3-prologue')"))
+        check('le chargement s’efface vers le labo', wait(pg, "!document.querySelector('#boot') || document.querySelector('#boot').classList.contains('out')", 15000))
+        check('second lancement : carte jamais visible avant le labo', pg.evaluate("window.__mapSeen") == 0, str(pg.evaluate("window.__mapSeen")))
         check('labo prêt', wait(pg, LAB_READY, 90000))
         check('aucun élément du HUD de la carte sur le labo', pg.evaluate(MAP_HUD) == 0)
     except Exception as e:

@@ -78,25 +78,31 @@
 .tr-tags { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
 .tr .tr-tag {
   position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; white-space: nowrap;
-  display: flex; align-items: center; gap: 5px;
+  display: grid; grid-template-columns: auto auto; align-items: center; justify-content: start; gap: 2px 5px;
   min-height: 22px; padding: 3px 4px 3px 7px; border-radius: 8px;
-  background: rgba(10, 18, 17, .78); border: 1px solid rgba(230, 225, 211, .13);
+  background: rgba(10, 18, 17, .82); border: 1px solid rgba(230, 225, 211, .13);
   color: #e6e1d3; text-align: left;
 }
-.tr-tag-name { font: 600 10.5px/1.12 var(--f-ui); letter-spacing: .01em; text-wrap: balance; max-width: 72px; white-space: normal; }
+.tr-tag-name { font: 600 10.5px/1.12 var(--f-ui); letter-spacing: .01em; }
 .tr-tag-rank {
   flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 16px; padding: 0 4px; border-radius: 6px;
-  font: 700 10px/1 var(--f-ui); color: var(--bc); background: color-mix(in srgb, var(--bc) 17%, transparent);
+  font: 700 10px/1 var(--f-ui); color: var(--bc); background: color-mix(in srgb, var(--bc) 17%, transparent); justify-self: end;
 }
 .tr-tag-rank .tr-ic { width: 11px; height: 11px; stroke-width: 2.6; }
+/* Deuxième ligne : effet et prix (disponible), points manquants, ou condition du verrou. */
+.tr-tag-sub { grid-column: 1 / -1; font: 500 9.5px/1.15 var(--f-ui); letter-spacing: .005em; color: #b9c2bd; padding-right: 3px; }
 .tr-tag[data-state="max"] { border-color: color-mix(in srgb, var(--bc) 60%, transparent); }
 .tr-tag[data-state="max"] .tr-tag-rank { background: var(--bc); color: #0d1a18; }
 .tr-tag[data-state="dispo"] { border-color: var(--bc); box-shadow: 0 0 0 1px color-mix(in srgb, var(--bc) 35%, transparent), 0 0 12px color-mix(in srgb, var(--bc) 35%, transparent); }
-.tr-tag[data-state="verrou"] { color: #93a09b; background: rgba(10, 18, 17, .6); border-style: dashed; border-color: rgba(230, 225, 211, .2); }
-.tr-tag[data-state="verrou"] .tr-tag-rank { color: #93a09b; background: rgba(230, 225, 211, .1); }
+.tr-tag[data-state="dispo"] .tr-tag-sub { color: var(--bc); font-weight: 600; }
+.tr-tag[data-state="verrou"] { color: #a3aeaa; background: rgba(10, 18, 17, .66); border-style: dashed; border-color: rgba(230, 225, 211, .22); }
+.tr-tag[data-state="verrou"] .tr-tag-rank { color: #a3aeaa; background: rgba(230, 225, 211, .1); min-width: 18px; padding: 0 3px; }
+.tr-tag[data-state="verrou"] .tr-tag-sub { color: #93a09b; }
+.tr-tag[data-state="attente"] .tr-tag-sub { color: #a3aeaa; }
 .tr-tag[data-state="attente"][data-rank="0"] .tr-tag-rank { color: #b9c2bd; background: rgba(230, 225, 211, .1); }
 .tr-tag.is-sel { background: #f4efe2; color: #10201c; border-color: #fff; }
 .tr-tag.is-sel .tr-tag-rank { background: #10201c; color: #f4efe2; }
+.tr .tr-tag.is-sel .tr-tag-sub { color: #33473f; }
 .tr.has-card .tr-tag:not(.is-sel) { opacity: .5; }
 
 /* ---------- En-tête ---------- */
@@ -205,7 +211,9 @@
   .tr-top { gap: 6px; padding-left: calc(var(--sal) + 10px); }
   .tr .tr-tag { padding: 3px 3px 3px 5px; gap: 3px; }
   .tr-tag-rank { min-width: 21px; padding: 0 3px; }
-  .tr-tag-name { font-size: 9.5px; letter-spacing: 0; max-width: 66px; }
+  .tr-tag-name { font-size: 9.5px; letter-spacing: 0; }
+  .tr-tag-sub { font-size: 8.5px; }
+  .tr-tag-rank { font-size: 9px; height: 15px; }
   .tr-leg-name { font-size: 10.5px; letter-spacing: 0; }
   .tr .tr-leg { padding: 9px 5px 8px; }
   .tr-legend { gap: 5px; }

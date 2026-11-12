@@ -15,7 +15,7 @@ export const CEILING = 0.84;
 // (le plafond arrondi les rattrape), relâchement court. Le compresseur des navigateurs ajoute tout seul un gain
 // de rattrapage (mesuré dans Chrome avec ces réglages) : on le retire juste après pour que les niveaux restent vrais.
 const COMP = { threshold: -14, knee: 8, ratio: 3, attack: 0.01, release: 0.2 };
-const COMP_MAKEUP = 1.9;
+const COMP_MAKEUP = 1.634;
 /** Gain de sortie : un son seul culmine vers −7 dBFS, un passage dense est tenu par le compresseur puis arrondi par le plafond. */
 export const OUTPUT_BOOST = 1.4;
 // Égalisation pensée pour un haut-parleur de téléphone : coupe-bas (rien d'inutile sous 35 Hz), présence vers 2,6 kHz,

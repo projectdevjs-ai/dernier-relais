@@ -302,7 +302,7 @@ function pitch(x: Float32Array, from: number, size: number): number {
 }
 export interface MesureBlip extends Mesure {
   /** Ce que vise la synthèse. */
-  viseF0: number; viseFormants: number[]; viseDuree: number;
+  viseF0: number; viseFormants: number[]; viseDuree: number; syllabes: number;
   /** Fondamentale mesurée au début, au milieu et à la fin de la partie voisée (Hz) : le contour. */
   f0: number[];
   /** Pour chaque formant visé : la bosse du spectre moyen la plus proche (Hz), ou 0 si aucune bosse nette à ±25 %. */
@@ -345,7 +345,7 @@ async function renderBlip(who: string, mood: BlipMood, variant: number): Promise
     for (let k = lo + 1; k < hi; k++) if (smooth[k] >= smooth[k - 1] && smooth[k] >= smooth[k + 1] && smooth[k] > best) { best = smooth[k]; bk = k; }
     return Math.round(bk * binHz);
   });
-  return { ...m, viseF0: r1(plan.f0), viseFormants: plan.formants.map(Math.round), viseDuree: Math.round(plan.dur * 100) / 100, f0, formants, voise: Math.round(((b - a) / SR) * 100) / 100 };
+  return { ...m, syllabes: plan.persona.syllables.length, viseF0: r1(plan.f0), viseFormants: plan.formants.map(Math.round), viseDuree: Math.round(plan.dur * 100) / 100, f0, formants, voise: Math.round(((b - a) / SR) * 100) / 100 };
 }
 /** Une interjection coupée par la suivante, comme le fait Sound.blip : il ne doit y avoir ni clic ni superposition. */
 async function renderBlipCut(): Promise<Mesure> {
@@ -372,38 +372,42 @@ async function renderMusic(scene: MusicScene, secondes = 40): Promise<MesureNapp
 
 export interface MesurePas {
   nom: string;
-  /** Niveau RMS de la nappe seule (dBFS), après établissement. */
+  /** Niveau RMS de la nappe seule, joueur à l'arrêt, dans sa demi-seconde la plus faible (dBFS). */
   nappe: number;
-  /** Les pas seuls (rendu avec pas − rendu sans pas) : crête, RMS de la tranche de 50 ms la plus forte, RMS moyen (dBFS). */
+  /** Les pas seuls (même marche, nappe débranchée) : crête, RMS de la tranche de 50 ms la plus forte, RMS moyen (dBFS). */
   pasCrete: number; pasFort: number; pasMoyen: number;
   /** pasFort − nappe : négatif = le pas le plus fort reste sous la nappe. */
   marge: number;
 }
 async function renderSteps(nom: string, inp: AmbientInput): Promise<MesurePas> {
-  const secondes = 12, one = async (moving: boolean): Promise<Float32Array> => {
+  // Deux rendus : la nappe seule (joueur à l'arrêt), puis les pas seuls (même marche, entrée de la nappe débranchée,
+  // de jour pour qu'aucune note de nuit ne s'y mêle : les pas ne dépendent pas de l'heure).
+  const secondes = 12, one = async (pasSeuls: boolean): Promise<AudioBuffer> => {
     const ctx = new OfflineAudioContext(2, SR * secondes, SR), rig = new Rig(ctx, { rand: seeded(23) }), amb = new Ambience(rig);
-    const go = (): void => amb.update({ ...inp, moving, speedMps: moving ? inp.speedMps : 0 });
+    if (pasSeuls) rig.amb.disconnect();
+    const go = (): void => amb.update(pasSeuls ? { ...inp, moving: true, weather: { ...inp.weather, night: false } } : { ...inp, moving: false, speedMps: 0 });
     for (let k = 1; k * 0.2 < secondes; k++) void ctx.suspend(k * 0.2).then(() => { go(); void ctx.resume(); });
     go();
-    const b = await ctx.startRendering(), L = b.getChannelData(0), R = b.getChannelData(1), x = new Float32Array(b.length);
-    for (let i = 0; i < x.length; i++) x[i] = Math.sqrt((L[i] * L[i] + R[i] * R[i]) / 2) * Math.sign(L[i] + R[i] || 1);
-    // Pour la différence, on garde les deux canaux à la suite.
-    const both = new Float32Array(b.length * 2); both.set(L); both.set(R, b.length);
-    return both;
+    return ctx.startRendering();
   };
-  const still = await one(false), walk = await one(true), n = still.length / 2, from = SR * 4;
-  let pn = 0, peak = 0, sum = 0, best = 0;
-  const w = Math.floor(SR * 0.05), pow = new Float64Array(n);
-  for (let i = from; i < n; i++) {
-    pn += (still[i] ** 2 + still[n + i] ** 2) / 2;
-    const dl = walk[i] - still[i], dr = walk[n + i] - still[n + i];
-    peak = Math.max(peak, Math.abs(dl), Math.abs(dr));
-    pow[i] = (dl * dl + dr * dr) / 2; sum += pow[i];
-  }
-  let acc = 0;
-  for (let i = from; i < n; i++) { acc += pow[i]; if (i >= from + w) acc -= pow[i - w]; if (i >= from + w - 1) best = Math.max(best, acc / w); }
-  const nappe = r1(db(Math.sqrt(pn / (n - from)))), pasFort = r1(db(Math.sqrt(best)));
-  return { nom, nappe, pasCrete: r1(db(peak)), pasFort, pasMoyen: r1(db(Math.sqrt(sum / (n - from)))), marge: r1(pasFort - nappe) };
+  const power = (b: AudioBuffer): Float64Array => {
+    const L = b.getChannelData(0), R = b.getChannelData(1), p = new Float64Array(b.length);
+    for (let i = 0; i < p.length; i++) p[i] = (L[i] * L[i] + R[i] * R[i]) / 2;
+    return p;
+  };
+  /** RMS de la tranche la plus forte (ou la plus faible) de `w` échantillons, après 4 s d'établissement. */
+  const slide = (p: Float64Array, w: number, pick: (a: number, b: number) => number, start: number): number => {
+    let acc = 0, out = start;
+    for (let i = SR * 4; i < p.length; i++) { acc += p[i]; if (i >= SR * 4 + w) acc -= p[i - w]; if (i >= SR * 4 + w - 1) out = pick(out, acc / w); }
+    return Math.sqrt(Math.max(0, out));
+  };
+  const calme = power(await one(false)), pasBuf = await one(true), pas = power(pasBuf);
+  let peak = 0, sum = 0;
+  for (let c = 0; c < 2; c++) { const d = pasBuf.getChannelData(c); for (let i = SR * 4; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i])); }
+  for (let i = SR * 4; i < pas.length; i++) sum += pas[i];
+  // La nappe est prise à son plus bas (demi-seconde la plus faible) : la comparaison est la plus sévère possible.
+  const nappe = r1(db(slide(calme, SR / 2, Math.min, Infinity))), pasFort = r1(db(slide(pas, Math.floor(SR * 0.05), Math.max, 0)));
+  return { nom, nappe, pasCrete: r1(db(peak)), pasFort, pasMoyen: r1(db(Math.sqrt(sum / (pas.length - SR * 4)))), marge: r1(pasFort - nappe) };
 }
 const PAS: Array<[string, AmbientInput]> = [
   ['jour clair, sans vent, à vide', still(wx('clair', 0), { speedMps: 1.4, load: 0 })],
@@ -444,7 +448,8 @@ async function mesurerTout(): Promise<Rapport> {
   const echecs: string[] = [];
   for (const m of blips) {
     if (m.viseDuree < 0.2 || m.viseDuree > 0.5) echecs.push(`${m.nom} : durée visée ${m.viseDuree} s`);
-    const f = m.f0[1];
+    // Une seule syllabe : la hauteur se lit au milieu. Deux syllabes (« hm-hm ») : sur la première.
+    const f = m.syllabes > 1 ? m.f0[0] : m.f0[1];
     if (!(Math.abs(f / m.viseF0 - 1) < 0.15)) echecs.push(`${m.nom} : fondamentale ${f} Hz, visée ${m.viseF0}`);
     if (!m.formants[0]) echecs.push(`${m.nom} : premier formant introuvable`);
   }

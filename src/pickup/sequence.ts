@@ -726,7 +726,7 @@ export class PickupSequence {
     if (g === 'noeud') {
       const cx = W / 2, cy = H * 0.52, rx = Math.min(W * 0.34, 170), ry = Math.min(H * 0.18, 120);
       s.kn = { pts: knotPath().map(q => ({ x: cx + rx * q.x, y: cy + ry * q.y })), i: 0, tol: s.wet ? FINAL.noeud.tolWetPx : FINAL.noeud.tolPx, on: false };
-      this.say('Pose le doigt sur le point de départ et suis la corde pour faire le nœud');
+      this.say('Pose le doigt sur le point de départ et suis la corde');
     }
     if (g === 'cables') {
       const plan = cablePlan(this.opts.demo ? rng(`câbles|${this.p!.id}`) : Math.random), dy = Math.min(86, H * 0.105), y0 = Math.max(H * 0.34, 250);
