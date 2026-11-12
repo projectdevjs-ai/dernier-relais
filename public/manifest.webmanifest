@@ -1,7 +1,7 @@
 {
   "name": "Dernier Relais",
   "short_name": "Dernier Relais",
-  "description": "Marche dans ta ville, livre des colis, rallume le réseau.",
+  "description": "Project Rebirth : explore ton monde réel, livre des colis, survie, fabrique, découvre les signaux et affronte les menaces tactiques.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
