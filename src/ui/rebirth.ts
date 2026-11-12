@@ -39,7 +39,7 @@ export class RebirthConsole {
   private opened = false;
   private tab: 'survie' | 'fabrication' | 'factions' = 'survie';
   private view: GameView | null = null;
-  constructor(private root: HTMLElement, private actions: GameActions, private run: (r: ActionResult) => boolean) {
+  constructor(root: HTMLElement, private actions: GameActions, private run: (r: ActionResult) => boolean) {
     this.trigger.setAttribute('aria-label','Ouvrir la console de survie');
     this.trigger.append(this.status);
     this.veil.hidden = true;
