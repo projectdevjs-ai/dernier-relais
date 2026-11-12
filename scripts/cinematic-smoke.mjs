@@ -41,6 +41,9 @@ try {
   if(!(await page.locator('#enemy-name').innerText()).toLowerCase().includes('récupérateur'))
     throw Error('Changement d’ennemi impossible');
   await page.screenshot({path:'/tmp/rebirth-test/scavenger-mobile.png',fullPage:true});
+  await page.locator('button[data-kind="stray"]').click();
+  await page.waitForFunction(()=>document.getElementById('arena')?.dataset.assetsReady==='true',null,{timeout:45000});
+  await page.screenshot({path:'/tmp/rebirth-test/stray-mobile.png',fullPage:true});
   if(errors.length)throw Error('Erreurs navigateur : '+errors.slice(0,5).join(' | '));
   console.log('PASS : WebGL 3D, rendu mobile, actions tactiques, PV, sélection d’ennemi, captures.');
 } finally {
