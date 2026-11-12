@@ -259,7 +259,7 @@ export interface ContractView {
   id: string; period: 'jour' | 'semaine'; label: string;
   progress: number; goal: number; reward: number; done: boolean; claimed: boolean;
 }
-export interface DangerView { id: string; at: LngLat; radiusM: number; /** vrai si le joueur est dedans */ inside: boolean }
+export interface DangerView { id: string; at: LngLat; radiusM: number; /** vrai si le joueur est dedans */ inside: boolean; enemy?: string; resolved?: boolean }
 
 export interface GameView {
   player: PlayerView;
@@ -382,6 +382,8 @@ export interface GameActions {
   handoff?(orderId: string, shelterId: string): ActionResult;
   /** Accepte la mission permanente du relais, ou réclame la récompense si achevée. */
   relayMission?(shelterId: string): ActionResult;
+  /** Rencontre tactique, uniquement à l'arrêt, dans une zone de danger. */
+  resolveThreat?(zoneId: string, choice: 'eviter' | 'negocier'): ActionResult;
   /** Met dans le sac un colis pris à la chaîne de relais (il faut être à un abri). `dryRun` : vérifie sans rien changer. */
   takeFromRelay?(relay: { id: string; parcel: RelayCrate }, dryRun?: boolean): ActionResult;
 }
