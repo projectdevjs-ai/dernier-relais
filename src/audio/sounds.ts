@@ -43,16 +43,14 @@ export interface SoundDef {
 
 /** Réglages de niveau, ajustés d'après les mesures hors ligne (demo-audio.html) pour équilibrer les sons entre eux. */
 export const TRIM: Record<SoundName, number> = {
-//TRIM-BEGIN
   scan: 1.973, scanEmpty: 1.718, pickup: 1.778, drop: 1.584, deliveryE: 1.365, deliveryD: 1.513,
   deliveryC: 1.738, deliveryB: 1.462, deliveryA: 1.514, deliveryS: 1.148, star: 1.274, levelUp: 1.071,
-  contract: 1.861, dangerIn: 0.769, dangerOut: 1.585, toastInfo: 2.296, toastGood: 1.909, toastWarn: 1.572,
-  uiTap: 1.346, uiOpen: 2.608, uiClose: 1.956, uiError: 1.274, uiConfirm: 1.778, step: 0.11,
+  contract: 1.861, dangerIn: 0.769, dangerOut: 1.585, toastInfo: 1.929, toastGood: 1.604, toastWarn: 1.32,
+  uiTap: 1.346, uiOpen: 2.191, uiClose: 1.956, uiError: 1.274, uiConfirm: 1.494, step: 0.11,
   pulse: 0.69, nightNote: 0.759, thunder: 2.208, special: 1.601, cacheOpen: 1.342, wanderer: 1.738,
   frontNear: 1.394, frontIn: 1.022, frontOut: 1.769, jamStart: 1.985, jamWon: 1.46, jamLost: 1.549,
   inspect: 1.703, strap: 2.548, proof: 2.144, cueChargement: 1.445, cueDepart: 1.071, cueLabo: 1.365,
   cuePasseur: 1.318, cueChapitre: 1.148,
-//TRIM-END
 };
 
 // ── Briques d'écriture. Un son soigné a trois couches : un transitoire (le toucher), un corps (la note, le choc)

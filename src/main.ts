@@ -7,7 +7,7 @@ import { OnlineLink, createOnline } from './net/index';
 import { type Fix, Locator } from './player/gps';
 import { Stage } from './render/stage';
 import { fetchWeather } from './services/weather';
-import { playPrologue, shouldPlayPrologue } from './intro/prologue';
+import { NARRATION, playPrologue, shouldPlayPrologue } from './intro/prologue';
 import { Lab } from './lab/lab';
 import { Story } from './story/story';
 import { SkillTree } from './tree/tree';
@@ -179,6 +179,7 @@ online.net.start();
 // Histoire principale : observe le jeu, donne l'objectif en cours et les messages radio de la Station Lumen.
 const story = new Story();
 const storyUi = new StoryUi(hudRoot, story, { onVoice: who => blip(who), hold: () => away });
+story.on(e => { if (e.type === 'chapter' && !e.silent) sound.cue('chapitre'); });
 
 let view: GameView | null = null;
 game.on(e => {
@@ -226,7 +227,7 @@ function frame(): void {
 let inLab = false;
 let gpsStarted = false;
 const lab = new Lab(document.body, {
-  onDepart: () => { lab.close(); leaveLab(); },
+  onDepart: () => { sound.cue('passeur'); lab.close(); leaveLab(); },
   onSkills: () => { void openSkills(); },
   onSkillTree: () => { void openSkills(); },
   onNetwork: () => hud.openNetwork(),
@@ -257,6 +258,7 @@ function showMap(on: boolean): void {
   stage.setPaused?.(!on);
 }
 function leaveLab(): void {
+  sound.music('carte');
   inLab = false;
   away = prologueOn;
   document.body.classList.remove('dr-in-lab');
@@ -277,23 +279,16 @@ async function enterLab(): Promise<void> {
   voice.stop();
   showMap(false);
   document.body.classList.add('dr-in-lab');
-  try { await lab.open(view ?? game.view()); }
+  sound.music('labo');
+  try { await lab.open(view ?? game.view()); sound.cue('labo'); }
   catch { lab.close(); leaveLab(); }
 }
-
-/** Narration du prologue : la seule voix du jeu. Table « instant (s) → texte », calée sur les textes à l'écran
- *  (src/intro/prologue.ts) ; les textes sont ceux de scripts/voix-extra.json, entrées "who": "narrateur". */
-const NARRATION: [number, string][] = [
-  [1.2, 'Tu es tombé du ciel.'],
-  [8.4, 'Plaine Noire'],
-  [31.4, 'Station Lumen'],
-  [37.6, 'Dernier Relais'],
-];
 
 /** Prologue, avec le narrateur calé sur les textes à l'écran. */
 async function runPrologue(): Promise<void> {
   if (prologueOn) return;
   prologueOn = true;
+  sound.music('prologue');
   away = true;
   closeEverything();
   storyUi.dismissRadio(true);
@@ -309,7 +304,7 @@ async function runPrologue(): Promise<void> {
     await playPrologue(document.body, {
       ambiance: currentAmbiance,
       onSound: cue => {
-        if (cue === 'vent' && !over) timers = NARRATION.map(([t, text]) => setTimeout(() => { if (!over) voice.say('narrateur', text); }, t * 1000));
+        if (cue === 'vent' && !over) timers = NARRATION.map(n => setTimeout(() => { if (!over) voice.say('narrateur', n.text); }, n.t * 1000));
       },
     });
   } catch { /* prologue impossible : on continue sans lui */ }
@@ -342,7 +337,7 @@ function splash(): Promise<void> {
     if (!bootEl || !el) { done(); return; }
     bootEl.classList.add('ready');
     el.hidden = false;
-    el.addEventListener('click', () => { sound.unlock(); voice.unlock(); sound.ui('confirm'); el.hidden = true; done(); }, { once: true });
+    el.addEventListener('click', () => { sound.unlock(); voice.unlock(); sound.cue('depart'); el.hidden = true; done(); }, { once: true });
     try { el.focus({ preventScroll: true }); } catch { /* sans focus, le toucher marche quand même */ }
   });
 }

@@ -163,7 +163,10 @@ function rebuildArms(
   const hipX = local(hips, a).x, legLen = Math.max(1e-4, Math.abs(local(hips, a).y - local(footL, b).y));
   const sx = rig.map(s => Math.sign(local(s.arm, a).x - hipX) || 1);
   // Repère de chaque main, mesuré sur le maillage au repos. Au repos (bras en T ou en A) la paume regarde le sol.
-  const frames = rig.map(s => handFrame(root, s.hand, s.hand.getWorldQuaternion(q).invert() && dir.set(0, -1, 0).applyQuaternion(rootQ).applyQuaternion(q).clone()));
+  const frames = rig.map(s => {
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(rootQ).applyQuaternion(s.hand.getWorldQuaternion(new THREE.Quaternion()).invert());
+    return handFrame(root, s.hand, down);
+  });
 
   const n = Math.max(16, Math.round(clip.duration * 30));
   const times = new Float32Array(n + 1);
