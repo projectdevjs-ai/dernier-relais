@@ -80,14 +80,10 @@ function heightExpr(prop: 'render_height' | 'render_min_height'): unknown {
   return ['*', 0.8, ['coalesce', ['get', prop], prop === 'render_height' ? 6 : 0]];
 }
 
+/** Vrai pour les bâtiments masqués au pied d'un abri (état posé par Stage.hideUnderShelters). */
+const HIDDEN = ['==', ['feature-state', 'hide'], true];
 const byHeight = (low: string, high: string): unknown => ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6], 3, low, 14, mixHex(low, high, 0.55), 34, high];
 function mixHex(a: string, b: string, k: number): string { return '#' + ca.set(a).lerp(cb.set(b), k).getHexString(); }
-
-/** Filtre des couches de bâtiments : tout, sauf les entités masquées au pied des abris (par identifiant). */
-export function buildingFilter(hidden: (string | number)[]): unknown {
-  const base = ['!', ['has', 'hide_3d']];
-  return hidden.length ? ['all', base, ['!', ['in', ['id'], ['literal', hidden]]]] : base;
-}
 
 export const BUILDING_LAYERS = ['building-3d', 'building-win', 'building-roof'];
 /** Épaisseur de la dalle de toit, en mètres. */
@@ -168,15 +164,16 @@ export function buildGameStyle(src: StyleSpecification): GameStyle {
   // Bâtiments extrudés en 3D, reconstruits à notre façon : murs en dégradé vertical, fenêtres allumées
   // le soir, et une fine dalle de toit d'une autre teinte qui découpe chaque volume.
   const h = heightExpr('render_height'), base = heightExpr('render_min_height');
-  const wall = { 'fill-extrusion-height': h, 'fill-extrusion-base': base };
-  const common = { type: 'fill-extrusion', source: SOURCE, 'source-layer': 'building', filter: buildingFilter([]) };
+  // Bâtiment masqué : hauteur nulle (il ne reste qu'une dalle au sol, de la couleur du terrain).
+  const wall = { 'fill-extrusion-height': ['case', HIDDEN, 0, h], 'fill-extrusion-base': base };
+  const common = { type: 'fill-extrusion', source: SOURCE, 'source-layer': 'building', filter: ['!', ['has', 'hide_3d']] };
   layers.push({ ...common, id: 'building-3d', minzoom: 14, paint: { 'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': true, ...wall } } as unknown as LayerSpecification);
   layers.push({ ...common, id: 'building-win', minzoom: 16.5, layout: { visibility: 'none' }, paint: { 'fill-extrusion-pattern': 'fenetres', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': false, ...wall } } as unknown as LayerSpecification);
   layers.push({
     ...common, id: 'building-roof', minzoom: 15,
     paint: {
       'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-vertical-gradient': false,
-      'fill-extrusion-height': ['+', h, ROOF], 'fill-extrusion-base': h,
+      'fill-extrusion-height': ['case', HIDDEN, 0, ['+', h, ROOF]], 'fill-extrusion-base': ['case', HIDDEN, 0, h],
     },
   } as unknown as LayerSpecification);
   const sources: StyleSpecification['sources'] = {};
@@ -190,6 +187,6 @@ export function applyPalette(map: MlMap, style: GameStyle | null, p: Palette): v
   if (map.getLayer('veil')) map.setPaintProperty('veil', 'fill-color', p.veil);
   if (!style) return;
   for (const [layer, prop, key] of style.binds) if (map.getLayer(layer)) map.setPaintProperty(layer, prop, p[key]);
-  if (map.getLayer('building-3d')) map.setPaintProperty('building-3d', 'fill-extrusion-color', byHeight(p.bLow, p.bHigh));
-  if (map.getLayer('building-roof')) map.setPaintProperty('building-roof', 'fill-extrusion-color', byHeight(p.roofLow, p.roofHigh));
+  if (map.getLayer('building-3d')) map.setPaintProperty('building-3d', 'fill-extrusion-color', ['case', HIDDEN, p.urban, byHeight(p.bLow, p.bHigh)]);
+  if (map.getLayer('building-roof')) map.setPaintProperty('building-roof', 'fill-extrusion-color', ['case', HIDDEN, p.urban, byHeight(p.roofLow, p.roofHigh)]);
 }

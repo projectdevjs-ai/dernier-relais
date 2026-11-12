@@ -386,7 +386,7 @@ function applyTime(w: World, t: number, aspect: number, still: boolean): void {
     // A. Réveil : derrière la tête du porteur, la capsule fume à contre-jour.
     const k = easeInOut(span(t, 0, T.cutB));
     _p.set(lerp(0.8, 1.05, k), lerp(0.5, 0.74, k), lerp(5.2, 4.6, k));
-    _l.set(lerp(1.0, 1.2, k), lerp(1.9, 1.7, k), -8);
+    _l.set(lerp(0.45, 0.65, k), lerp(1.9, 1.7, k), -8);
     fov = portrait ? 58 : 36;
   } else if (t < T.cutC) {
     // B. Il se lève : de trois quarts face, éclairé par le soleil rasant.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cell, cellAt, cellBounds, cellCenter, dist, inCell, type LngLat } from '../src/core/geo';
-import { generateCell } from '../src/world/cells';
+import { cellPaths, generateCell, PATHS } from '../src/world/cells';
 import type { RawTile } from '../src/world/types';
 
 const c = cellAt(-1.5761, 47.1822);
@@ -49,5 +49,27 @@ describe('cases', () => {
     expect(a.length).toBeGreaterThan(0);
     for (const p of a) expect(pts).toContain(p.at.join());
     expect(a.map(p => p.id)).not.toEqual(b.map(p => p.id));
+  });
+  it('expose les rues praticables de la case : coupées aux bords, allégées, bornées, reproductibles', () => {
+    const b = cellBounds(c), lat = mid[1];
+    // Une rue dense qui traverse toute la case et en sort des deux côtés (un point tous les 2 m environ).
+    const long: LngLat[] = Array.from({ length: 400 }, (_, i) => [b.w - 0.001 + (i / 399) * (b.e - b.w + 0.002), lat] as LngLat);
+    const raw: RawTile = { pois: [], places: [], roads: [
+      road(long), road([[mid[0], lat + 0.0005], [mid[0] + 0.00005, lat + 0.0005]]), // trop courte
+      road([[mid[0], lat - 0.0005], [mid[0] + 0.001, lat - 0.0005]], 'motorway'),   // pas praticable
+      ...Array.from({ length: 12 }, (_, k) => road([[mid[0] - 0.001, lat + 0.0001 * (k + 2)], [mid[0] + 0.001, lat + 0.0001 * (k + 2)]])),
+    ] };
+    const paths = cellPaths(c, raw.roads);
+    expect(paths).toEqual(cellPaths(c, raw.roads));
+    expect(generateCell(c, raw, '2026-11-11').paths).toEqual(paths);
+    expect(paths).toHaveLength(PATHS.max);
+    for (const p of paths) {
+      expect(p.length).toBeGreaterThanOrEqual(2); expect(p.length).toBeLessThanOrEqual(PATHS.maxPoints);
+      for (const q of p) expect(inCell(c, q)).toBe(true);
+    }
+    // La plus longue d'abord : la traversée, d'environ la largeur de la case.
+    const len = (p: LngLat[]) => p.slice(1).reduce((a, q, i) => a + dist(p[i], q), 0);
+    expect(len(paths[0])).toBeGreaterThan(330);
+    expect(Math.abs(paths[0][0][1] - lat)).toBeLessThan(1e-9);
   });
 });

@@ -3,7 +3,7 @@ import { type LngLat, dist } from './core/geo';
 import type { Ambiance, GameView } from './game/api';
 import { Game } from './game/game';
 import { LocalGameStore } from './game/save';
-import { createOnline } from './net/index';
+import { OnlineLink, createOnline } from './net/index';
 import { type Fix, Locator } from './player/gps';
 import { Stage } from './render/stage';
 import { fetchWeather } from './services/weather';
@@ -23,10 +23,21 @@ const pref = {
 };
 const ambiance: Ambiance = pref.get('ambiance') === 'clair' ? 'clair' : 'crépuscule';
 
-// Sons et vibrations : le navigateur n'autorise le son qu'après un premier toucher.
-const sound = new Sound({ muted: pref.get('son') === 'non' });
+// Sons, voix et vibrations : préférences mémorisées. Le navigateur n'autorise le son qu'après un premier toucher.
+const prefs = {
+  sound: pref.get('son') !== 'non',
+  voices: pref.get('voix') !== 'non',
+  haptics: pref.get('vibrations') !== 'non',
+  volume: (() => { const v = Number(pref.get('volume') ?? '0.8'); return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8; })(),
+};
+const sound = new Sound({ muted: !prefs.sound, haptics: prefs.haptics, volume: prefs.volume });
 const voice = new Voice();
-voice.muted = pref.get('son') === 'non';
+const applyVoice = (): void => {
+  voice.muted = !prefs.sound || !prefs.voices;
+  voice.volume = Math.min(1, prefs.volume * 1.1);
+  if (voice.muted) voice.stop();
+};
+applyVoice();
 addEventListener('pointerdown', () => { sound.unlock(); voice.unlock(); });
 
 // En ligne : sauvegarde locale d'abord, copie sur le serveur quand il répond. Hors ligne, le jeu reste complet.
@@ -68,7 +79,18 @@ const stage = new Stage('stage', {
   onTapWanderer: id => hud.openWanderer?.(id),
 }, { center: START, ambiance });
 
-const hud = new Hud(document.getElementById('hud')!, {
+// Le lien en ligne : chaîne de relais, abris collectifs, primes, nom de porteur (voir src/net/link.ts).
+const hudRoot = document.getElementById('hud')!;
+const link = new OnlineLink(online.net, game, {
+  toast: (text, tone) => hud.handle({ type: 'toast', text, tone }),
+  refresh: () => hud.refreshOnline(),
+}, { shelterName: id => view?.shelters.find(s => s.id === id)?.name ?? null });
+
+// Installation de l'application : le navigateur prévient quand elle est possible.
+interface InstallPrompt extends Event { prompt(): Promise<unknown> }
+let installPrompt: InstallPrompt | null = null;
+
+const hud = new Hud(hudRoot, {
   actions: game,
   onUseGps: () => { stage.recenter(); locator.startGPS(); },
   onRecenter: () => stage.recenter(),
@@ -80,14 +102,34 @@ const hud = new Hud(document.getElementById('hud')!, {
     stage.recenter();
     hud.handle({ type: 'toast', text: `Position simulée : ${label}.`, tone: 'info' });
   },
-}, { ambiance });
+  onNetwork: () => france.open(),
+  online: link.hud,
+  pseudo: link.pseudo,
+  onSound: on => { prefs.sound = on; pref.set('son', on ? 'oui' : 'non'); sound.setMuted(!on); applyVoice(); },
+  onVoices: on => { prefs.voices = on; pref.set('voix', on ? 'oui' : 'non'); applyVoice(); },
+  onHaptics: on => { prefs.haptics = on; pref.set('vibrations', on ? 'oui' : 'non'); sound.setHaptics(on); },
+  onVolume: v => { prefs.volume = v; pref.set('volume', String(v)); sound.setVolume(v); applyVoice(); },
+  onUi: kind => sound.ui(kind),
+  onInstall: () => {
+    const p = installPrompt;
+    if (!p) return;
+    installPrompt = null;
+    hud.setCanInstall(false);
+    void p.prompt().catch(() => { /* invite refusée ou déjà montrée */ });
+  },
+  /*LAB-HOOKS*/
+}, { ambiance, settings: { ...prefs, canInstall: false } });
 
-const france = new FrancePanel(document.getElementById('hud')!, online.net);
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e as InstallPrompt; hud.setCanInstall(true); });
+addEventListener('appinstalled', () => { installPrompt = null; hud.setCanInstall(false); });
+
+const france = new FrancePanel(hudRoot, online.net);
+link.start();
 online.net.start();
 
 // Histoire principale : observe le jeu, donne l'objectif en cours et les messages radio de la Station Lumen.
 const story = new Story();
-const storyUi = new StoryUi(document.getElementById('hud')!, story, { onVoice: (who, text) => voice.say(who, text) });
+const storyUi = new StoryUi(hudRoot, story, { onVoice: (who, text) => voice.say(who, text) });
 
 let view: GameView | null = null;
 game.on(e => {

@@ -33,6 +33,43 @@ function nearestRoadPoint(roads: RawTile['roads'], target: LngLat): LngLat | nul
   return best;
 }
 
+/** Bornes des tracés de rues exposés dans une case. */
+export const PATHS = { max: 8, maxPoints: 24, minStepM: 8, minLengthM: 40 } as const;
+
+/**
+ * Tracés des rues praticables d'une case : chaque rue est coupée aux bords de la case (un tracé par
+ * passage dans la case), allégée (pas de points à moins de 8 m l'un de l'autre, 24 points au plus),
+ * et seuls les 8 plus longs sont gardés. Ordre reproductible : longueur décroissante, puis position.
+ */
+export function cellPaths(c: Cell, roads: RawTile['roads']): LngLat[][] {
+  const out: { pts: LngLat[]; len: number }[] = [];
+  const push = (run: LngLat[]): void => {
+    if (run.length < 2) return;
+    // Allègement : on garde le premier et le dernier point, et un point tous les 8 m au moins.
+    let pts: LngLat[] = [run[0]];
+    for (let i = 1; i < run.length - 1; i++) if (dist(pts[pts.length - 1], run[i]) >= PATHS.minStepM) pts.push(run[i]);
+    pts.push(run[run.length - 1]);
+    if (pts.length > PATHS.maxPoints) {
+      const k = (pts.length - 1) / (PATHS.maxPoints - 1), full = pts;
+      pts = Array.from({ length: PATHS.maxPoints }, (_, i) => full[Math.round(i * k)]);
+    }
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += dist(pts[i - 1], pts[i]);
+    if (len >= PATHS.minLengthM) out.push({ pts: pts.map(p => [p[0], p[1]] as LngLat), len });
+  };
+  for (const r of roads) {
+    if (!WALKABLE.test(r.cls)) continue;
+    let run: LngLat[] = [];
+    for (const p of r.pts) {
+      if (inCell(c, p)) run.push(p);
+      else { push(run); run = []; }
+    }
+    push(run);
+  }
+  out.sort((a, b) => b.len - a.len || a.pts[0][0] - b.pts[0][0] || a.pts[0][1] - b.pts[0][1]);
+  return out.slice(0, PATHS.max).map(o => o.pts);
+}
+
 export function generateCell(c: Cell, raw: RawTile, day: string): CellContent {
   const roads = raw.roads
     .filter(r => WALKABLE.test(r.cls))
@@ -77,5 +114,5 @@ export function generateCell(c: Cell, raw: RawTile, day: string): CellContent {
       parcels.push({ id: `${c.id}|${day}|${j}`, cell: c.id, at: pts[j] });
     }
   }
-  return { id: c.id, shelters, parcels, roads: roads.length };
+  return { id: c.id, shelters, parcels, roads: roads.length, paths: cellPaths(c, raw.roads) };
 }

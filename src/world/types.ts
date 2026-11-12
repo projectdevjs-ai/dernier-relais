@@ -14,4 +14,8 @@ export interface Shelter {
   source: 'lieu' | 'secours';
 }
 export interface ParcelSpot { id: string; cell: string; at: LngLat }
-export interface CellContent { id: string; shelters: Shelter[]; parcels: ParcelSpot[]; roads: number }
+export interface CellContent {
+  id: string; shelters: Shelter[]; parcels: ParcelSpot[]; roads: number;
+  /** Rues praticables de la case, simplifiées (8 tracés de 24 points au plus, les plus longs d'abord). Facultatif. */
+  paths?: LngLat[][];
+}

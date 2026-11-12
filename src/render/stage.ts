@@ -11,7 +11,7 @@ import { Fronts } from './fronts';
 import { Celebration, Dangers, FxKit, ScanPulse } from './fx';
 import { Jams } from './jams';
 import { LAYER_ID, Layer3D } from './layer';
-import { applyPalette, BUILDING_LAYERS, buildGameStyle, buildingFilter, type GameStyle, paletteFor, SOURCE, STYLE_URL, windowPattern } from './mapstyle';
+import { applyPalette, BUILDING_LAYERS, buildGameStyle, type GameStyle, paletteFor, SOURCE, STYLE_URL, windowPattern } from './mapstyle';
 import { PARCEL_TOP, Parcels, parcelModel } from './parcels';
 import { Porter } from './porter';
 import { Router } from './route';
@@ -291,7 +291,7 @@ export class Stage implements StageApi {
 
   /**
    * Retire les immeubles de la carte dont l'emprise touche le pied d'un abri : sans cela ils traversent
-   * le modèle 3D. On parcourt les entités chargées et on les retire des couches par leur identifiant.
+   * le modèle 3D. On parcourt les entités chargées et on pose un état « hide » lu par le style (hauteur nulle).
    */
   private hideUnderShelters(): void {
     const map = this.map;
@@ -307,13 +307,9 @@ export class Stage implements StageApi {
       if (!polys) continue;
       for (const s of this.shelters.all) if (polys.some(p => touches(p as LngLat[][], s.at, CLEAR_M))) { now.add(f.id); break; }
     }
-    let same = now.size === this.hidden.size;
-    if (same) for (const id of now) if (!this.hidden.has(id)) { same = false; break; }
-    if (same) return;
-    this.hidden.clear();
-    for (const id of now) this.hidden.add(id);
-    const filter = buildingFilter([...now]) as maplibregl.FilterSpecification;
-    for (const id of BUILDING_LAYERS) if (map.getLayer(id)) map.setFilter(id, filter);
+    // (Un filtre par identifiant viderait toute la couche avec ces tuiles : on passe par l'état des entités.)
+    for (const id of now) if (!this.hidden.has(id)) { this.hidden.add(id); map.setFeatureState({ source: SOURCE, sourceLayer: 'building', id }, { hide: true }); }
+    for (const id of this.hidden) if (!now.has(id)) { this.hidden.delete(id); map.removeFeatureState({ source: SOURCE, sourceLayer: 'building', id }, 'hide'); }
   }
 
   // ---------------------------------------------------------------- Synchronisation

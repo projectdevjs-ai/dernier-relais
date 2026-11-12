@@ -15,6 +15,38 @@ const CELLS = world([A, B], SPOTS);
 const home = (cells: CellContent[] = CELLS): CellContent => cells.find(c => c.id === HOME)!;
 const SLOT = WANDER.slotMs;
 
+/** Une rue en L de la case de l'abri A (140 m), et une impasse trop courte pour être arpentée. */
+const STREET = [off(-60, 0, MID), off(-20, 0, MID), off(20, 0, MID), off(20, 60, MID)];
+const withStreets = (): CellContent => ({ ...home(), paths: [STREET, [off(0, -80, MID), off(10, -80, MID)]] });
+
+describe('rôdeurs : le long des rues', () => {
+  const slot = Array.from({ length: 4000 }, (_, i) => i).find(s => wandererInCell(withStreets(), s))!;
+  it('suit une vraie rue en aller-retour, de façon reproductible, même sans emplacement de colis', () => {
+    const w = wandererInCell(withStreets(), slot)!;
+    expect(wandererInCell(withStreets(), slot)).toEqual(w);
+    expect(w.path).toHaveLength(2 * STREET.length - 2);
+    expect(w.path.slice(0, STREET.length)).toEqual(STREET);
+    expect(w.pauses!.filter(p => p > 0)).toHaveLength(2);
+    expect(w.lapS).toBeCloseTo(w.legs.reduce((a, b) => a + b, 0) / WANDER.speed + 2 * WANDER.pauseS);
+    expect(wandererInCell({ ...withStreets(), parcels: [] }, slot)).not.toBeNull();
+    // Une case dont les rues sont toutes trop courtes retombe sur l'ancienne règle.
+    expect(wandererInCell({ ...home(), parcels: [], paths: [[off(0, 0, MID), off(10, 0, MID)]] }, slot)).toBeNull();
+  });
+  it('reste toujours sur la rue, ne s’arrête qu’aux deux bouts et revient à son point de départ', () => {
+    const w = wandererInCell(withStreets(), slot)!, t0 = slot * SLOT;
+    const onStreet = (p: [number, number]): boolean => STREET.some((a, i) => i + 1 < STREET.length && Math.abs(dist(a, p) + dist(p, STREET[i + 1]) - dist(a, STREET[i + 1])) < 0.5);
+    const stops = new Set<number>();
+    for (let s = 0; s < Math.ceil(w.lapS) + 5; s++) {
+      const a = wandererAt(w, t0 + s * 1000), b = wandererAt(w, t0 + (s + 1) * 1000);
+      expect(onStreet(a.at)).toBe(true);
+      expect(dist(a.at, b.at)).toBeLessThanOrEqual(WANDER.speed + 0.05);
+      if (!a.moving) stops.add(STREET.findIndex(p => dist(p, a.at) < 0.5));
+    }
+    expect([...stops].sort()).toEqual([0, STREET.length - 1]);
+    expect(dist(wandererAt(w, t0).at, wandererAt(w, t0 + w.lapS * 1000).at)).toBeLessThan(0.01);
+  });
+});
+
 describe('rôdeurs : règles', () => {
   it('toutes les rues de la démo sont dans la même case', () => {
     expect(home().parcels.map(p => p.id).sort()).toEqual(['r1', 'r2', 'r3']);
