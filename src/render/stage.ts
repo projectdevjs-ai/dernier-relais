@@ -58,6 +58,7 @@ export class Stage implements StageApi {
   private guideTone: TrailTone = 'blue';
   private guideFar = false;
   private dark = true;
+  private paused = false;
   /** Dernier instant où quelque chose a bougé (porteur, carte, effet) : au-delà, le rendu ralentit. */
   private lastBusy = 0;
 
@@ -122,7 +123,7 @@ export class Stage implements StageApi {
     this.party = new Celebration(scene, this.kit, Math.min(window.devicePixelRatio || 1, 2));
     this.fog = new ExploreFog(scene, this.layer);
     this.trail = new Trail(scene, this.layer);
-    this.router = new Router(() => { if (this.view) this.refreshGuide(this.view); });
+    this.router = new Router(() => { if (this.view && !this.paused) this.refreshGuide(this.view); });
 
     this.map.on('load', () => this.onLoad());
     this.map.on('resize', () => this.applyPadding());
@@ -135,7 +136,25 @@ export class Stage implements StageApi {
 
   sync(view: GameView): void {
     this.view = view;
-    if (this.ready) this.apply(view);
+    // En pause, la vue est seulement mémorisée : rien n'est recalculé ni redessiné.
+    if (this.ready && !this.paused) this.apply(view);
+  }
+
+  /**
+   * Met la scène en pause (un autre écran la recouvre : labo 3D, prologue) : la boucle d'animation est
+   * arrêtée et la carte n'est plus redessinée. À la reprise, la dernière vue reçue est appliquée.
+   */
+  setPaused(on: boolean): void {
+    if (on === this.paused) return;
+    this.paused = on;
+    cancelAnimationFrame(this.raf);
+    if (on) return;
+    this.last = performance.now();
+    this.lastBusy = this.last;
+    if (this.ready) this.refreshEnv();
+    if (this.ready && this.view) this.apply(this.view);
+    this.raf = requestAnimationFrame(this.tick);
+    this.map.triggerRepaint();
   }
 
   pulseScan(rangeM: number): void {
@@ -227,7 +246,7 @@ export class Stage implements StageApi {
       w = f;
     }
     const env = computeEnv(this.ambiance, w);
-    if (env.key === this.envKey || !this.ready) return;
+    if (env.key === this.envKey || !this.ready || this.paused) return;
     this.envKey = env.key;
     const pal = paletteFor(env.ambiance, env.night, env.dull);
     const clair = env.ambiance === 'clair', n = env.night;
@@ -324,6 +343,7 @@ export class Stage implements StageApi {
   // ---------------------------------------------------------------- Boucle d'animation
 
   private readonly tick = (now: number): void => {
+    if (this.paused) return;
     this.raf = requestAnimationFrame(this.tick);
     if (!this.ready || document.hidden) { this.last = now; return; }
     // Scène calme (personnages au repos seulement) : 30 images par seconde suffisent.

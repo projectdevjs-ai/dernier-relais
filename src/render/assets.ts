@@ -3,6 +3,7 @@
 // échelles et origines quelconques, on ne suppose donc rien.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 /** Forme de remplacement si le fichier manque ou échoue. */
@@ -38,6 +39,8 @@ export interface InstanceOpts {
 }
 
 const loader = new GLTFLoader();
+// Modèles compressés meshopt (géométrie quantifiée) : le décodeur est branché une fois pour toutes.
+loader.setMeshoptDecoder(MeshoptDecoder);
 const cache = new Map<string, Promise<Template>>();
 const box = new THREE.Box3();
 const v = new THREE.Vector3();
