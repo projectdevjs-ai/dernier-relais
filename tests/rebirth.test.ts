@@ -81,6 +81,27 @@ describe('PROJECT REBIRTH — tactique déterministe', () => {
   });
 });
 
+describe('Simulateur Lumen, accessible depuis la console',()=>{
+  it('propose une vraie bataille tactique sans risque ni farming',async()=>{
+    const r=await rig(),initial=r.game.view().player;
+    const before=initial.rebirth!;
+    expect(r.game.startTraining()).toEqual({ok:true});
+    expect(r.game.startTraining().ok).toBe(false);
+    let turns=0;
+    while(r.game.view().player.rebirth?.encounter && turns++<12){
+      expect(r.game.combatMove('strike')).toEqual({ok:true});
+    }
+    expect(r.game.view().player.rebirth?.encounter).toBeNull();
+    const after=r.game.view().player;
+    expect(after.rebirth!.integrity).toBe(before.integrity);
+    expect(after.rebirth!.victories).toBe(before.victories);
+    expect(after.rebirth!.resources).toEqual(before.resources);
+    expect(after.score).toBe(initial.score);
+    expect(after.xp).toBe(initial.xp);
+    expect(r.game.startTraining()).toEqual({ok:true});
+  });
+});
+
 describe('PROJECT REBIRTH — intégration GPS',()=>{
   it('intercepte une transmission procédurale, sauvegarde le choix et la réputation de faction', async ()=>{
     const tile=cellsAround(cellAt(BASE[0],BASE[1]),8).find(c=>signalForCell(c.id)!==null)!;
