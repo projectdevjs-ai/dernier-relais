@@ -39,9 +39,9 @@ const MOODS: Record<WeatherKind, { rain: number; wind: number; pad: number; cut:
 };
 const MOOD_DEFAULT = MOODS.nuages;
 /** Niveau général de la nappe : volontairement bas, bien en dessous des sons du jeu. */
-const BED = 0.4;
+const BED = 0.11;
 /** Fond de l'air (ville lointaine le jour, silence feutré la nuit) : le plancher de la nappe, toujours au-dessus des pas. */
-const FOND = 0.175;
+const FOND = 0.055;
 const FIFTHS = [220.4, 196.2, 261.9, 174.8]; // la, sol, do, fa : la voix mobile du fond tonal
 const PATTER_S = 6.1;
 
