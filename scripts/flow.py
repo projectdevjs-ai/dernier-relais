@@ -152,6 +152,58 @@ with sync_playwright() as p:
         pg.wait_for_timeout(1500)
         pg.evaluate("__dr.stage.setPaused(true)"); pg.wait_for_timeout(400); shot(pg, 'flow-2-carte.png'); pg.evaluate("__dr.stage.setPaused(false)")
 
+        print('3 ter. Ramassage et rangement', flush=True)
+        LAYER = "(() => { const l = document.querySelector('#hud .pk-layer'); return !!l && !l.hidden ? (l.dataset.phase || 'ouverte') : ''; })()"
+        LOAD = "(() => { const l = document.querySelector('#hud .pk-load'); return !!l && !l.hidden; })()"
+        ORDER = "(() => { const o = __dr.game.view().orders.filter(o => o.state === 'révélé').sort((a, b) => a.distanceM - b.distanceM)[0]; return o ? { id: o.id, at: o.at } : null; })()"
+        pg.evaluate("document.querySelector('.dr-help .dr-help-skip')?.click()")
+        wait(pg, "__dr.game.view().scanner.ready && __dr.game.view().shelters.length > 0", 30000)
+        pg.evaluate("__dr.game.scan()"); pg.wait_for_timeout(600)
+        o = pg.evaluate(ORDER)
+        check('un colis repéré', o is not None)
+        if o:
+            oid = o['id']
+            pg.evaluate(f"__dr.teleport({o['at']})")
+            check('action de proximité « Ramasser »', wait(pg, "(() => { const n = document.querySelector('#hud .dr-near'); return !!n && !n.hidden && n.dataset.kind === 'pickup'; })()", 8000))
+            score = pg.evaluate("__dr.game.view().player.score")
+            # Image figée et rendu allégé : Chrome sans carte graphique ne suit pas une scène 3D qui tourne.
+            pg.evaluate("__dr.hud.pickupFlow.seqOptions = { pano: 'rural', light: true, freezeMs: 1500 }")
+            pg.evaluate("document.querySelector('#hud .dr-near-btn').click()")
+            check('la séquence s’ouvre sur le repérage', wait(pg, LAYER + " === 'reperage'", 8000), str(pg.evaluate(LAYER)))
+            check('la carte se met en veille sous la séquence', pg.evaluate("__dr.stage.paused === true"))
+            check('étapes affichées : repérer, inspecter, sangler, ranger', pg.evaluate("[...document.querySelectorAll('.pk-step span')].map(e => e.textContent).join('|')") == 'Repérer|Inspecter|Sangler|Ranger')
+            pg.wait_for_timeout(2200); shot(pg, 'flow-3-reperage.png')
+            pg.evaluate("document.querySelector('.pk-quit').click()")
+            check('abandon au repérage : couche fermée, colis au sol, aucune pénalité', wait(pg, LAYER + " === ''", 3000) and pg.evaluate(f"__dr.game.view().orders.find(o => o.id === '{oid}').state") == 'révélé' and pg.evaluate("__dr.game.view().player.score") == score)
+            check('la carte reprend après l’abandon', wait(pg, "__dr.stage.paused !== true", 3000))
+            # Séquence menée au bout (le sanglage est terminé par le crochet d'essai) : ramassage, arrimage, puis rangement.
+            pg.evaluate("window.__evts = []; __dr.game.on(e => window.__evts.push(e.type))")
+            pg.evaluate("document.querySelector('#hud .dr-near-btn').click()")
+            check('la séquence se rouvre', wait(pg, LAYER + " === 'reperage'", 8000))
+            pg.evaluate("__dr.hud.pickupFlow.seq.complete(96)")
+            check('le colis est dans le sac, avec un emplacement', wait(pg, f"(() => {{ const o = __dr.game.view().orders.find(o => o.id === '{oid}'); return !!o && o.state === 'porté' && o.slot === 'dos' && o.strap === 1; }})()", 3000))
+            check('événements « pickup » puis « strap » émis', pg.evaluate("window.__evts.filter(t => t === 'pickup' || t === 'strap').join(',')") == 'pickup,strap', str(pg.evaluate("window.__evts")))
+            check('l’écran de rangement s’ouvre sur le colis', wait(pg, LOAD, 3000) and wait(pg, "document.querySelectorAll('#hud .pk-load .pk-item.is-on').length === 1 && !document.querySelector('#hud .pk-load-foot').hidden", 3000))
+            check('bras et jambes verrouillés au départ', pg.evaluate("document.querySelectorAll('#hud .pk-load .pk-slot.is-locked').length") == 4)
+            pg.wait_for_timeout(400); shot(pg, 'flow-3-rangement.png')
+            pg.evaluate("document.querySelector('#hud .pk-load-foot .dr-btn').click()")
+            check('« C’est rangé » referme l’écran et rend la carte', wait(pg, "!(" + LOAD + ")", 3000) and wait(pg, "__dr.stage.paused !== true", 3000))
+            pg.evaluate("__dr.game.drop('" + oid + "')"); pg.wait_for_timeout(500)
+            # Ramassage rapide : réglage des options, puis « Ramasser » sans séquence.
+            pg.evaluate("__dr.hud.openPorter('reglages')"); pg.wait_for_timeout(400)
+            sw = "[...document.querySelectorAll('#hud .dr-modal:not([hidden]) [role=switch]')].find(b => /Ramassage rapide/.test(b.innerText))"
+            check('réglage « Ramassage rapide » présent, désactivé par défaut', pg.evaluate(f"(() => {{ const b = {sw}; return !!b && b.getAttribute('aria-checked') === 'false'; }})()"))
+            pg.evaluate(f"{sw}.click()"); close_panels(pg)
+            check('le réglage est mémorisé', pg.evaluate("localStorage.getItem('dernier-relais/ramassage-rapide')") == 'oui')
+            wait(pg, "(() => { const n = document.querySelector('#hud .dr-near'); return !!n && !n.hidden && n.dataset.kind === 'pickup'; })()", 5000)
+            pg.evaluate("document.querySelector('#hud .dr-near-btn').click()"); pg.wait_for_timeout(500)
+            check('ramassage rapide : colis pris sans séquence', pg.evaluate(LAYER) == '' and pg.evaluate(f"__dr.game.view().orders.find(o => o.id === '{oid}').state") == 'porté')
+            pg.evaluate("document.querySelector('#hud .dr-sheet-bag').click()")
+            check('le bouton « Sac » ouvre le rangement', wait(pg, LOAD, 3000))
+            pg.evaluate("document.querySelector('#hud .pk-load-back').click()")
+            check('vue 2D / 3D : le bouton bascule la carte', pg.evaluate("(() => { const b = document.querySelector('#hud .dr-tilt'); if (!b || b.hidden) return false; const a = b.textContent; b.click(); const c = b.textContent; b.click(); return a !== c; })()"))
+            pg.evaluate("localStorage.removeItem('dernier-relais/ramassage-rapide')")
+
         print('3 bis. Téléphone couché', flush=True)
         ROT = "getComputedStyle(document.querySelector('#rotate')).display !== 'none'"
         check('pas de demande de rotation à la verticale', not pg.evaluate(ROT))

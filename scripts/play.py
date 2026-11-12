@@ -1,4 +1,4 @@
-# Partie automatique de contrôle : scanner, ramasser, livrer, avec captures à chaque étape.
+# Partie automatique de contrôle : scanner, ramasser (séquence en caméra, puis rangement), livrer, avec captures à chaque étape.
 import os, sys, json, base64
 from playwright.sync_api import sync_playwright
 url = sys.argv[1]; out = sys.argv[2]
@@ -31,7 +31,17 @@ with sync_playwright() as p:
     if s['orders']:
         o = sorted(s['orders'], key=lambda o: o['d'])[0]
         pg.evaluate(f"__dr.teleport({json.dumps(o['at'])})"); pg.wait_for_timeout(1500)
+        # Séquence de ramassage : « Ramasser » ouvre la couche caméra (image figée pour la capture), puis on abandonne.
+        pg.evaluate("__dr.hud.pickupFlow.seqOptions = { pano: 'ville', light: true, freezeMs: 2500 }")
+        pg.evaluate(f"__dr.hud.startPickup({json.dumps(o['id'])})"); pg.wait_for_timeout(4500)
+        print('séquence ouverte', pg.evaluate("(() => { const l = document.querySelector('.pk-layer'); return !!l && !l.hidden && l.dataset.phase; })()")); shot(pg, out + '-3a-reperage.png')
+        pg.evaluate("document.querySelector('.pk-quit').click()"); pg.wait_for_timeout(600)
+        print('abandon : colis toujours au sol', pg.evaluate(f"__dr.game.view().orders.find(o => o.id === {json.dumps(o['id'])})?.state"))
+        # Ramassage direct par le moteur (essais automatiques), puis l'écran de rangement.
         print('ramassage', pg.evaluate(f"__dr.game.pickup({json.dumps(o['id'])})")); pg.wait_for_timeout(3000); shot(pg, out + '-3-porte.png')
+        pg.evaluate("__dr.hud.openBag()"); pg.wait_for_timeout(900)
+        print('rangement ouvert', pg.evaluate("(() => { const l = document.querySelector('.pk-load'); return !!l && !l.hidden && l.querySelectorAll('.pk-item').length; })()")); shot(pg, out + '-3b-rangement.png')
+        pg.evaluate("document.querySelector('.pk-load-back').click()"); pg.wait_for_timeout(400)
         pg.evaluate(f"__dr.teleport({json.dumps(o['destAt'])})"); pg.wait_for_timeout(6000); shot(pg, out + '-4-abri.png')
         print('livraison', pg.evaluate(f"__dr.game.deliver({json.dumps(o['destId'])})")); pg.wait_for_timeout(3500); shot(pg, out + '-5-note.png')
         pg.evaluate("[...document.querySelectorAll('.dr-grade button')].find(b => /continuer/i.test(b.innerText))?.click()")

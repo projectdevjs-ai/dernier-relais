@@ -77,13 +77,13 @@
 /* ---------- Étiquettes des modules ---------- */
 .tr-tags { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
 .tr .tr-tag {
-  position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform;
+  position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; white-space: nowrap;
   display: flex; align-items: center; gap: 5px;
   min-height: 22px; padding: 3px 4px 3px 7px; border-radius: 8px;
   background: rgba(10, 18, 17, .78); border: 1px solid rgba(230, 225, 211, .13);
   color: #e6e1d3; text-align: left;
 }
-.tr-tag-name { font: 600 10.5px/1.12 var(--f-ui); letter-spacing: .01em; text-wrap: balance; max-width: 72px; }
+.tr-tag-name { font: 600 10.5px/1.12 var(--f-ui); letter-spacing: .01em; text-wrap: balance; max-width: 72px; white-space: normal; }
 .tr-tag-rank {
   flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 16px; padding: 0 4px; border-radius: 6px;
   font: 700 10px/1 var(--f-ui); color: var(--bc); background: color-mix(in srgb, var(--bc) 17%, transparent);

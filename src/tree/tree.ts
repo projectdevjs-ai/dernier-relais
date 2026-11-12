@@ -535,17 +535,58 @@ export class SkillTree {
     return moving;
   }
 
+  /**
+   * Pose les étiquettes sous leur module, puis les écarte en espace écran : aucune étiquette ne doit en toucher
+   * une autre ni recouvrir un module. En vue d'ensemble, seuls les modules acquis ou disponibles montrent leur nom ;
+   * les autres le montrent quand on s'approche ou qu'on les touche.
+   */
   private placeTags(): void {
     const vp = this.vp, tree = this.tree;
     if (!vp || !tree) return;
-    const w = vp.width, h = vp.height;
+    const w = vp.width, h = vp.height, near = this.cur.zoom < 0.8, cam = this.camera;
+    const sx = (): number => (_v.x * 0.5 + 0.5) * w, sy = (): number => (-_v.y * 0.5 + 0.5) * h;
+    const obst: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    const items: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
     for (const [id, t] of this.tags) {
       const n = tree.nodes.get(id);
       if (!n) continue;
-      _v.set(n.x, 0, n.z + 0.43).project(this.camera);
-      const x = Math.round((_v.x * 0.5 + 0.5) * w), y = Math.round((-_v.y * 0.5 + 0.5) * h);
-      t.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, 0)`;
+      _v.set(n.x, 0.1, n.z).project(cam);
+      const cx = sx(), cy = sy();
+      _v.set(n.x + 0.37, 0.1, n.z).project(cam);
+      const rx = Math.abs(sx() - cx) * 0.92, ry = rx * 0.66;
+      obst.push({ x0: cx - rx, y0: cy - ry, x1: cx + rx, y1: cy + ry });
+      const show = near || id === this.selected || n.shown > 0 || n.rank > 0 || n.available;
+      if (t.el.hidden === show) t.el.hidden = !show;
+      if (!show) continue;
+      _v.set(n.x, 0, n.z + 0.43).project(cam);
+      const tw = t.el.offsetWidth, th = t.el.offsetHeight;
+      items.push({ el: t.el, x: sx() - tw / 2, y: Math.max(sy(), cy + ry + 2), w: tw, h: th });
     }
+    const G = 3;
+    for (let pass = 0; pass < 14; pass++) {
+      let moved = false;
+      for (let i = 0; i < items.length; i++) {
+        const a = items[i];
+        for (let j = i + 1; j < items.length; j++) {
+          const b = items[j];
+          const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) + G, oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) + G;
+          if (ox <= 0 || oy <= 0) continue;
+          moved = true;
+          if (ox < oy) { const d = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * ox / 2; a.x += d; b.x -= d; }
+          else { const d = (a.y + a.h / 2 < b.y + b.h / 2 ? -1 : 1) * oy / 2; a.y += d; b.y -= d; }
+        }
+        for (const o of obst) {
+          const ox = Math.min(a.x + a.w, o.x1) - Math.max(a.x, o.x0) + 1, oy = Math.min(a.y + a.h, o.y1) - Math.max(a.y, o.y0) + 1;
+          if (ox <= 0 || oy <= 0) continue;
+          moved = true;
+          if (ox < oy) a.x += (a.x + a.w / 2 < (o.x0 + o.x1) / 2 ? -1 : 1) * ox;
+          else a.y += (a.y + a.h / 2 < (o.y0 + o.y1) / 2 ? -1 : 1) * oy;
+        }
+        a.x = Math.max(4, Math.min(w - a.w - 4, a.x));
+      }
+      if (!moved) break;
+    }
+    for (const a of items) a.el.style.transform = `translate(${Math.round(a.x)}px, ${Math.round(a.y)}px)`;
   }
 
   // ---------- Boucle de rendu (à la demande) ----------

@@ -184,6 +184,8 @@ export class PickupSequence {
     return new Promise<SeqResult>(resolve => { this.done = resolve; });
   }
 
+  /** Essais automatiques : termine la séquence comme un sanglage réussi, avec l'état donné (0 à 100). */
+  complete(state = 100): void { this.finish({ outcome: 'strapped', state }); }
   /** Ferme la couche (appelé aussi quand le jeu change d'écran) : compte comme un abandon. */
   close(): void { if (this.done) this.quit(); }
 

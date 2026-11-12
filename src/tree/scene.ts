@@ -23,12 +23,12 @@ const ZONE: Record<SkillBranch, { at: [number, number]; label: [number, number] 
 const LAYOUT: Record<string, [number, number]> = {
   'scan-recharge': [-1.2, -0.72], 'scan-portee': [-1.2, -2.1], 'bras-long': [-1.2, -3.5],
   'exo-bras': [1.2, -0.72], 'exo-jambes': [1.2, -2.1], 'exo-gyro': [1.2, -3.5],
-  sac: [0.03, -1.74], calage: [-0.48, -2.92], sangles: [0, -3.76],
+  sac: [0, -1.74], calage: [-0.42, -3.02], sangles: [0.42, -3.02],
   souffle: [-1.2, 0.66], foulee: [-1.2, 1.9], 'tout-terrain': [-1.2, 3.14],
   carnet: [1.2, 0.66], relais: [1.2, 1.9], reputation: [1.2, 3.14],
 };
 /** Étendue du plateau à cadrer (modules, étiquettes et noms de branche). */
-export const EXTENT = { x: 1.68, zFar: -4.2, zNear: 3.95 };
+export const EXTENT = { x: 1.68, zFar: -4.1, zNear: 3.95 };
 /** Places de secours pour une compétence que le plan ne connaît pas encore. */
 const SPARE: [number, number][] = [[0, 1.6], [0, 2.85], [0, 4.1], [0, -4.6], [-1.2, 4.38], [1.2, 4.38], [-1.2, -4.38], [1.2, -4.38]];
 export const MAT_W = 3.9, MAT_D = 9.0;
