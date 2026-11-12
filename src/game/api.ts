@@ -394,6 +394,8 @@ export interface GameActions {
   craftItem?(recipe: Recipe): ActionResult;
   /** Utiliser une ration ou une trousse de soin. */
   useSupply?(supply: 'rations' | 'medkits'): ActionResult;
+  /** Répond à une transmission découverte pendant l'exploration. */
+  answerRadio?(choice: 'secourir' | 'extraire'): ActionResult;
   /** Met dans le sac un colis pris à la chaîne de relais (il faut être à un abri). `dryRun` : vérifie sans rien changer. */
   takeFromRelay?(relay: { id: string; parcel: RelayCrate }, dryRun?: boolean): ActionResult;
 }
