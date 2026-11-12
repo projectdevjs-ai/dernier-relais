@@ -1,6 +1,7 @@
 // Effets lumineux : matériaux et géométries partagés (halos, anneaux, faisceaux),
 // onde du scanner, gerbe de réussite, zones dangereuses.
 import * as THREE from 'three';
+import { hash } from '../core/geo';
 import type { DangerView } from '../game/api';
 import type { Layer3D } from './layer';
 import { TOP, WORLD } from './layer';
