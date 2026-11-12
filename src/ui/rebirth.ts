@@ -106,6 +106,12 @@ export class RebirthConsole {
     percentage.append(el('span','',String(state.integrity)),el('small','',' / 100'));
     summary.append(summaryText, percentage, bar(state.integrity,100,'rb-integrity'));
     this.body.append(summary);
+    const training = button('◉  LANCER UNE SIMULATION 3D', 'rb-training', () => {
+      this.act(this.actions.startTraining?.() ?? {ok:false,why:'Simulation indisponible'});
+    });
+    training.disabled = v.player.moving || !!v.player.vehicle;
+    this.body.append(training);
+    this.body.append(el('p','rb-training-hint','ESSAI GRATUIT · 0 PERTE DE MATÉRIEL · 0 POINT / XP'));
     const tabs = el('nav','rb-tabs');
     for (const [id,label] of [['survie','SAC'],['fabrication','ATELIER'],['factions','FACTIONS'],['radio','RADIO']] as const) {
       const b = button(label, 'rb-tab'+(this.tab===id?' is-active':''), ()=>{ this.tab=id; this.last=''; this.draw(); });
