@@ -234,7 +234,7 @@ export class CinematicBattle {
     }
     this.scene.add(this.enemy);
     const player=humanoid('drone');this.fighter=player.root;
-    player.root.position.set(-5,0,3.9);
+    player.root.position.set(-3.15,0,3.25);
     player.root.rotation.y=.46;
     // Le joueur est toujours orienté vers la menace.
     player.root.scale.setScalar(.87);this.scene.add(this.fighter);
