@@ -80,7 +80,8 @@ export class PickupFlow {
         const now = host.view() ?? v, w = now?.weather, st = now?.player.stamina ?? 1;
         return { wet: w?.kind === 'pluie' || w?.kind === 'orage' || w?.kind === 'neige', night: w?.night === true, tired: st < 0.3, exhausted: st <= 0 };
       },
-    }, this.seqOptions).then(res => {
+    // Colis déjà porté puis posé : on le reprend au sanglage, sans le chercher ni l'inspecter de nouveau.
+    }, o.dropped ? { ...this.seqOptions, start: 'sanglage' } : this.seqOptions).then(res => {
       this.running = null;
       if (res.outcome === 'strapped') {
         this.quiet = true;

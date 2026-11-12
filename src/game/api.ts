@@ -95,6 +95,8 @@ export interface OrderView {
   surprise?: SurpriseKind | null;
   /** Vrai si une étiquette suspecte est à trouver sur le colis (pendant l'inspection). */
   labelHidden?: boolean;
+  /** Colis au sol que le joueur a déjà porté puis posé : le reprendre saute le repérage et l'inspection. */
+  dropped?: boolean;
 }
 
 /** Chaîne de relais : part des points de base versée au dépôt (au prorata du chemin fait), et part des points de livraison versée à chaque porteur de la chaîne. */
@@ -345,7 +347,7 @@ export interface GameActions {
   startJam(jamId: string): ActionResult;
   /** Écoute un colis révélé proche : dit s'il est fragile ou spécial. */
   inspect(orderId: string): ActionResult;
-  /** Geste d'arrimage juste après le ramassage. `quality` de 0 à 1 (voir strapQuality dans gestures.ts). */
+  /** Geste d'arrimage juste après le ramassage. `quality` de 0 à 1 (voir strapQualityFromState dans gestures.ts). */
   strap(orderId: string, quality: number): ActionResult;
   /** Photo-preuve prise pour une livraison qui vient d'avoir lieu : petit bonus de points. */
   proof(orderId: string): ActionResult;

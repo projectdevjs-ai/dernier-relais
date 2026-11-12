@@ -281,10 +281,11 @@ export class PorterPanel {
         setAttr(pips, 'aria-label', `Rang ${s.rank} sur ${s.maxRank}`);
         pips.setAttribute('role', 'img');
         const max = s.rank >= s.maxRank;
-        setText(label, max ? 'Acquis' : 'Apprendre');
+        // Paliers d'exosquelette : Noé les installe, on ne les « apprend » pas.
+        setText(label, s.exoTier ? (max ? 'Installé' : 'Installer') : max ? 'Acquis' : 'Apprendre');
         setText(cost, `${s.cost} pt${s.cost > 1 ? 's' : ''}`);
         show(cost, !max);
-        setAttr(learn, 'aria-label', max ? `${s.name} : rang maximal` : `Apprendre ${s.name} pour ${s.cost} point${s.cost > 1 ? 's' : ''}`);
+        setAttr(learn, 'aria-label', max ? `${s.name} : ${s.exoTier ? 'installé' : 'rang maximal'}` : `${s.exoTier ? 'Faire installer' : 'Apprendre'} ${s.name} pour ${s.cost} point${s.cost > 1 ? 's' : ''}`);
         learn.classList.toggle('dr-btn-take', s.available);
         learn.classList.toggle('is-max', max);
         setDisabled(learn, !s.available);

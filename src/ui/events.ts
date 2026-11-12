@@ -98,7 +98,7 @@ export class NearAction {
     const ic: IconName = t.kind === 'pickup' ? 'pickup' : t.kind === 'cache' ? 'cache' : t.kind === 'wanderer' ? 'walker' : 'stack';
     this.actIcon.replaceChildren(icon(ic));
     setAttr(this.el, 'data-kind', t.kind);
-    if (t.kind === 'pickup') { setText(this.actTitle, 'Ramasser'); setText(this.actSub, `${t.o.name} · ${t.o.special && !t.o.special.known ? 'colis scellé' : fmtKg(t.o.weightKg)} à portée`); }
+    if (t.kind === 'pickup') { setText(this.actTitle, t.o.dropped ? 'Reprendre' : 'Ramasser'); setText(this.actSub, `${t.o.name} · ${t.o.special && !t.o.special.known ? 'colis scellé' : fmtKg(t.o.weightKg)} à portée`); }
     else if (t.kind === 'cache') { setText(this.actTitle, 'Ouvrir la cache'); setText(this.actSub, 'Quelqu’un a laissé ça pour toi'); }
     else if (t.kind === 'wanderer') { setText(this.actTitle, `Parler à ${t.w.name}`); setText(this.actSub, 'Un voyageur de passage'); }
     else { setText(this.actTitle, 'Prendre le lot'); setText(this.actSub, `${t.j.count} colis en ${t.j.minutes} min : bonus +${fmtInt(t.j.bonus)} pts`); }

@@ -13,11 +13,27 @@ export function mockView(c: LngLat = [-1.5761, 47.1822], t = 0): GameView {
   const orders: OrderView[] = [
     { id: 'o1', name: 'Pièces de pompe', crate: 'alu', weightKg: 6, fragile: false, at: off(40, 60), destId: 's1', destName: shelters[0].name, destAt: shelters[0].at, state: 'révélé', condition: 1, minutesLeft: 42, reward: 80, distanceM: 72, inRange: false },
     { id: 'o2', name: 'Semences', crate: 'carton', weightKg: 2, fragile: false, at: off(-12, 14), destId: 's3', destName: shelters[2].name, destAt: shelters[2].at, state: 'révélé', condition: 1, minutesLeft: null, reward: 45, distanceM: 18, inRange: true },
-    { id: 'o3', name: 'Médicaments', crate: 'plastique', weightKg: 3, fragile: true, at: off(-90, -40), destId: 's2', destName: shelters[1].name, destAt: shelters[1].at, state: 'porté', condition: 0.86, minutesLeft: 7, reward: 120, distanceM: 32, inRange: false },
-    { id: 'o4', name: 'Outils', crate: 'bois', weightKg: 9, fragile: false, at: off(120, -150), destId: 's4', destName: shelters[3].name, destAt: shelters[3].at, state: 'porté', condition: 0.97, minutesLeft: -3, reward: 95, distanceM: 412, inRange: false },
+    { id: 'o3', name: 'Médicaments', crate: 'plastique', weightKg: 3, fragile: true, at: off(-90, -40), destId: 's2', destName: shelters[1].name, destAt: shelters[1].at, state: 'porté', condition: 0.86, minutesLeft: 7, reward: 120, distanceM: 32, inRange: false, slot: 'brasG' },
+    { id: 'o4', name: 'Outils', crate: 'bois', weightKg: 9, fragile: false, at: off(120, -150), destId: 's4', destName: shelters[3].name, destAt: shelters[3].at, state: 'porté', condition: 0.97, minutesLeft: -3, reward: 95, distanceM: 412, inRange: false, slot: 'dos' },
   ];
   return {
-    player: { at: c, headingDeg: (t * 20) % 360, speedMps: 1.3, moving: true, mode: 'simulé', level: 4, xp: 310, xpNext: 500, stamina: 0.62, skillPoints: 2, carriedKg: 12, capacityKg: 20, balance: Math.sin(t / 3) * 0.5, score: 2860, deliveries: 31, distanceKm: 18.4 },
+    player: { at: c, headingDeg: (t * 20) % 360, speedMps: 1.3, moving: true, mode: 'simulé', level: 4, xp: 310, xpNext: 500, stamina: 0.62, skillPoints: 2, carriedKg: 12, capacityKg: 44, balance: Math.sin(t / 3) * 0.5, score: 2860, deliveries: 31, distanceKm: 18.4,
+      // Rangement : attaches de bras installées, un colis au dos et un au bras gauche.
+      exoTier: 1, lean: -0.2, sides: { leftKg: 3, rightKg: 0, armsKg: 3, legsKg: 0 },
+      slots: [
+        { id: 'dos', name: 'Dos', side: 0, unlocked: true, maxKg: 20, kg: 9, orders: ['o4'] },
+        { id: 'brasG', name: 'Bras gauche', side: -1, unlocked: true, maxKg: 12, kg: 3, orders: ['o3'] },
+        { id: 'brasD', name: 'Bras droit', side: 1, unlocked: true, maxKg: 12, kg: 0, orders: [] },
+        { id: 'jambeG', name: 'Jambe gauche', side: -1, unlocked: false, lockedWhy: 'Attaches de jambes à installer chez Noé, au labo', maxKg: 9, kg: 0, orders: [] },
+        { id: 'jambeD', name: 'Jambe droite', side: 1, unlocked: false, lockedWhy: 'Attaches de jambes à installer chez Noé, au labo', maxKg: 9, kg: 0, orders: [] },
+      ],
+      exo: [
+        { tier: 0, name: 'Harnais dorsal', desc: 'Fixations du dos : tes colis voyagent sur ton dos.', installed: true, level: 1 },
+        { tier: 1, name: 'Attaches de bras', desc: 'Deux fixations aux bras (12 kg chacune). La charge tangue un peu plus.', installed: true, level: 2 },
+        { tier: 2, name: 'Attaches de jambes', desc: 'Deux fixations aux cuisses (9 kg chacune). Fatiguent davantage.', installed: false, level: 4 },
+        { tier: 3, name: 'Stabilisateurs gyroscopiques', desc: 'La charge dérive 20 % moins, rafales comprises.', installed: false, level: 7 },
+      ],
+    },
     scanner: { ready: t % 12 > 8, cooldownLeftS: Math.max(0, 8 - (t % 12)), cooldownS: 8, rangeM: 160 },
     weather: { kind: 'pluie', windKmh: 22, tempC: 9, night: false, sunAltDeg: 18 },
     orders, shelters,
@@ -26,6 +42,9 @@ export function mockView(c: LngLat = [-1.5761, 47.1822], t = 0): GameView {
       { id: 'scan-portee', branch: 'scanner', name: 'Antenne longue', desc: 'Portée du scanner +40 m par rang.', rank: 1, maxRank: 3, cost: 1, available: true },
       { id: 'scan-recharge', branch: 'scanner', name: 'Condensateur', desc: 'Recharge du scanner −1 s par rang.', rank: 0, maxRank: 3, cost: 1, available: true },
       { id: 'sac', branch: 'portage', name: 'Armature renforcée', desc: 'Capacité du sac +5 kg par rang.', rank: 2, maxRank: 4, cost: 2, available: true },
+      { id: 'exo-bras', branch: 'portage', name: 'Attaches de bras', desc: 'Noé l’installe au labo. Deux fixations aux bras (12 kg chacune). La charge tangue un peu plus.', rank: 1, maxRank: 1, cost: 1, available: false, needsLevel: 2, exoTier: 1 },
+      { id: 'exo-jambes', branch: 'portage', name: 'Attaches de jambes', desc: 'Noé l’installe au labo. Deux fixations aux cuisses (9 kg chacune). Fatiguent davantage.', rank: 0, maxRank: 1, cost: 2, available: true, needsLevel: 4, exoTier: 2 },
+      { id: 'exo-gyro', branch: 'portage', name: 'Stabilisateurs gyroscopiques', desc: 'Noé l’installe au labo. La charge dérive 20 % moins, rafales comprises.', rank: 0, maxRank: 1, cost: 3, available: false, needsLevel: 7, exoTier: 3 },
       { id: 'souffle', branch: 'endurance', name: 'Second souffle', desc: 'L’endurance revient 20 % plus vite.', rank: 0, maxRank: 2, cost: 2, available: true },
       { id: 'relais', branch: 'réseau', name: 'Voix du réseau', desc: 'Points d’abri +10 % par rang.', rank: 0, maxRank: 3, cost: 3, available: false },
     ],

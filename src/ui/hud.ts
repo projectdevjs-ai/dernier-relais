@@ -159,7 +159,7 @@ export class Hud implements HudApi {
       toast: (text, tone) => this.toasts.push(text, tone ?? 'info'), ui: (kind) => this.ui(kind),
       buzz: (p) => { if (this.haptics) try { navigator.vibrate?.(p); } catch { /* pas de vibreur */ } },
       quick: () => this.quick,
-      overlay: (open) => { root.classList.toggle('dr-covered', open); events.onOverlay?.(open); },
+      overlay: (open) => events.onOverlay?.(open),
     });
     this.pseudo = new PseudoPrompt(root, ctx);
     this.passenger = new PassengerPrompt(root, ctx);

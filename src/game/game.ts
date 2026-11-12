@@ -452,7 +452,7 @@ export class Game implements GameEngine {
     }
     const slot = bestSlot(o, bag, rig);
     // Le poids total passerait, mais aucun emplacement ne convient tel que le sac est rangé.
-    return slot ? { o, slot } : { why: kgOf(bag.filter(b => slotOf(b) === 'dos')) + o.weightKg > rig.backKg && rig.tier === 0 ? 'Sac trop lourd : pose d’abord un colis.' : 'Plus de place : ouvre le sac pour réorganiser.' };
+    return slot ? { o, slot } : { why: 'Plus de place : ouvre le sac pour réorganiser.' };
   }
   canPickup(orderId: string): ActionResult {
     const r = this.pickupSlot(orderId);
@@ -974,6 +974,7 @@ export class Game implements GameEngine {
       strapLeftS: carried && o.strap === undefined ? Math.max(0, ((this.strapUntil.get(o.id) ?? 0) - t) / 1000) : 0,
       slot: carried ? slotOf(o) : null, surprise: o.surprise ?? null,
       labelHidden: !carried && !o.label && this.surpriseOf(o) === 'label',
+      dropped: !carried && o.pickedAt !== null,
     };
   }
 

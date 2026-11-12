@@ -6,7 +6,7 @@
 // Rien ne bloque : sans caméra, le panorama ; sans boussole, le doigt ; sans WebGL, la caisse est dessinée à plat.
 import * as THREE from 'three';
 import type { CrateKind, SpecialKind, UiKind } from '../game/api';
-import { STRAP, type StrapPlan, strapPlan } from '../game/gestures';
+import { RATCHET_CENTER, STRAP, type StrapPlan, ratchetRelease, strapPlan } from '../game/gestures';
 import { rng } from '../core/geo';
 import { loadModel } from '../render/assets';
 import { btn, h, reducedMotion, setText } from '../ui/dom';
@@ -166,6 +166,10 @@ export class PickupSequence {
     this.el.hidden = false;
     this.readInk();
     this.sensors.start();
+    // Un canevas neuf à chaque ouverture : le contexte WebGL du précédent a été rendu au téléphone à la fermeture.
+    const fresh = h('canvas', 'pk-3d');
+    this.c3.replaceWith(fresh);
+    this.c3 = fresh;
     this.view = new View3D(this.c3, opts.light === true, opts.flat === true);
     this.view.onLoad = () => { if (this.frozen) this.frame(performance.now(), true); };
     this.el.classList.toggle('is-flat', !this.view.renderer);
@@ -440,7 +444,7 @@ export class PickupSequence {
     const rnd = rng(`inspection|${p.id}`), R = (a: number, b: number): number => a + (b - a) * rnd();
     this.pano(R(-0.5, 0.5));
     const crate = makeCrate(p, () => { if (this.frozen) this.frame(performance.now(), true); });
-    const [dw, dh, dd] = crate.dims, pivot = this.closeUp(crate, -0.05, 1.14);
+    const [dw, dh, dd] = crate.dims, pivot = this.closeUp(crate, -0.28, 1.14);
     // Défauts : fissures ou fuites sur des faces visibles ou cachées (il faut tourner le colis).
     const n = demo?.defects ?? (rnd() < 0.3 ? (rnd() < 0.3 ? 2 : 1) : 0);
     const faces: [number, number, number][] = [[0, 0, 1], [1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, 0, -1]], marks: Mark[] = [];
@@ -467,7 +471,7 @@ export class PickupSequence {
     setText(this.kick, 'Inspection · défauts, étiquette, contenu');
     setText(this.time, '');
     this.listenBtn.disabled = p.inspected;
-    setText(this.listenTxt, p.inspected ? 'Contenu écouté' : 'Écouter');
+    setText(this.listenTxt, p.inspected ? 'Écouté' : 'Écouter');
     this.listenBtn.setAttribute('aria-label', p.inspected ? 'Contenu déjà écouté' : 'Écouter le colis (ou secoue le téléphone)');
     this.say(p.inspected && p.known ? p.known : 'Tourne le colis du doigt pour l’inspecter');
     if (demo?.listen) this.listen();
@@ -510,7 +514,8 @@ export class PickupSequence {
     if (!s || s.phase !== 'inspection' || s.heard || !this.host) return;
     s.heard = true;
     this.listenBtn.disabled = true;
-    setText(this.listenTxt, 'Contenu écouté');
+    setText(this.listenTxt, 'Écouté');
+    this.listenBtn.setAttribute('aria-label', 'Contenu écouté');
     this.host.buzz([30, 40, 30]);
     const r = this.host.listen();
     this.say(r.text, r.tone);
@@ -568,7 +573,7 @@ export class PickupSequence {
       phase: 'sanglage', crate, pivot, nodes, buckles, straps, live: null, livePath: null, donePaths: [], rw: 0.034 * size, plan, corr, lag,
       jitter: cond.exhausted ? 4 : cond.tired ? 2 : 0, guide: null, A: [], reached: 0, drag: false, finger: null, tip: null, f0: { x: 0, y: 0 }, a0: { x: 0, y: 0 }, real: null,
       lock: 0, lastMove: null, lastHarsh: 0, spd: 0, integrity: 100 - STRAP.defect * this.defectsLeft, limit: plan.time, start: now, done: false, shake: 0, ph: R(0, 9),
-      mode: 'path', rt: { v: 0, hold: false, zone: plan.ratchetZone, c: R(0.52, 0.72), last: 0 },
+      mode: 'path', rt: { v: 0, hold: false, zone: plan.ratchetZone, c: R(RATCHET_CENTER[0], RATCHET_CENTER[1]), last: 0 },
     };
     this.defectsLeft = 0;
     this.st = s;
@@ -748,7 +753,7 @@ export class PickupSequence {
     c.strokeStyle = I.ink; c.lineWidth = 3; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(na) * (r - 6), cy + Math.sin(na) * (r - 6)); c.stroke();
     c.fillStyle = I.ink; c.beginPath(); c.arc(cx, cy, 5, 0, Math.PI * 2); c.fill();
     c.font = '700 14px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText(s.done ? 'Verrouillé' : R.hold ? 'Tension…' : 'Maintiens l’écran', cx, cy + 40);
+    c.fillText(s.done ? 'Verrouillé' : R.hold ? 'Tension…' : 'Maintiens l’écran', cx, cy + r * 0.62);
   }
 
   // ───────────────────────── gestes
@@ -827,9 +832,10 @@ export class PickupSequence {
       const R = s.rt;
       if (!R.hold) return;
       R.hold = false;
-      if (R.v < 0.04) return;
-      if (Math.abs(R.v - R.c) <= R.zone / 2) { this.host!.ui('confirm'); this.host!.buzz([20, 40, 60]); this.finishStrap(s, true); }
-      else if (R.v > R.c) { R.v = 0; this.hurt(s, STRAP.overRatchet, 'Trop serré : le colis a souffert'); }
+      const res = ratchetRelease(R.v, R.c, R.zone);
+      if (res === 'none') return;
+      if (res === 'ok') { this.host!.ui('confirm'); this.host!.buzz([20, 40, 60]); this.finishStrap(s, true); }
+      else if (res === 'over') { R.v = 0; this.hurt(s, STRAP.overRatchet, 'Trop serré : le colis a souffert'); }
       else { R.v = 0; this.say('Pas assez tendu : recommence', 'bad'); this.host!.ui('error'); }
       return;
     }

@@ -28,7 +28,7 @@ export class View3D {
   /** Appelé quand une image (panorama) vient d'arriver : la scène est à redessiner. */
   onLoad: (() => void) | null = null;
 
-  constructor(private canvas: HTMLCanvasElement, private light: boolean, flat = false) {
+  constructor(canvas: HTMLCanvasElement, private light: boolean, flat = false) {
     if (!flat) {
       try {
         this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: !light, powerPreference: 'high-performance' });
@@ -104,6 +104,5 @@ export class View3D {
     this.pano = null; this.panoMat = null; this.panoTex = null;
     if (this.renderer) { this.renderer.dispose(); try { this.renderer.forceContextLoss(); } catch { /* déjà perdu */ } }
     this.renderer = null;
-    void this.canvas;
   }
 }

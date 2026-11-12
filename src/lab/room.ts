@@ -41,7 +41,7 @@ const PALS: Record<Ambiance, Pal> = {
   },
   'clair': {
     bg: 0xcfd3cc, fogNear: 26, fogFar: 80, wall: 0xb9b8ab, floor: 0x767a76, floorRough: 0.38,
-    hemiSky: 0xe9f1f4, hemiGround: 0x8a8272, hemi: 1.9, window: 0xfff1d6, windowPower: 0.8, key: 0xffffff, keyPower: 1.5,
+    hemiSky: 0xe9f1f4, hemiGround: 0x8a8272, hemi: 1.9, window: 0xfff1d6, windowPower: 0.3, key: 0xffffff, keyPower: 1.5,
     exposure: 1.0, bloom: 0.3, env: 0.55, backdrop: 1.5, points: 0.45, strips: 0.8,
   },
 };
@@ -368,6 +368,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   });
   const doorLabel = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.4), new THREE.MeshBasicMaterial({ map: doorTex, transparent: true, fog: false }));
   doorLabel.position.set(DOOR_AT.x, 3.36, DOOR_AT.z + 0.1);
+  box(G[2], 2.0, 0.5, 0.08, doorMat, DOOR_AT.x, 3.36, DOOR_AT.z + 0.03); // plaque sombre : le nom reste lisible sur mur clair
   G[2].add(doorLabel);
   const doorGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: disc, color: 0xffc690, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   doorGlow.position.set(DOOR_AT.x, 1.5, DOOR_AT.z + 0.3); doorGlow.scale.set(3, 4.2, 1);

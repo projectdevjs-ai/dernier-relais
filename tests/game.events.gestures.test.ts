@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { proofBonus, strapBalanceMult, strapQuality, strapXp } from '../src/game/gestures';
+import { RATCHET_CENTER, proofBonus, ratchetRelease, strapBalanceMult, strapPlan, strapQualityFromState, strapXp } from '../src/game/gestures';
 import { GESTURE, PROOF } from '../src/game/rules';
 import { type GameSave, SAVE_REV, emptyGameSave, parseGameSave } from '../src/game/save';
 import { findSpot, off, ofType, place, rig, spot, wait, walk, world } from './game.helpers';
@@ -17,18 +17,21 @@ async function one(want: Parameters<typeof findSpot>[3] = o => !o.fragile && o.d
 }
 
 describe('arrimage', () => {
-  it('qualité du geste : bien serré dans la zone, moyen avant, trop serré au-delà', () => {
-    const [lo, hi] = GESTURE.strapGood;
-    expect(strapQuality(0)).toBe(0);
-    expect(strapQuality(lo / 2)).toBe(0.4);
-    expect(strapQuality(lo - 0.01)).toBeLessThan(0.8);
-    expect(strapQuality(lo)).toBe(1);
-    expect(strapQuality((lo + hi) / 2)).toBe(1);
-    expect(strapQuality(hi)).toBe(1);
-    expect(strapQuality(hi + 0.01)).toBe(0.5);
-    expect(strapQuality(1)).toBe(0.5);
-    expect(strapQuality(Number.NaN)).toBe(0); expect(strapQuality(-3)).toBe(0); expect(strapQuality(7)).toBe(0.5);
-    expect(hi - lo).toBeGreaterThanOrEqual(0.2); // zone assez large pour un geste fait en marchant
+  it('cliquet : relâché dans la zone verte c’est serré, au-delà trop serré, avant pas assez', () => {
+    const c = 0.6, zone = 0.14;
+    expect(ratchetRelease(0, c, zone)).toBe('none'); expect(ratchetRelease(0.03, c, zone)).toBe('none'); // un effleurement n'est pas un geste
+    expect(ratchetRelease(0.3, c, zone)).toBe('under');
+    expect(ratchetRelease(c - zone / 2 + 0.001, c, zone)).toBe('ok'); expect(ratchetRelease(c, c, zone)).toBe('ok'); expect(ratchetRelease(c + zone / 2 - 0.001, c, zone)).toBe('ok');
+    expect(ratchetRelease(c + zone / 2 + 0.01, c, zone)).toBe('over'); expect(ratchetRelease(1, c, zone)).toBe('over');
+    expect(ratchetRelease(Number.NaN, c, zone)).toBe('none'); expect(ratchetRelease(-3, c, zone)).toBe('none'); expect(ratchetRelease(7, c, zone)).toBe('over');
+    // La zone verte tient toujours dans la course du cliquet, pour tous les colis.
+    for (const kg of [2, 7, 14]) for (const fragile of [false, true]) {
+      const z = strapPlan({ weightKg: kg, fragile, timed: false }).ratchetZone;
+      expect(z).toBeGreaterThanOrEqual(0.1);
+      expect(RATCHET_CENTER[0] - z / 2).toBeGreaterThan(0.4); expect(RATCHET_CENTER[1] + z / 2).toBeLessThan(0.9);
+    }
+    // Qualité de l'arrimage d'après l'état du colis à la fin du sanglage ; l'XP récompense un sanglage parfait.
+    expect(strapQualityFromState(100)).toBe(1); expect(strapQualityFromState(80)).toBe(0.8);
     expect(strapXp(1)).toBe(GESTURE.strapXp); expect(strapXp(0.79)).toBe(0);
   });
   it('effet : chaque colis arrimé pèse moins dans le déséquilibre, à proportion de son poids', () => {
@@ -38,7 +41,7 @@ describe('arrimage', () => {
     expect(strapBalanceMult([{ weightKg: 5, strap: 0.5 }])).toBe(1 - GESTURE.strapEffect / 2);
     expect(strapBalanceMult([{ weightKg: 6, strap: 1 }, { weightKg: 2 }])).toBeCloseTo(1 - GESTURE.strapEffect * 0.75);
   });
-  it('en jeu : quelques secondes après le ramassage, une seule fois, facultatif', async () => {
+  it('en jeu : déclaré juste après le ramassage (la séquence le fait aussitôt), une seule fois', async () => {
     const { r, g, id } = await one();
     expect(g.strap(id, 1)).toEqual({ ok: false, why: 'Ce colis n’est pas dans le sac.' });
     expect(g.view().orders[0]).toMatchObject({ strap: null, strapLeftS: 0 });

@@ -285,7 +285,7 @@ export class LoadScreen {
     const v = this.view, sel = v?.orders.find(o => o.id === this.sel && o.state === 'porté');
     if (!v || !sel || (sel.slot ?? 'dos') === k) return;
     const r = this.host.actions.stow?.(sel.id, k) ?? { ok: false as const, why: slotRule(stowed(sel), k, this.rig(v).tier) || 'Emplacement indisponible' };
-    if (r.ok) { this.sel = null; if (this.fresh === sel.id) this.fresh = sel.id; this.host.ui('confirm'); this.say(`${sel.name} accroché · ${v.player.slots?.find(s => s.id === k)?.name ?? k}`, 'good'); }
+    if (r.ok) { this.sel = null; this.host.ui('confirm'); this.say(`${sel.name} accroché · ${v.player.slots?.find(s => s.id === k)?.name ?? k}`, 'good'); }
     else { this.host.ui('error'); this.say(r.why, 'bad'); }
     this.refresh();
   }

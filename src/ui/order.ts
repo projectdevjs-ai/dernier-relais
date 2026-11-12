@@ -137,6 +137,6 @@ export class OrderPanel {
     // Un colis de relais ne se pose pas par terre : il se livre ou se redépose dans un abri.
     const held = carried && !!o.relay;
     setDisabled(this.act, held || (!carried && !o.inRange));
-    setText(this.actText, held ? 'À déposer dans un abri' : carried ? 'Poser' : o.inRange ? 'Ramasser' : `Approche-toi : ${fmtDist(o.distanceM)}`);
+    setText(this.actText, held ? 'À déposer dans un abri' : carried ? 'Poser' : o.inRange ? (o.dropped ? 'Reprendre' : 'Ramasser') : `Approche-toi : ${fmtDist(o.distanceM)}`);
   }
 }

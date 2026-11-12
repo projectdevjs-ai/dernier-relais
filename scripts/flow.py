@@ -177,9 +177,10 @@ with sync_playwright() as p:
             check('abandon au repérage : couche fermée, colis au sol, aucune pénalité', wait(pg, LAYER + " === ''", 3000) and pg.evaluate(f"__dr.game.view().orders.find(o => o.id === '{oid}').state") == 'révélé' and pg.evaluate("__dr.game.view().player.score") == score)
             check('la carte reprend après l’abandon', wait(pg, "__dr.stage.paused !== true", 3000))
             # Séquence menée au bout (le sanglage est terminé par le crochet d'essai) : ramassage, arrimage, puis rangement.
-            pg.evaluate("window.__evts = []; __dr.game.on(e => window.__evts.push(e.type))")
+            pg.evaluate("(() => { window.__evts = []; __dr.game.on(e => window.__evts.push(e.type)); return 1; })()")
             pg.evaluate("document.querySelector('#hud .dr-near-btn').click()")
             check('la séquence se rouvre', wait(pg, LAYER + " === 'reperage'", 8000))
+            check('rouverte en 3D (pas de repli à plat)', not pg.evaluate("document.querySelector('#hud .pk-layer').classList.contains('is-flat')"))
             pg.evaluate("__dr.hud.pickupFlow.seq.complete(96)")
             check('le colis est dans le sac, avec un emplacement', wait(pg, f"(() => {{ const o = __dr.game.view().orders.find(o => o.id === '{oid}'); return !!o && o.state === 'porté' && o.slot === 'dos' && o.strap === 1; }})()", 3000))
             check('événements « pickup » puis « strap » émis', pg.evaluate("window.__evts.filter(t => t === 'pickup' || t === 'strap').join(',')") == 'pickup,strap', str(pg.evaluate("window.__evts")))

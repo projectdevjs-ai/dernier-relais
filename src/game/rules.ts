@@ -134,11 +134,10 @@ export const JAM = {
 /** Colis perdus : chance par case et par jour, récompense de solidarité. */
 export const LOST = { chance: 0.05, pay: 1.5, clearM: 60 } as const;
 
-/** Gestes rapides. */
+/** Gestes du ramassage. */
 export const GESTURE = {
   /** inspection : portée et XP */ inspectM: 60, inspectXp: 5,
-  /** arrimage : secondes pour le faire après le ramassage */ strapWindowS: 10,
-  /** zone « bien serré » sur la course du geste (0 à 1) */ strapGood: [0.7, 0.92],
+  /** arrimage : secondes laissées après le ramassage pour le déclarer (la séquence de ramassage le fait aussitôt) */ strapWindowS: 10,
   /** un arrimage parfait réduit d'autant la dérive due à ce colis */ strapEffect: 0.5, strapXp: 5,
   /** un colis bien sanglé s'abîme moins quand la charge est déséquilibrée ou que le porteur court (part retirée à qualité 1) */ strapWear: 0.3,
   /** sanglage raté ou abandonné : points perdus (l'ancien jeu retirait 3 points de réputation) */ fumblePoints: 3,

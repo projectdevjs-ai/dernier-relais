@@ -3,16 +3,6 @@ import { GESTURE, PROOF } from './rules';
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
 
-/**
- * Qualité d'un arrimage d'après l'endroit où le joueur lâche la sangle (0 = pas tirée, 1 = tirée à fond).
- * Dans la zone « bien serré » : 1. Avant : proportionnel. Au-delà : trop serré, la moitié seulement.
- */
-export function strapQuality(release: number): number {
-  const x = clamp01(release), [lo, hi] = GESTURE.strapGood;
-  if (x > hi) return 0.5;
-  if (x >= lo) return 1;
-  return Math.round((x / lo) * 0.8 * 100) / 100;
-}
 /** Multiplicateur de dérive de l'équilibre : chaque colis bien arrimé pèse moins dans le déséquilibre. */
 export function strapBalanceMult(carried: { weightKg: number; strap?: number }[]): number {
   let kg = 0, held = 0;
@@ -72,3 +62,14 @@ export function strapQualityFromState(state: number): number {
   const s = Math.min(100, Math.max(0, Number.isFinite(state) ? state : 0));
   return s >= STRAP.perfect ? 1 : Math.round(s) / 100;
 }
+/** Résultat du cliquet quand le joueur relâche : tension `v` (0 à 1), centre et largeur de la zone verte. */
+export type RatchetResult = 'none' | 'ok' | 'over' | 'under';
+export function ratchetRelease(v: number, center: number, zone: number): RatchetResult {
+  const x = clamp01(v);
+  // Un simple effleurement n'est pas un geste.
+  if (x < 0.04) return 'none';
+  if (Math.abs(x - center) <= zone / 2) return 'ok';
+  return x > center ? 'over' : 'under';
+}
+/** Zone verte du cliquet : son centre est tiré entre ces deux bornes à chaque sanglage. */
+export const RATCHET_CENTER: readonly [number, number] = [0.52, 0.72];
