@@ -14,16 +14,17 @@ export class Voice {
   }
   /** À appeler au premier toucher : les navigateurs mobiles bloquent le son avant. */
   unlock(): void { this.unlocked = true; }
-  /** Dit la réplique si elle a été enregistrée. Une nouvelle réplique coupe la précédente. */
-  say(who: string, text: string): void {
-    if (this.muted || !this.unlocked || !this.known) return;
+  /** Dit la réplique si elle a été enregistrée (renvoie vrai). Une nouvelle réplique coupe la précédente. */
+  say(who: string, text: string): boolean {
+    if (this.muted || !this.unlocked || !this.known) return false;
     const id = `${who}-${hash(`${who}|${text}`).toString(36)}`;
-    if (!this.known.has(id)) return;
+    if (!this.known.has(id)) return false;
     this.stop();
     const el = new Audio(`voix/${id}.mp3`);
     el.volume = this.volume;
     this.el = el;
     el.play().catch(() => { /* lecture refusée : on reste silencieux */ });
+    return true;
   }
   stop(): void { if (this.el) { this.el.pause(); this.el = null; } }
 }
