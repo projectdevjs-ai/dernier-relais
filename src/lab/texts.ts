@@ -6,14 +6,14 @@ import type { GameView } from '../game/api';
 export type SciId = 'iris' | 'noe' | 'selma';
 
 export const CAST: Record<SciId, { name: string; role: string; model: string }> = {
-  iris: { name: 'Dr Iris Vasseur', role: 'Directrice de la Station Lumen', model: 'sci_iris' },
+  iris: { name: 'Dr Iris Morel', role: 'Directrice de la Station Lumen', model: 'sci_iris' },
   noe: { name: 'Noé Kessler', role: 'Ingénieur du Passeur', model: 'sci_noe' },
   selma: { name: 'Dr Selma Okoye', role: 'Biologiste et médecin', model: 'sci_selma' },
 };
 
 /** Première rencontre (ancien). */
 export const FIRST: Record<SciId, string> = {
-  iris: 'Tu tiens debout. Bien. Je suis Iris Vasseur. Ici, c’est la Station Lumen, le dernier laboratoire encore relié au réseau.',
+  iris: 'Tu tiens debout. Bien. Je suis Iris Morel. Ici, c’est la Station Lumen, le dernier laboratoire encore relié au réseau.',
   noe: 'Alors c’est toi, le colis tombé du ciel. Noé. C’est moi qui fais tenir le Passeur avec du fil et de la patience.',
   selma: 'Constantes stables, pour quelqu’un qui vient de tomber du ciel. Selma Okoye, médecin, biologiste, et ce qui manque d’autre ici.',
 };

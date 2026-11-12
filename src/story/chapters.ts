@@ -64,7 +64,7 @@ export interface Chapter {
 }
 
 export const WHO: Record<Who, { name: string; role: string; color: string }> = {
-  iris: { name: 'Iris Vasseur', role: 'Station Lumen', color: '#7fc7d9' },
+  iris: { name: 'Iris Morel', role: 'Station Lumen', color: '#7fc7d9' },
   noe: { name: 'Noé Kessler', role: 'Le Passeur', color: '#e8a24a' },
   selma: { name: 'Selma Okoye', role: 'Infirmerie', color: '#9ccf7a' },
 };
