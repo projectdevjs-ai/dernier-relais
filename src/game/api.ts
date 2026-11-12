@@ -9,6 +9,28 @@ import type { CellContent, ShelterKind } from '../world/types';
 export type Grade = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
 export type NpcId = 'mara' | 'tomas' | 'agathe' | 'kenji';
 export type CrateKind = 'bois' | 'alu' | 'plastique' | 'carton';
+/** Emplacements de chargement du porteur (voir src/game/slots.ts). */
+export type SlotId = 'dos' | 'brasG' | 'brasD' | 'jambeG' | 'jambeD';
+/** Surprise cachée dans un colis, révélée à l'écoute (voir src/game/surprises.ts). */
+export type SurpriseKind = 'chat' | 'bonus' | 'lore' | 'label';
+/** Un emplacement de chargement tel que l'interface le montre. */
+export interface SlotView {
+  id: SlotId;
+  /** « Bras gauche »… */
+  name: string;
+  /** -1 : gauche, 1 : droite, 0 : centre. */
+  side: -1 | 0 | 1;
+  /** Faux tant que le palier d'exosquelette n'est pas installé ; `lockedWhy` dit alors quoi installer. */
+  unlocked: boolean;
+  lockedWhy?: string;
+  /** Poids maximal accepté, en kg. */
+  maxKg: number;
+  /** Poids accroché, et identifiants des colis qui s'y trouvent. */
+  kg: number;
+  orders: string[];
+}
+/** Palier d'exosquelette (installé par Noé au labo). */
+export interface ExoTierView { tier: number; name: string; desc: string; installed: boolean; /** niveau du porteur requis */ level: number }
 
 /** Portées de base, en mètres. Les compétences peuvent les augmenter. */
 export const RANGE = { pickup: 30, deliver: 40, scan: 160 } as const;
@@ -66,6 +88,13 @@ export interface OrderView {
   strapLeftS?: number;
   /** Colis de la chaîne de relais (pris dans un abri-relais) : identifiant du relais en ligne. */
   relay?: { id: string } | null;
+  // ── Ajouts (ramassage et rangement)
+  /** Emplacement du colis porté ; null s'il est au sol. */
+  slot?: SlotId | null;
+  /** Surprise connue du joueur (colis écouté) ; null sinon. Une étiquette (« label ») n'apparaît qu'une fois trouvée. */
+  surprise?: SurpriseKind | null;
+  /** Vrai si une étiquette suspecte est à trouver sur le colis (pendant l'inspection). */
+  labelHidden?: boolean;
 }
 
 /** Chaîne de relais : part des points de base versée au dépôt (au prorata du chemin fait), et part des points de livraison versée à chaque porteur de la chaîne. */
@@ -187,6 +216,16 @@ export interface PlayerView {
   score: number;
   deliveries: number;
   distanceKm: number;
+  // ── Ajouts (rangement) : facultatifs, une vue sans eux reste valide.
+  /** Les cinq emplacements de chargement, verrouillés ou non. `capacityKg` est la somme des emplacements débloqués. */
+  slots?: SlotView[];
+  /** Palier d'exosquelette installé, de 0 (harnais dorsal) à 3. */
+  exoTier?: number;
+  exo?: ExoTierView[];
+  /** Répartition de la charge : poids à gauche, à droite, aux bras et aux jambes. */
+  sides?: { leftKg: number; rightKg: number; armsKg: number; legsKg: number };
+  /** Déséquilibre dû au rangement, de -1 (tout à gauche) à 1 (tout à droite) : la charge dérive de ce côté. */
+  lean?: number;
 }
 
 export interface ScannerView { ready: boolean; cooldownLeftS: number; cooldownS: number; rangeM: number }
@@ -200,6 +239,9 @@ export interface SkillView {
   rank: number; maxRank: number; cost: number;
   /** Achetable maintenant (points suffisants, prérequis remplis, rang maximal non atteint). */
   available: boolean;
+  /** Ajouts facultatifs : niveau du porteur requis, et palier d'exosquelette que la compétence installe. */
+  needsLevel?: number;
+  exoTier?: number;
 }
 export interface ContractView {
   id: string; period: 'jour' | 'semaine'; label: string;
@@ -248,6 +290,9 @@ export interface DeliveryResult {
   proofBonus?: number;
   /** Colis de la chaîne de relais : identifiant du relais à déclarer livré (net.deliverRelay). */
   relayId?: string | null;
+  /** Surprise trouvée dans le colis, et le message scellé s'il y en avait un. */
+  surprise?: SurpriseKind | null;
+  lore?: { index: number; total: number; text: string } | null;
 }
 
 export type GameEvent =
@@ -269,14 +314,19 @@ export type GameEvent =
   | { type: 'jam'; phase: 'début' | 'réussi' | 'raté'; jam: JamView; /** points gagnés (phase « réussi ») */ bonus?: number }
   | { type: 'inspect'; order: OrderView; xp: number }
   | { type: 'strap'; orderId: string; quality: number; xp: number }
-  | { type: 'proof'; orderId: string; points: number };
+  | { type: 'proof'; orderId: string; points: number }
+  /** Colis déplacé d'un emplacement à un autre (ou rangement automatique : `orderId` vide). */
+  | { type: 'stow'; orderId: string; slot: SlotId | null }
+  /** Sanglage raté ou abandonné : le colis reste au sol, `points` perdus. */
+  | { type: 'fumble'; orderId: string; points: number };
 
 export type ActionResult = { ok: true } | { ok: false; why: string };
 
 /** Ce que l'interface peut demander au jeu. Toutes les actions sont synchrones. */
 export interface GameActions {
   scan(): ActionResult;
-  pickup(orderId: string): ActionResult;
+  /** `slot` (facultatif) : emplacement voulu ; sinon le jeu choisit l'emplacement conseillé. */
+  pickup(orderId: string, slot?: SlotId): ActionResult;
   drop(orderId: string): ActionResult;
   /** Livre tous les colis portés destinés à cet abri. */
   deliver(shelterId: string): ActionResult;
@@ -299,6 +349,17 @@ export interface GameActions {
   strap(orderId: string, quality: number): ActionResult;
   /** Photo-preuve prise pour une livraison qui vient d'avoir lieu : petit bonus de points. */
   proof(orderId: string): ActionResult;
+  // ── Ramassage et rangement (facultatifs : un jeu sans eux reste valide).
+  /** Vérifie qu'un colis peut être ramassé maintenant (portée, place), sans rien changer. */
+  canPickup?(orderId: string): ActionResult;
+  /** Déplace un colis porté vers un emplacement (échange avec l'occupant d'une fixation si c'est possible). */
+  stow?(orderId: string, slot: SlotId): ActionResult;
+  /** Rangement automatique : charge rééquilibrée. */
+  autoStow?(): ActionResult;
+  /** L'étiquette suspecte du colis a été trouvée pendant l'inspection : la livraison rapportera plus. */
+  foundLabel?(orderId: string): ActionResult;
+  /** Sanglage raté ou abandonné en cours de route : petite pénalité, le colis reste au sol. */
+  fumble?(orderId: string): ActionResult;
   // ── Chaîne de relais (facultatif : un jeu sans relais reste valide). Le réseau est appelé par l'appelant, pas par le jeu.
   /**
    * Laisse un colis porté dans l'abri-relais où se trouve le joueur (`shelterId`, par défaut l'abri le plus proche à portée).
@@ -391,10 +452,16 @@ export interface HudEvents {
   onInstall?(): void;
   /** Sons d'interface : ouverture et fermeture de panneau, appui, action refusée, action confirmée. */
   onUi?(kind: UiKind): void;
+  /** Bascule la carte entre la vue à plat (2D) et la vue inclinée (3D). Le bouton n'apparaît que si ce rappel est fourni. */
+  onTilt?(): void;
+  /** Réglage « Ramassage rapide » changé par le joueur (la mémorisation est faite par l'appelant). */
+  onQuickPickup?(on: boolean): void;
+  /** Une couche plein écran de l'interface (séquence de ramassage) s'ouvre ou se ferme : l'appelant peut mettre la carte en veille. */
+  onOverlay?(open: boolean): void;
 }
 export type UiKind = 'tap' | 'open' | 'close' | 'error' | 'confirm';
 /** État initial des réglages affichés par le HUD (la mémorisation est faite par l'appelant). */
-export interface HudSettings { sound?: boolean; voices?: boolean; haptics?: boolean; volume?: number; canInstall?: boolean }
+export interface HudSettings { sound?: boolean; voices?: boolean; haptics?: boolean; volume?: number; canInstall?: boolean; /** « Ramassage rapide » : saute le repérage et le sanglage (désactivé par défaut). */ quickPickup?: boolean }
 export interface HudOptions { ambiance?: Ambiance; settings?: HudSettings }
 /** Niveau collectif d'un abri (0 à 5), partagé entre tous les joueurs. */
 export interface CollectiveView {

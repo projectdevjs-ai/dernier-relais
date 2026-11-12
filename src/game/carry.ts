@@ -1,6 +1,6 @@
 // Portage : équilibre de la charge, endurance et usure des colis. Fonctions pures.
 import type { CrateKind, WeatherKind } from './api';
-import { BALANCE, STAMINA, WEAR } from './rules';
+import { BALANCE, GESTURE, STAMINA, WEAR } from './rules';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
@@ -11,6 +11,8 @@ export interface BalanceCtx {
   windKmh: number;
   /** Multiplicateur des compétences (1 = aucun effet). */
   mult: number;
+  /** Déséquilibre latéral du rangement, de -1 (gauche) à 1 (droite) : la charge dérive de ce côté. Absent : 0. */
+  lean?: number;
 }
 /** Sens de la dérive, entre -1 et 1 : lent va-et-vient, sans hasard. `t` = secondes de marche cumulées. */
 export function driftDir(t: number): number { return (Math.sin(t * 0.07) + 0.6 * Math.sin(t * 0.19 + 1.3)) / 1.6; }
@@ -19,7 +21,7 @@ export function driftBalance(balance: number, dtS: number, t: number, c: Balance
   if (c.loadFrac <= 0) return 0;
   if (!c.moving) return balance * Math.exp(-BALANCE.settle * dtS);
   const rate = (BALANCE.base + BALANCE.perLoad * clamp(c.loadFrac, 0, 1) + BALANCE.perWind * clamp(c.windKmh / BALANCE.windFullKmh, 0, 1)) * c.mult;
-  return clamp(balance + (driftDir(t) * rate - balance * BALANCE.restore) * dtS, -1, 1);
+  return clamp(balance + (driftDir(t) * rate + clamp(c.lean ?? 0, -1, 1) * BALANCE.perLean - balance * BALANCE.restore) * dtS, -1, 1);
 }
 export const isUnbalanced = (balance: number): boolean => Math.abs(balance) > BALANCE.limit;
 
@@ -50,15 +52,20 @@ export interface WearCtx {
   /** Endurance à 0. */
   exhausted: boolean;
   wearMult: number; dangerMult: number;
+  /** Colis à l'abri de la pluie (boîte noire protégée sur le dos). */
+  sheltered?: boolean;
+  /** Qualité du sanglage de ce colis, 0 à 1 : bien sanglé, il souffre moins des secousses. */
+  strap?: number;
 }
 /** Part d'état perdue par seconde par un colis porté. */
 export function wearPerSecond(o: { fragile: boolean; crate: CrateKind }, c: WearCtx): number {
   let perMin = 0;
   const wet = c.weather === 'pluie' ? WEAR.rain : c.weather === 'orage' ? WEAR.storm : c.weather === 'neige' ? WEAR.snow : 0;
-  perMin += wet * WEAR.crateWet[o.crate] * (o.fragile ? WEAR.fragile : 1);
+  if (!c.sheltered) perMin += wet * WEAR.crateWet[o.crate] * (o.fragile ? WEAR.fragile : 1);
   if (c.inDanger) perMin += WEAR.danger * c.dangerMult;
-  if (c.unbalanced) perMin += WEAR.unbalanced * (o.fragile ? WEAR.fragileUnbalanced : 1);
-  if (c.running && o.fragile) perMin += WEAR.running;
+  const held = 1 - GESTURE.strapWear * clamp(c.strap ?? 0, 0, 1);
+  if (c.unbalanced) perMin += WEAR.unbalanced * (o.fragile ? WEAR.fragileUnbalanced : 1) * held;
+  if (c.running && o.fragile) perMin += WEAR.running * held;
   if (c.exhausted) perMin *= WEAR.exhausted;
   return (perMin * c.wearMult) / 60;
 }

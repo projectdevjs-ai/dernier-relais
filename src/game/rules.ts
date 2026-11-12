@@ -68,6 +68,7 @@ export const BALANCE = {
   /** dérive par seconde : base, part de la charge, part du vent */ base: 0.01, perLoad: 0.06, perWind: 0.035, windFullKmh: 60,
   /** le porteur se rattrape un peu tout seul, par seconde */ restore: 0.02,
   /** retour au calme à l'arrêt, par seconde */ settle: 0.15,
+  /** charge rangée de travers : dérive constante du côté le plus lourd, par seconde, pour un déséquilibre latéral de 1 */ perLean: 0.03,
 } as const;
 
 export const STAMINA = {
@@ -139,6 +140,8 @@ export const GESTURE = {
   /** arrimage : secondes pour le faire après le ramassage */ strapWindowS: 10,
   /** zone « bien serré » sur la course du geste (0 à 1) */ strapGood: [0.7, 0.92],
   /** un arrimage parfait réduit d'autant la dérive due à ce colis */ strapEffect: 0.5, strapXp: 5,
+  /** un colis bien sanglé s'abîme moins quand la charge est déséquilibrée ou que le porteur court (part retirée à qualité 1) */ strapWear: 0.3,
+  /** sanglage raté ou abandonné : points perdus (l'ancien jeu retirait 3 points de réputation) */ fumblePoints: 3,
 } as const;
 
 /** Preuve photo : part des points de la livraison, minimum, et temps laissé pour la prendre. */

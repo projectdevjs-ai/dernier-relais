@@ -1,46 +1,30 @@
-// Décor 3D de la Station Lumen : salle, lumières, postes, scientifiques, exosquelette et hologrammes.
+// Décor 3D de la Station Lumen : un couloir de station en TROIS POSTES côte à côte (Salle des cartes, Le Passeur,
+// Quartiers), comme dans l'ancienne version, plus la chambre des quartiers derrière sa porte.
 // Tout est construit ici ; src/lab/lab.ts s'occupe de la caméra, des gestes et de l'interface.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Ambiance, GameView, SkillBranch } from '../game/api';
 import { Actor, type Loader3D, type Model, type Viewport, blobShadow, canvasTexture, hash, setEnvIntensity, softDiscTexture } from '../scene3d/kit';
-import { CAST, type SciId, type StationId } from './texts';
+import { CAST, type SciId } from './texts';
 
-// ---------- Plan de la salle (mètres ; x vers la droite, z vers la caméra) ----------
-export const ROOM = { halfW: 4.3, back: -6.4, front: 10, height: 5.2 } as const;
-const PAD = new THREE.Vector3(0, 0, -3.9);
+// ---------- Plan (mètres ; x vers la droite, z vers la caméra) ----------
+/** Abscisse du centre de chaque poste, de gauche à droite : cartes, passeur, quartiers. */
+export const SX = [-8.5, 0, 8.5] as const;
+export const ROOM = { halfW: 13, back: -6, front: 7.5, height: 4.5 } as const;
+const PAD = new THREE.Vector3(0, 0, -3.5);
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
+/** Centre de la chambre des quartiers (pièce à part, derrière la porte : on y entre par un fondu). */
+export const CHAMBER = V(SX[2], 0, -26);
+export const EXO_AT = V(-1.75, 0, -2.3);
+export const DOOR_AT = V(SX[2] - 0.55, 0, ROOM.back + 0.12);
 
-export interface StationDef {
-  id: StationId;
-  /** Point visé par la caméra. */
-  look: THREE.Vector3;
-  /** Position de la caméra, format vertical. */
-  cam: THREE.Vector3;
-  /** Ancre de l'étiquette flottante. */
-  tag: THREE.Vector3;
-  /** Boîte de toucher : centre et dimensions. */
-  hit: [THREE.Vector3, THREE.Vector3];
-}
-const AT = { exo: V(-2.15, 0, -2.0), holo: V(2.15, 0, -1.1), console: V(-2.1, 0, 3.2), lit: V(2.1, 0, 4.0) } as const;
-export const STATIONS: StationDef[] = [
-  { id: 'teleporteur', look: V(0, 1.2, -3.9), cam: V(0, 3.7, 7.0), tag: V(0, 3.1, -3.9), hit: [V(0, 1.5, -3.9), V(3.4, 3, 1.6)] },
-  { id: 'exo', look: V(-2.15, 1.05, -2.0), cam: V(-0.6, 2.7, 3.3), tag: V(-2.15, 2.6, -2.0), hit: [V(-2.15, 1.15, -2.0), V(1.7, 2.3, 1.2)] },
-  { id: 'holo', look: V(2.15, 1.45, -1.1), cam: V(0.5, 3.2, 4.1), tag: V(2.15, 2.75, -1.1), hit: [V(2.15, 1.2, -1.1), V(1.8, 2.4, 1.8)] },
-  { id: 'console', look: V(-2.1, 1.25, 3.2), cam: V(-0.3, 2.7, 8.2), tag: V(-2.1, 2.85, 3.2), hit: [V(-2.1, 0.9, 3.2), V(2.2, 1.9, 1.3)] },
-  { id: 'lit', look: V(2.0, 0.85, 4.0), cam: V(0.3, 2.5, 8.8), tag: V(2.1, 2.1, 4.0), hit: [V(2.1, 0.9, 4.0), V(2.1, 1.8, 1.9)] },
-];
-/** Vue d'ensemble, format vertical : en plongée, comme une maquette, pour que toute la profondeur de la salle tienne dans la hauteur. */
-export const OVERVIEW = { cam: V(0, 11.2, 14.6), look: V(0, 0.7, 0.1), fov: 42 } as const;
-/** Format paysage : la caméra descend dans la salle. */
-export const OVERVIEW_WIDE = { cam: V(0, 3.4, 9.6), look: V(0, 1.2, -1.5), fov: 40 } as const;
-
-const SCI_AT: Record<SciId, { at: THREE.Vector3; ry: number }> = {
-  noe: { at: V(-0.95, 0, -1.3), ry: 0.5 },
-  iris: { at: V(0.95, 0, -0.5), ry: 0.6 },
-  selma: { at: V(0.95, 0, 3.3), ry: 0.35 },
+const SCI_AT: Record<SciId, { at: THREE.Vector3; ry: number; st: number }> = {
+  iris: { at: V(SX[0] + 1.3, 0, -1.7), ry: -0.45, st: 0 },
+  noe: { at: V(SX[1] + 1.5, 0, -1.9), ry: -0.5, st: 1 },
+  selma: { at: V(SX[2] + 1.15, 0, -1.9), ry: -0.45, st: 2 },
 };
-export const PORTER_AT = V(-0.5, 0, 1.3);
+/** Place du porteur devant chaque poste (comme dans l'ancien : il suit d'un poste à l'autre). */
+export const porterSpot = (i: number): THREE.Vector3 => V(SX[i] - 0.8, 0, 0.9);
 export const PAD_AT = PAD;
 
 // ---------- Palettes ----------
@@ -85,21 +69,7 @@ function inFrance(lng: number, lat: number): boolean {
   return inside;
 }
 
-export interface Sci { id: SciId; actor: Actor; head: THREE.Vector3; talkUntil: number; nextIdle: number }
-
-export interface LabScene {
-  scene: THREE.Scene;
-  porter: Actor;
-  scis: Sci[];
-  /** Boîtes invisibles pour le toucher : userData = { kind: 'poste' | 'sci', id }. */
-  hits: THREE.Object3D[];
-  setAmbiance(a: Ambiance): void;
-  /** Met à jour ce qui dépend de l'état du jeu (exosquelette, carte, contrats). */
-  sync(v: GameView): void;
-  /** Animation continue. depart : 0 au repos, 0→1 pendant la montée en charge du Passeur. */
-  tick(t: number, dt: number, depart: number): void;
-  dispose(): void;
-}
+export interface Sci { id: SciId; st: number; actor: Actor; head: THREE.Vector3; talkUntil: number; nextIdle: number }
 
 /** Niveau de 0 à 1 de chaque branche de compétences. */
 export function branchLevels(v: GameView): Record<SkillBranch, number> {
@@ -203,6 +173,30 @@ function drawContracts(g: CanvasRenderingContext2D, w: number, h: number, v: Gam
 
 const EXO_H = 2.25;
 
+export interface LabScene {
+  scene: THREE.Scene;
+  porter: Actor;
+  /** Groupe du porteur (position, orientation). */
+  porterG: THREE.Group;
+  scis: Sci[];
+  /** Boîtes invisibles pour le toucher : userData = { kind: 'sci' | 'exo' | 'porte', id, st }. */
+  hits: THREE.Object3D[];
+  setAmbiance(a: Ambiance): void;
+  /** Met à jour ce qui dépend de l'état du jeu (exosquelette, carte, contrats). */
+  sync(v: GameView): void;
+  /** Ce qui est dessiné : un booléen par poste, et la chambre. Le reste ne coûte rien. */
+  show(stations: boolean[], chamber: boolean): void;
+  /** Animation continue. depart : 0 au repos, 0→1 pendant la montée en charge du Passeur. */
+  tick(t: number, dt: number, depart: number): void;
+  /** Assied le porteur au bord du lit (chambre). */
+  seatPorter(): void;
+  /** Lampe de la chambre : 1 allumée, 0 en veilleuse. */
+  lamp(k: number): void;
+  /** Chats clandestins installés dans la chambre (0 à 3). */
+  setCats(n: number): void;
+  dispose(): void;
+}
+
 export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambiance): Promise<LabScene> {
   const scene = new THREE.Scene();
   let pal = PALS[ambiance];
@@ -219,130 +213,174 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   const disc = softDiscTexture(128, 0.02, 1.8);
   const shadowTex = softDiscTexture(128, 0.25, 1.5);
   const ramp = canvasTexture(8, 128, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
-  const add = <T extends THREE.Object3D>(o: T): T => { scene.add(o); return o; };
+  // Groupes : la coque du couloir, un groupe par poste, la chambre.
+  const shell = new THREE.Group(), chamber = new THREE.Group();
+  const G = [new THREE.Group(), new THREE.Group(), new THREE.Group()];
+  chamber.position.copy(CHAMBER);
+  chamber.visible = false;
+  scene.add(shell, ...G, chamber);
   const glowMat = (color: number, opacity: number, map: THREE.Texture | null = null): THREE.MeshBasicMaterial =>
     new THREE.MeshBasicMaterial({ color, map, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide });
-  const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
+  const box = (to: THREE.Object3D, w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     m.position.set(x, y, z);
-    return add(m);
+    to.add(m);
+    return m;
   };
 
-  // ---------- Lumières ----------
-  const hemi = add(new THREE.HemisphereLight(pal.hemiSky, pal.hemiGround, pal.hemi));
-  const win = add(new THREE.DirectionalLight(pal.window, pal.windowPower));
-  win.position.set(1.5, 3.2, -10); win.target.position.set(0, 0.8, 2); scene.add(win.target);
-  const key = add(new THREE.DirectionalLight(pal.key, pal.keyPower));
-  key.position.set(-4, 8, 9); key.target.position.set(0, 1, -1); scene.add(key.target);
+  // ---------- Lumières : une ambiance par poste (cyan aux cartes, bleu clair au Passeur, ambre aux quartiers) ----------
+  const hemi = new THREE.HemisphereLight(pal.hemiSky, pal.hemiGround, pal.hemi);
+  const win = new THREE.DirectionalLight(pal.window, pal.windowPower);
+  win.position.set(1.5, 3.2, -10); win.target.position.set(0, 0.8, 2);
+  const key = new THREE.DirectionalLight(pal.key, pal.keyPower);
+  key.position.set(-4, 8, 9); key.target.position.set(0, 1, -1);
+  scene.add(hemi, win, win.target, key, key.target);
   const points: { l: THREE.PointLight; base: number }[] = [];
   const point = (color: number, power: number, dist: number, x: number, y: number, z: number): THREE.PointLight => {
-    const l = add(new THREE.PointLight(color, power * pal.points, dist, 1.6));
+    const l = new THREE.PointLight(color, power * pal.points, dist, 1.6);
     l.position.set(x, y, z);
+    scene.add(l);
     points.push({ l, base: power });
     return l;
   };
-  const padLight = point(0x8fe3f5, 5, 9, 0, 1.7, -3.0);
-  point(0xffa448, 4, 6, -1.8, 1.6, 3.4);     // console
-  point(0x7fc7d9, 3, 5.5, 2.0, 2.4, -0.5);   // table holographique
-  point(0xffc690, 2.5, 4.5, 2.2, 1.3, 3.2);  // couchette
-  point(0xffe2b8, 1.8, 6, -1.7, 3.0, -0.8);  // râtelier
-  point(0xb6ffad, 2.5, 4.5, 3.2, 1.5, 1.3);  // hydroponie
+  point(0x7fc7d9, 16, 12, SX[0], 3.7, -0.6);
+  point(0x7fc7d9, 3, 5.5, SX[0] - 0.2, 2.4, -1.6);    // table holographique
+  point(0x9fe6f7, 12, 12, SX[1] + 0.6, 3.7, 0.2);
+  const padLight = point(0x8fe3f5, 5, 9, 0, 1.7, PAD.z + 0.9);
+  point(0xffc690, 16, 12, SX[2], 3.7, -0.6);
+  point(0xb6ffad, 2.5, 4.5, SX[2] - 2.0, 1.6, -2.4);  // hydroponie
+  const lampBase = 9;
+  const lampL = point(0xffb070, lampBase, 12, CHAMBER.x - 2.0, 2.4, CHAMBER.z + 0.9);
 
-  // ---------- Salle ----------
-  const W = ROOM.halfW, depth = ROOM.front - ROOM.back, zMid = (ROOM.front + ROOM.back) / 2;
+  // ---------- Coque du couloir ----------
+  const W = ROOM.halfW, H = ROOM.height, depth = ROOM.front - ROOM.back, zMid = (ROOM.front + ROOM.back) / 2;
   const ft = floorTextures();
   const floorMat = new THREE.MeshStandardMaterial({ color: pal.floor, map: ft.map, roughnessMap: ft.rough, roughness: pal.floorRough * 1.6, metalness: 0.35 });
-  const floor = add(new THREE.Mesh(new THREE.PlaneGeometry(W * 2, depth), floorMat));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, depth), floorMat);
   floor.rotation.x = -Math.PI / 2; floor.position.z = zMid;
+  shell.add(floor);
   const pt = panelTexture();
   const wallMat = new THREE.MeshStandardMaterial({ color: pal.wall, map: pt, roughness: 0.72, metalness: 0.25 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x0c1212, roughness: 0.7, metalness: 0.4 });
   const sideMat = wallMat.clone();
   sideMat.map = pt.clone(); sideMat.map.repeat.set(depth / 2.2, 1);
+  const WIN_W = 6.6, WIN_Y0 = 0.85, WIN_Y1 = 3.85;
+  const sidePanel = W - WIN_W / 2;
   const backMat = wallMat.clone();
-  backMat.map = pt.clone(); backMat.map.repeat.set(1, 1);
+  backMat.map = pt.clone(); backMat.map.repeat.set(Math.round(sidePanel / 1.6), 1);
   const wallMats = [wallMat, sideMat, backMat];
-  for (const sx of [-1, 1]) box(0.3, ROOM.height, depth, sideMat, sx * (W + 0.15), ROOM.height / 2, zMid);
-  // mur du fond autour de la baie (5,2 m de large, de 0,9 à 4,1 m)
-  const WIN_W = 5.2, WIN_Y0 = 0.9, WIN_Y1 = 4.15;
-  const sidePanel = (W * 2 - WIN_W) / 2;
-  for (const sx of [-1, 1]) box(sidePanel, ROOM.height, 0.3, backMat, sx * (WIN_W / 2 + sidePanel / 2), ROOM.height / 2, ROOM.back - 0.15);
-  box(WIN_W, WIN_Y0, 0.3, darkMat, 0, WIN_Y0 / 2, ROOM.back - 0.15);
-  box(WIN_W, ROOM.height - WIN_Y1, 0.3, darkMat, 0, (ROOM.height + WIN_Y1) / 2, ROOM.back - 0.15);
-  for (const x of [-WIN_W / 2, -WIN_W / 6, WIN_W / 6, WIN_W / 2]) box(0.09, WIN_Y1 - WIN_Y0, 0.16, darkMat, x, (WIN_Y0 + WIN_Y1) / 2, ROOM.back - 0.05);
+  for (const sx of [-1, 1]) box(shell, 0.3, H, depth, sideMat, sx * (W + 0.15), H / 2, zMid);
+  // mur du fond : panneaux de part et d'autre de la fenêtre panoramique sur la Plaine Noire (derrière le Passeur)
+  for (const sx of [-1, 1]) box(shell, sidePanel, H, 0.3, backMat, sx * (WIN_W / 2 + sidePanel / 2), H / 2, ROOM.back - 0.15);
+  box(shell, WIN_W, WIN_Y0, 0.3, darkMat, 0, WIN_Y0 / 2, ROOM.back - 0.15);
+  box(shell, WIN_W, H - WIN_Y1, 0.3, darkMat, 0, (H + WIN_Y1) / 2, ROOM.back - 0.15);
+  for (const x of [-WIN_W / 2, -WIN_W / 6, WIN_W / 6, WIN_W / 2]) box(shell, 0.1, WIN_Y1 - WIN_Y0, 0.18, darkMat, x, (WIN_Y0 + WIN_Y1) / 2, ROOM.back - 0.05);
   const backdropTex = canvasTexture(1024, 512, (g, w, h) => drawBackdrop(g, w, h, ambiance));
   const backdropMat = new THREE.MeshBasicMaterial({ map: backdropTex, fog: false });
   backdropMat.color.setScalar(pal.backdrop);
-  const backdrop = add(new THREE.Mesh(new THREE.PlaneGeometry(WIN_W + 1.6, (WIN_W + 1.6) / 2), backdropMat));
-  backdrop.position.set(0, (WIN_Y0 + WIN_Y1) / 2 + 0.1, ROOM.back - 0.9);
-  // reflet de la baie sur le sol : une nappe de lumière qui s'étire vers la caméra
-  const spillMat = glowMat(pal.window, 0.1, ramp);
-  const spill = add(new THREE.Mesh(new THREE.PlaneGeometry(WIN_W * 0.95, 9), spillMat));
-  spill.rotation.x = -Math.PI / 2; spill.position.set(0.2, 0.014, ROOM.back + 4.5);
-  // bandeaux lumineux : cyan en hauteur, ambre au ras du sol
+  const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W + 2.4, (WIN_W + 2.4) / 2), backdropMat);
+  backdrop.position.set(0, (WIN_Y0 + WIN_Y1) / 2 + 0.25, ROOM.back - 0.9);
+  shell.add(backdrop);
+  // plafond, ses rampes de lumière, et les portiques qui séparent les trois postes
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, depth), darkMat);
+  ceil.rotation.x = Math.PI / 2; ceil.position.set(0, H, zMid);
+  shell.add(ceil);
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xe6f3f7 });
   const stripC = new THREE.MeshBasicMaterial({ color: 0x7fc7d9 }), stripA = new THREE.MeshBasicMaterial({ color: 0xe8a24a });
-  stripC.color.multiplyScalar(1.5 * pal.strips); stripA.color.multiplyScalar(1.4 * pal.strips);
+  const setStrips = (): void => {
+    stripC.color.set(0x7fc7d9).multiplyScalar(1.5 * pal.strips); stripA.color.set(0xe8a24a).multiplyScalar(1.4 * pal.strips);
+    lampMat.color.set(0xe6f3f7).multiplyScalar(1.25 * pal.strips);
+  };
+  setStrips();
+  for (const sx of SX) for (const dx of [-1.6, 1.6]) box(shell, 1.9, 0.06, 0.36, lampMat, sx + dx, H - 0.04, -1.4);
+  for (const x of [-(SX[2] / 2), SX[2] / 2]) {
+    box(shell, 0.55, H, 0.7, darkMat, x, H / 2, ROOM.back + 0.35);
+    box(shell, 0.55, 0.45, depth, darkMat, x, H - 0.22, zMid);
+    box(shell, 0.06, H - 0.6, 0.06, stripC, x, H / 2 - 0.1, ROOM.back + 0.72);
+  }
+  // bandeaux : cyan en hauteur, ambre au ras du sol, le long du mur du fond
   for (const sx of [-1, 1]) {
-    box(0.04, 0.05, depth, stripC, sx * (W - 0.02), 3.9, zMid);
-    box(0.04, 0.04, depth, stripA, sx * (W - 0.02), 0.16, zMid);
-    for (let z = ROOM.back + 1.6; z < 6; z += 2.6) box(0.05, 2.3, 0.07, stripC, sx * (W - 0.02), 2.6, z);
+    box(shell, sidePanel, 0.05, 0.05, stripC, sx * (WIN_W / 2 + sidePanel / 2), 3.95, ROOM.back + 0.03);
+    box(shell, sidePanel, 0.04, 0.05, stripA, sx * (WIN_W / 2 + sidePanel / 2), 0.16, ROOM.back + 0.03);
   }
-  // ligne ambre au sol, qui mène au Passeur
-  const guide = canvasTexture(64, 256, (g, w, h) => { g.clearRect(0, 0, w, h); g.fillStyle = '#fff'; for (let y = 0; y < h; y += 64) g.fillRect(w / 2 - 5, y + 8, 10, 40); }, false);
-  guide.wrapT = THREE.RepeatWrapping; guide.repeat.set(1, 8);
-  const guideMesh = add(new THREE.Mesh(new THREE.PlaneGeometry(0.5, 11), new THREE.MeshBasicMaterial({ map: guide, color: 0xe8a24a, transparent: true, opacity: 0.55, depthWrite: false })));
-  guideMesh.rotation.x = -Math.PI / 2; guideMesh.position.set(0, 0.016, 3.2);
-  // deux nappes de lumière qui tombent le long du mur du fond
-  const cones: THREE.Mesh[] = [];
-  for (const x of [-3.45, 3.45]) {
-    const c = add(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 1.7, 4.4, 24, 1, true), glowMat(0xffe6c2, 0.05, ramp)));
-    c.position.set(x, 4.6 - 2.2, ROOM.back + 0.5);
-    cones.push(c);
-  }
+  // reflet de la baie sur le sol
+  const spillMat = glowMat(pal.window, 0.1, ramp);
+  const spill = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W * 0.9, 9), spillMat);
+  spill.rotation.x = -Math.PI / 2; spill.position.set(0.2, 0.014, ROOM.back + 4.5);
+  shell.add(spill);
+  // ligne ambre en pointillés au sol, d'un poste à l'autre (comme sur le sol de l'ancien hall)
+  const guide = canvasTexture(256, 64, (g, w, h) => { g.clearRect(0, 0, w, h); g.fillStyle = '#fff'; for (let x = 0; x < w; x += 64) g.fillRect(x + 8, h / 2 - 5, 40, 10); }, false);
+  guide.wrapS = THREE.RepeatWrapping; guide.repeat.set(20, 1);
+  const guideMesh = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, 0.5), new THREE.MeshBasicMaterial({ map: guide, color: 0xe8a24a, transparent: true, opacity: 0.5, depthWrite: false }));
+  guideMesh.rotation.x = -Math.PI / 2; guideMesh.position.set(0, 0.016, 2.3);
+  shell.add(guideMesh);
   // poussière en suspension
-  const ND = 220, dp = new Float32Array(ND * 3);
-  for (let i = 0; i < ND; i++) { dp[i * 3] = (hash(i * 1.3) - 0.5) * W * 2; dp[i * 3 + 1] = 0.2 + hash(i * 2.7) * 4.6; dp[i * 3 + 2] = ROOM.back + hash(i * 4.1) * 13; }
+  const ND = 260, dp = new Float32Array(ND * 3);
+  for (let i = 0; i < ND; i++) { dp[i * 3] = (hash(i * 1.3) - 0.5) * W * 2; dp[i * 3 + 1] = 0.2 + hash(i * 2.7) * (H - 0.5); dp[i * 3 + 2] = ROOM.back + hash(i * 4.1) * 10; }
   const dg = new THREE.BufferGeometry();
   dg.setAttribute('position', new THREE.BufferAttribute(dp, 3));
-  const dust = add(new THREE.Points(dg, new THREE.PointsMaterial({ map: disc, color: 0xffe3c0, size: 0.045, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending })));
+  const dust = new THREE.Points(dg, new THREE.PointsMaterial({ map: disc, color: 0xffe3c0, size: 0.045, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+  shell.add(dust);
 
   // ---------- Modèles ----------
   const sciIds: SciId[] = ['iris', 'noe', 'selma'];
-  const [tele, exoM, holoM, consoleM, litM, racks, caisses, hydro, porterM, ...sciM] = await Promise.all([
-    loader.load('teleporteur', { height: 2.75 }), loader.load('exo_rack', { height: EXO_H }), loader.load('holo_table', { height: 1.5 }),
-    loader.load('lab_console', { height: 1.35 }), loader.load('lit_repos', { height: 1.75 }), loader.load('lab_racks', { height: 2.3 }),
-    loader.load('lab_caisses', { height: 1.2 }), loader.load('hydroponie', { height: 1.75 }),
+  const [tele, exoM, holoM, consoleM, litM, racks, caisses, hydro, med, bench, porterM, ...sciM] = await Promise.all([
+    loader.load('teleporteur', { height: 3.1 }), loader.load('exo_rack', { height: EXO_H }), loader.load('holo_table', { height: 1.5 }),
+    loader.load('lab_console', { height: 1.35 }), loader.load('lit_repos', { width: 2.6 }), loader.load('lab_racks', { height: 2.3 }),
+    loader.load('lab_caisses', { height: 1.1 }), loader.load('hydroponie', { height: 1.85 }), loader.load('med_bay', { height: 1.9 }),
+    loader.load('workbench', { height: 1.25 }),
     loader.load('porteur_civil', { height: 1.78, fallback: 'perso' }),
     ...sciIds.map(id => loader.load(CAST[id].model, { height: id === 'noe' ? 1.8 : 1.7, fallback: 'perso' })),
   ]);
-  const models: Model[] = [tele, exoM, holoM, consoleM, litM, racks, caisses, hydro, porterM, ...sciM];
-  const place = (m: Model, x: number, z: number, ry: number, shadow = 0.6): THREE.Group => {
+  const models: Model[] = [tele, exoM, holoM, consoleM, litM, racks, caisses, hydro, med, bench, porterM, ...sciM];
+  const copy = (m: Model): Model => ({ ...m, root: m.root.clone(true) as THREE.Group });
+  const place = (to: THREE.Object3D, m: Model, x: number, z: number, ry: number, shadow = 0.6): THREE.Group => {
     const g = new THREE.Group();
     g.add(m.root);
     g.position.set(x, 0, z); g.rotation.y = ry;
-    const s = blobShadow(shadowTex, m.size.x * 1.35, m.size.z * 1.6, shadow);
-    g.add(s);
-    return add(g);
+    g.add(blobShadow(shadowTex, m.size.x * 1.35, m.size.z * 1.6, shadow));
+    to.add(g);
+    return g;
   };
-  place(tele, PAD.x, PAD.z, 0, 0.5);
-  const exoG = place(exoM, AT.exo.x, AT.exo.z, 0.5);
-  place(holoM, AT.holo.x, AT.holo.z, -0.5);
-  place(consoleM, AT.console.x, AT.console.z, 0.7);
-  place(litM, AT.lit.x, AT.lit.z, -0.7);
-  place(racks, -3.0, -5.3, 0.2);
-  // un second jeu de baies, de l'autre côté : même géométrie, même matériau
-  const racks2 = place({ ...racks, root: racks.root.clone(true) as THREE.Group }, 3.0, -5.3, -0.2);
-  void racks2;
-  place(caisses, -3.3, 5.6, 0.5);
-  place(hydro, 3.55, 1.3, -Math.PI / 2);
+  // Poste 1 — Salle des cartes : table holographique, console des contrats, baies de calcul
+  const HOLO = V(SX[0] - 0.25, 0, -2.3), CONSOLE = V(SX[0] - 1.75, 0, -4.1);
+  place(G[0], holoM, HOLO.x, HOLO.z, -0.3);
+  place(G[0], consoleM, CONSOLE.x, CONSOLE.z, 0.45);
+  place(G[0], racks, SX[0] + 1.9, -5.15, -0.1);
+  place(G[0], caisses, SX[0] + 3.0, -1.2, 0.5);
+  // Poste 2 — Le Passeur : téléporteur, râtelier de l'exosquelette, établi de Noé
+  place(G[1], tele, PAD.x, PAD.z, 0, 0.5);
+  const exoG = place(G[1], exoM, EXO_AT.x, EXO_AT.z, 0.45);
+  place(G[1], bench, 3.0, -4.9, -0.15);
+  // Poste 3 — Quartiers : baie médicale, hydroponie, porte de la chambre
+  place(G[2], med, SX[2] + 1.9, -4.3, -0.35);
+  place(G[2], hydro, SX[2] - 2.0, -3.1, 0.5);
+  place(G[2], copy(racks), SX[2] + 3.6, -5.15, 0.1);
+  place(G[2], copy(caisses), SX[2] + 3.0, -1.0, -0.4);
+  const doorMat = new THREE.MeshStandardMaterial({ color: 0x1b2225, metalness: 0.6, roughness: 0.4 });
+  box(G[2], 1.9, 3.0, 0.14, doorMat, DOOR_AT.x, 1.5, DOOR_AT.z);
+  box(G[2], 0.05, 3.0, 0.16, darkMat, DOOR_AT.x, 1.5, DOOR_AT.z + 0.01);
+  box(G[2], 2.0, 0.05, 0.05, stripA, DOOR_AT.x, 3.06, DOOR_AT.z + 0.08);
+  for (const dx of [-1, 1]) box(G[2], 0.05, 3.0, 0.05, stripA, DOOR_AT.x + dx * 1.0, 1.5, DOOR_AT.z + 0.08);
+  const doorTex = canvasTexture(256, 64, (g, w) => {
+    g.fillStyle = '#e8a24a'; g.font = '700 34px "Roboto Condensed", "Arial Narrow", "DejaVu Sans Condensed", sans-serif'; g.textAlign = 'center';
+    g.fillText('Q U A R T I E R S', w / 2, 44, w - 8);
+  });
+  const doorLabel = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.4), new THREE.MeshBasicMaterial({ map: doorTex, transparent: true, fog: false }));
+  doorLabel.position.set(DOOR_AT.x, 3.36, DOOR_AT.z + 0.1);
+  G[2].add(doorLabel);
+  const doorGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: disc, color: 0xffc690, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  doorGlow.position.set(DOOR_AT.x, 1.5, DOOR_AT.z + 0.3); doorGlow.scale.set(3, 4.2, 1);
+  G[2].add(doorGlow);
 
   // Le Passeur : disque au sol, colonne de lumière, halo dans l'anneau
-  const padDisc = add(new THREE.Mesh(new THREE.CircleGeometry(1.25, 48), glowMat(0x7fc7d9, 0.3, disc)));
+  const padDisc = new THREE.Mesh(new THREE.CircleGeometry(1.25, 48), glowMat(0x7fc7d9, 0.3, disc));
   padDisc.rotation.x = -Math.PI / 2; padDisc.position.set(PAD.x, 0.03, PAD.z + 0.5); padDisc.scale.set(1.6, 1.6, 1);
-  const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 5, 28, 1, true), glowMat(0x9fe6f7, 0, ramp)));
-  column.position.set(PAD.x, 2.5, PAD.z + 0.5); column.rotation.x = Math.PI;
-  const ringGlow = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: disc, color: 0x8fe3f5, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })));
-  ringGlow.position.set(PAD.x, 1.45, PAD.z + 0.1); ringGlow.scale.setScalar(3.4);
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, H, 28, 1, true), glowMat(0x9fe6f7, 0, ramp));
+  column.position.set(PAD.x, H / 2, PAD.z + 0.5); column.rotation.x = Math.PI;
+  const ringGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: disc, color: 0x8fe3f5, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  ringGlow.position.set(PAD.x, 1.6, PAD.z + 0.1); ringGlow.scale.setScalar(3.8);
+  G[1].add(padDisc, column, ringGlow);
 
   // ---------- Exosquelette : l'arbre de compétences rendu visible ----------
   // Chaque zone du modèle appartient à une branche. Une zone sans compétence reste un fantôme sombre
@@ -391,12 +429,14 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   });
 
   // ---------- Table holographique : la France et le réseau ----------
-  const holo = add(new THREE.Group());
-  holo.position.set(AT.holo.x, 2.02, AT.holo.z);
+  const holo = new THREE.Group();
+  G[0].add(holo);
+  holo.position.set(HOLO.x, 2.02, HOLO.z);
   const lineMat = new THREE.LineBasicMaterial({ color: 0x7fc7d9, transparent: true, opacity: 0.95, fog: false });
   lineMat.color.multiplyScalar(1.7);
   const map3d = new THREE.Group();
-  map3d.rotation.x = 0.62;
+  map3d.rotation.x = 0.95;
+  map3d.scale.setScalar(1.25);
   holo.add(map3d);
   for (const poly of [FRANCE, CORSE]) {
     const pts = poly.map(([lng, lat]) => { const [x, z] = frXZ(lng, lat); return new THREE.Vector3(x, 0, z); });
@@ -419,49 +459,98 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   const nodesGeo = new THREE.BufferGeometry();
   const nodes = new THREE.Points(nodesGeo, new THREE.PointsMaterial({ map: disc, color: 0xffc27a, size: 0.075, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   map3d.add(beacon, ring, links, nodes);
-  const holoCone = add(new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.12, 1.15, 28, 1, true), glowMat(0x7fc7d9, 0.07, ramp)));
-  holoCone.position.set(AT.holo.x, 1.42, AT.holo.z);
+  const holoCone = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.12, 1.15, 28, 1, true), glowMat(0x7fc7d9, 0.07, ramp));
+  holoCone.position.set(HOLO.x, 1.42, HOLO.z);
+  G[0].add(holoCone);
 
   // ---------- Console : panneau des contrats ----------
   const contractTex = canvasTexture(512, 320, (g, w, h) => drawContracts(g, w, h, null));
   const contractMat = new THREE.MeshBasicMaterial({ map: contractTex, transparent: true, opacity: 0.96, depthWrite: false, fog: false, side: THREE.DoubleSide });
   contractMat.color.setScalar(1.25);
-  const contractPanel = add(new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.94), contractMat));
-  contractPanel.position.set(AT.console.x - 0.1, 2.1, AT.console.z - 0.15); contractPanel.rotation.y = 0.7; contractPanel.rotation.x = -0.08;
-  // lampe de la couchette
-  const litGlow = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: disc, color: 0xffc690, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })));
-  litGlow.position.set(AT.lit.x - 0.1, 1.25, AT.lit.z + 0.1); litGlow.scale.setScalar(1.5);
+  const contractPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.94), contractMat);
+  contractPanel.position.set(CONSOLE.x + 0.05, 2.25, CONSOLE.z + 0.1); contractPanel.rotation.y = 0.3; contractPanel.rotation.x = -0.05;
+  G[0].add(contractPanel);
+
+  // ---------- Chambre des quartiers (ancien : plancher, tapis, lit, miroir sur pied, petite fenêtre, lampe chaude) ----------
+  const plank = canvasTexture(512, 512, (g, w) => {
+    for (let i = 0; i < 8; i++) {
+      const v = 120 + hash(i * 3.1) * 40;
+      g.fillStyle = `rgb(${v + 30},${v},${v - 28})`; g.fillRect(0, i * 64, w, 63);
+      g.fillStyle = 'rgba(0,0,0,.4)'; g.fillRect(0, i * 64 + 63, w, 1);
+      for (let k = 0; k < 30; k++) { g.fillStyle = `rgba(0,0,0,${hash(i * 40 + k) * 0.1})`; g.fillRect(hash(k * 7 + i) * w, i * 64 + hash(k * 13 + i) * 60, 40 + hash(k) * 90, 1.5); }
+    }
+  });
+  plank.wrapS = plank.wrapT = THREE.RepeatWrapping; plank.repeat.set(2, 2);
+  const cFloor = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), new THREE.MeshStandardMaterial({ map: plank, color: 0x8a7462, roughness: 0.8 }));
+  cFloor.rotation.x = -Math.PI / 2;
+  const rug = new THREE.Mesh(new THREE.CircleGeometry(1.3, 40), new THREE.MeshStandardMaterial({ color: 0x7a4e33, roughness: 1 }));
+  rug.rotation.x = -Math.PI / 2; rug.position.set(0.3, 0.01, 0.3);
+  const cwTex = canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = '#8d9496'; g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 64) { g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(x, 0, 2, h); }
+    g.fillStyle = 'rgba(232,162,74,.75)'; g.fillRect(0, h * 0.82, w, 3);
+  });
+  cwTex.wrapS = THREE.RepeatWrapping; cwTex.repeat.set(3, 1);
+  const cwMat = new THREE.MeshStandardMaterial({ map: cwTex, color: 0x59605f, roughness: 0.85 });
+  for (const [x, z, ry] of [[0, -3.5, 0], [-3.5, 0, Math.PI / 2], [3.5, 0, -Math.PI / 2]] as const) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(7, 3.6), cwMat);
+    m.position.set(x, 1.8, z); m.rotation.y = ry;
+    chamber.add(m);
+  }
+  const cCeil = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), darkMat);
+  cCeil.rotation.x = Math.PI / 2; cCeil.position.y = 3.6;
+  const cWin = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), backdropMat);
+  cWin.position.set(1.5, 2.0, -3.48);
+  box(chamber, 2.36, 0.08, 0.1, darkMat, 1.5, 2.59, -3.46); box(chamber, 2.36, 0.08, 0.1, darkMat, 1.5, 1.41, -3.46);
+  for (const dx of [-1.14, 1.14]) box(chamber, 0.08, 1.26, 0.1, darkMat, 1.5 + dx, 2.0, -3.46);
+  const mirror = new THREE.Group();
+  mirror.position.set(2.4, 0, -1.6); mirror.rotation.y = -0.7;
+  box(mirror, 0.8, 1.9, 0.06, new THREE.MeshStandardMaterial({ color: 0x3b2a1e, roughness: 0.6 }), 0, 1.05, 0);
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 1.74), new THREE.MeshStandardMaterial({ color: 0x9fb6c0, metalness: 1, roughness: 0.08 }));
+  glass.position.set(0, 1.05, 0.035);
+  mirror.add(glass);
+  chamber.add(cFloor, rug, cCeil, cWin, mirror);
+  const BED = V(-1.1, 0, -2.2);
+  const bedG = place(chamber, litM, BED.x, BED.z, 0, 0.5);
+  place(chamber, copy(caisses), 2.7, 0.9, -0.5);
+  const lampGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: disc, color: 0xffc690, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  lampGlow.position.set(-2.6, 2.3, -1.4); lampGlow.scale.setScalar(2.2);
+  chamber.add(lampGlow);
+  box(chamber, 0.16, 0.16, 0.16, new THREE.MeshBasicMaterial({ color: 0xffd9a8 }), -2.6, 2.3, -1.4);
+  box(chamber, 0.03, 1.3, 0.03, darkMat, -2.6, 2.95, -1.4);
 
   // ---------- Personnages ----------
   const porter = new Actor(porterM);
-  const pg = add(new THREE.Group());
+  const pg = new THREE.Group();
+  scene.add(pg);
   pg.add(porterM.root, blobShadow(shadowTex, 0.9, 0.9, 0.6));
-  pg.position.copy(PORTER_AT); pg.rotation.y = 0.3;
+  pg.position.copy(porterSpot(1)); pg.rotation.y = 0.55;
   porter.play(porter.pick('calm_0', 'calmv0', 'idle'), 0);
   const scis: Sci[] = sciIds.map((id, i) => {
-    const m = sciM[i], actor = new Actor(m), g = add(new THREE.Group());
+    const m = sciM[i], actor = new Actor(m), g = new THREE.Group();
+    G[SCI_AT[id].st].add(g);
     g.add(m.root, blobShadow(shadowTex, 0.9, 0.9, 0.6));
     g.position.copy(SCI_AT[id].at); g.rotation.y = SCI_AT[id].ry;
     actor.play(actor.pick('calm_0', 'calmv0'), 0);
     actor.mixer.update(i * 0.7); // désynchronise les respirations
-    return { id, actor, head: SCI_AT[id].at.clone().setY(m.size.y + 0.12), talkUntil: 0, nextIdle: 6 + i * 4 };
+    return { id, st: SCI_AT[id].st, actor, head: SCI_AT[id].at.clone().setY(m.size.y + 0.12), talkUntil: 0, nextIdle: 6 + i * 4 };
   });
 
   // ---------- Boîtes de toucher ----------
   const hits: THREE.Object3D[] = [];
   const hitMat = new THREE.MeshBasicMaterial();
   const hitGeo = new THREE.BoxGeometry(1, 1, 1);
-  const hit = (kind: 'poste' | 'sci', id: string, c: THREE.Vector3, s: THREE.Vector3): void => {
+  const hit = (kind: 'sci' | 'exo' | 'porte', id: string, st: number, c: THREE.Vector3, s: THREE.Vector3): void => {
     const m = new THREE.Mesh(hitGeo, hitMat);
-    m.position.copy(c); m.scale.copy(s); m.visible = false; m.userData = { kind, id };
+    m.position.copy(c); m.scale.copy(s); m.visible = false; m.userData = { kind, id, st };
     m.updateMatrixWorld(true);
     scene.add(m); hits.push(m);
   };
-  for (const s of STATIONS) hit('poste', s.id, s.hit[0], s.hit[1]);
-  for (const id of sciIds) hit('sci', id, SCI_AT[id].at.clone().setY(0.9), V(0.7, 1.8, 0.7));
+  for (const id of sciIds) hit('sci', id, SCI_AT[id].st, SCI_AT[id].at.clone().setY(0.9), V(0.8, 1.8, 0.8));
+  hit('exo', 'exo', 1, EXO_AT.clone().setY(1.15), V(1.5, 2.3, 1.2));
+  hit('porte', 'porte', 2, DOOR_AT.clone().setY(1.6), V(2, 3.2, 0.6));
 
-  const applyEnv = (): void => { for (const m of models) setEnvIntensity(m.root, 1); };
-  applyEnv();
+  for (const m of models) setEnvIntensity(m.root, 1);
 
   const setAmbiance = (a: Ambiance): void => {
     pal = PALS[a];
@@ -475,15 +564,16 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     for (const p of points) p.l.intensity = p.base * pal.points;
     for (const m of wallMats) m.color.set(pal.wall);
     floorMat.color.set(pal.floor); floorMat.roughness = pal.floorRough * 1.6;
+    darkMat.color.set(a === 'clair' ? 0x4a5252 : 0x0c1212);
     spillMat.color.set(pal.window);
-    stripC.color.set(0x7fc7d9).multiplyScalar(1.5 * pal.strips); stripA.color.set(0xe8a24a).multiplyScalar(1.4 * pal.strips);
+    setStrips();
     const g = (backdropTex.image as HTMLCanvasElement).getContext('2d');
     if (g) { drawBackdrop(g, 1024, 512, a); backdropTex.needsUpdate = true; }
     backdropMat.color.setScalar(pal.backdrop);
     // sur fond clair, l'hologramme passe en bleu soutenu pour rester lisible
     if (a === 'clair') lineMat.color.set(0x0b6781); else lineMat.color.set(0x7fc7d9).multiplyScalar(1.7);
   };
-  if (ambiance === 'clair') lineMat.color.set(0x0b6781);
+  setAmbiance(ambiance);
 
   let levels = new THREE.Vector4(), sig = '';
   const sync = (v: GameView): void => {
@@ -514,10 +604,68 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     }
   };
 
+  const shown = [true, true, true];
+  let chamberOn = false;
+  const show = (stations: boolean[], ch: boolean): void => {
+    for (let i = 0; i < 3; i++) { shown[i] = !!stations[i]; G[i].visible = shown[i]; }
+    chamberOn = ch;
+    chamber.visible = ch;
+    shell.visible = stations.some(Boolean);
+  };
+
+  // Assise : le dessus du matelas est cherché par un rayon, comme dans l'ancien.
+  let seatTop = -1;
+  const seatPorter = (): void => {
+    if (seatTop < 0) {
+      bedG.updateMatrixWorld(true);
+      const was = chamber.visible;
+      chamber.visible = true;
+      const rc = new THREE.Raycaster(V(CHAMBER.x + BED.x, 1.25, CHAMBER.z + BED.z + litM.size.z * 0.2), V(0, -1, 0));
+      const h = rc.intersectObject(litM.root, true).find(x => x.point.y < 1.15);
+      chamber.visible = was;
+      seatTop = h ? h.point.y : 0.5;
+    }
+    const sit = porter.pick('Chair_Sit_Idle_M');
+    if (sit) {
+      porter.play(sit, 0);
+      pg.position.set(CHAMBER.x + BED.x + 0.15, Math.max(0, seatTop - 0.47), CHAMBER.z + BED.z + litM.size.z * 0.5 - 0.22);
+      pg.rotation.y = 0.15;
+    } else {
+      pg.position.set(CHAMBER.x + 0.5, 0, CHAMBER.z + 0.2); pg.rotation.y = 0.3;
+    }
+    porter.update(0);
+  };
+  const lamp = (k: number): void => {
+    const i = points.find(p => p.l === lampL);
+    if (i) { i.base = lampBase * (0.25 + 0.75 * k); lampL.intensity = i.base * Math.max(0.8, pal.points); }
+    lampGlow.material.opacity = 0.12 + 0.28 * k;
+  };
+  lamp(1);
+
+  // Chats clandestins (ancien : jusqu'à trois, aux mêmes endroits de la chambre).
+  const catSpots: [number, number, number][] = [[0.6, 0.6, 2.4], [-0.2, 0.9, 0.6], [1.1, -0.1, -1.2]];
+  const cats: THREE.Object3D[] = [];
+  let catModel: Promise<Model> | null = null, catWant = 0, gone = false;
+  const setCats = (n: number): void => {
+    catWant = Math.max(0, Math.min(3, Math.floor(n)));
+    cats.forEach((c, i) => { c.visible = i < catWant; });
+    if (catWant <= cats.length) return;
+    catModel ??= loader.load('chat_clandestin', { width: 0.42 });
+    void catModel.then(m => {
+      if (gone || !m.ok) return;
+      while (cats.length < catWant) {
+        const i = cats.length, g = place(chamber, i === 0 ? m : copy(m), catSpots[i][0], catSpots[i][1], catSpots[i][2], 0.5);
+        setEnvIntensity(g, 1);
+        cats.push(g);
+      }
+    });
+  };
+
   const dpos = dg.attributes.position as THREE.BufferAttribute;
   const tick = (t: number, dt: number, depart: number): void => {
     porter.update(dt);
     for (const s of scis) {
+      if (!shown[s.st]) continue;
       s.actor.update(dt);
       // Au repos, un geste de temps en temps ; après une réplique, retour au calme.
       if (s.talkUntil && t > s.talkUntil) { s.talkUntil = 0; s.actor.play(s.actor.pick('calm_0', 'calmv0'), 0.6); s.nextIdle = t + 8 + hash(t) * 8; }
@@ -527,37 +675,45 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
         s.nextIdle = t + (next === 'calm_0' ? 9 + hash(t) * 9 : Math.max(3, s.actor.duration(next) - 0.8));
       }
     }
-    exoU.uT.value = t;
-    exoNodes.forEach((n, i) => {
-      const lv = levels.getComponent(i);
-      n.material.opacity = lv > 0 ? 0.25 + lv * 0.35 + Math.sin(t * 2 + i) * 0.06 : 0.1 + Math.max(0, Math.sin(t * 1.4 + i * 1.7)) * 0.12;
-      n.scale.setScalar(lv > 0 ? 0.3 + lv * 0.3 : 0.16);
-    });
-    map3d.rotation.y = Math.sin(t * 0.25) * 0.35;
-    holo.position.y = 2.02 + Math.sin(t * 0.9) * 0.02;
-    const rs = 0.03 + ((t * 0.5) % 1) * 0.16;
-    ring.scale.setScalar(rs); (ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - ((t * 0.5) % 1));
-    lineMat.opacity = 0.85 + Math.sin(t * 3.1) * 0.08;
-    contractPanel.position.y = 2.05 + Math.sin(t * 0.8 + 1) * 0.015;
-    // Le Passeur respire ; au départ, la colonne monte en charge.
-    const breathe = 0.5 + 0.5 * Math.sin(t * 1.3);
-    (padDisc.material as THREE.MeshBasicMaterial).opacity = 0.22 + breathe * 0.1 + depart * 0.5;
-    (column.material as THREE.MeshBasicMaterial).opacity = depart * 0.75;
-    column.scale.set(1 - depart * 0.35, 1, 1 - depart * 0.35);
-    ringGlow.material.opacity = 0.2 + breathe * 0.08 + depart * 0.6;
-    padLight.intensity = (5 + breathe * 1 + depart * 30) * pal.points;
-    for (let i = 0; i < dpos.count; i++) {
-      let y = dpos.getY(i) + dt * (0.02 + hash(i) * 0.03);
-      if (y > 4.9) y = 0.2;
-      dpos.setY(i, y);
-      dpos.setX(i, dpos.getX(i) + Math.sin(t * 0.3 + i) * dt * 0.02);
+    if (chamberOn) return;
+    if (shown[1]) {
+      exoU.uT.value = t;
+      exoNodes.forEach((n, i) => {
+        const lv = levels.getComponent(i);
+        n.material.opacity = lv > 0 ? 0.25 + lv * 0.35 + Math.sin(t * 2 + i) * 0.06 : 0.1 + Math.max(0, Math.sin(t * 1.4 + i * 1.7)) * 0.12;
+        n.scale.setScalar(lv > 0 ? 0.3 + lv * 0.3 : 0.16);
+      });
+      // Le Passeur respire ; au départ, la colonne monte en charge.
+      const breathe = 0.5 + 0.5 * Math.sin(t * 1.3);
+      (padDisc.material as THREE.MeshBasicMaterial).opacity = 0.22 + breathe * 0.1 + depart * 0.5;
+      (column.material as THREE.MeshBasicMaterial).opacity = depart * 0.75;
+      column.scale.set(1 - depart * 0.35, 1, 1 - depart * 0.35);
+      ringGlow.material.opacity = 0.2 + breathe * 0.08 + depart * 0.6;
+      padLight.intensity = (5 + breathe * 1 + depart * 30) * pal.points;
     }
-    dpos.needsUpdate = true;
+    if (shown[0]) {
+      map3d.rotation.y = Math.sin(t * 0.25) * 0.35;
+      holo.position.y = 2.02 + Math.sin(t * 0.9) * 0.02;
+      const rs = 0.03 + ((t * 0.5) % 1) * 0.16;
+      ring.scale.setScalar(rs); (ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - ((t * 0.5) % 1));
+      lineMat.opacity = 0.85 + Math.sin(t * 3.1) * 0.08;
+      contractPanel.position.y = 2.25 + Math.sin(t * 0.8 + 1) * 0.015;
+    }
+    if (shown[2]) doorGlow.material.opacity = 0.2 + Math.sin(t * 0.9) * 0.05;
+    if (dt > 0) {
+      for (let i = 0; i < dpos.count; i++) {
+        let y = dpos.getY(i) + dt * (0.02 + hash(i) * 0.03);
+        if (y > H - 0.2) y = 0.2;
+        dpos.setY(i, y);
+        dpos.setX(i, dpos.getX(i) + Math.sin(t * 0.3 + i) * dt * 0.02);
+      }
+      dpos.needsUpdate = true;
+    }
     dust.material.opacity = 0.4 + Math.sin(t * 0.5) * 0.08;
-    for (const c of cones) (c.material as THREE.MeshBasicMaterial).opacity = 0.045 + Math.sin(t * 0.7 + c.position.x) * 0.01;
   };
 
   const dispose = (): void => {
+    gone = true;
     porter.dispose();
     for (const s of scis) s.actor.dispose();
     scene.traverse(o => {
@@ -572,9 +728,10 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
         mat.dispose();
       }
     });
+    for (const t of [disc, shadowTex, ramp, pt]) t.dispose();
     env.dispose();
     scene.environment = null;
   };
 
-  return { scene, porter, scis, hits, setAmbiance, sync, tick, dispose };
+  return { scene, porter, porterG: pg, scis, hits, setAmbiance, sync, show, tick, seatPorter, lamp, setCats, dispose };
 }

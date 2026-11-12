@@ -85,16 +85,19 @@ export function contextual(id: SciId, v: GameView): { key: string; text: string 
   return out;
 }
 
-export type StationId = 'teleporteur' | 'exo' | 'holo' | 'console' | 'lit';
+export type StationId = 'cartes' | 'passeur' | 'chambre';
 
-/** Libellés des postes. Les noms « Le Passeur », « Salle des cartes » et « Quartiers » viennent de l'ancienne version. */
-export const STATION_TEXT: Record<StationId, { tag: string; kicker: string; title: string; action: string }> = {
-  teleporteur: { tag: 'Le Passeur', kicker: 'Le Passeur', title: 'Partir sur le terrain', action: 'Partir' },
-  exo: { tag: 'Exosquelette', kicker: 'Atelier de Noé', title: 'Exosquelette', action: 'Compétences' },
-  holo: { tag: 'Réseau', kicker: 'Salle des cartes', title: 'Réseau de France', action: 'Carte du réseau' },
-  console: { tag: 'Contrats', kicker: 'Console', title: 'Contrats', action: 'Voir les contrats' },
-  lit: { tag: 'Carnet', kicker: 'Quartiers', title: 'Carnet du porteur', action: 'Ouvrir le carnet' },
-};
+/** Les trois postes de la Station Lumen, dans l'ordre de l'ancienne version (noms et descriptions : ancien). */
+export const STATIONS: { id: StationId; name: string; desc: string; sci: SciId }[] = [
+  { id: 'cartes', name: 'Salle des cartes', desc: 'Iris suit le réseau de toute la France, en direct.', sci: 'iris' },
+  { id: 'passeur', name: 'Le Passeur', desc: 'Téléportation vers ta position réelle. Noé règle aussi ton exosquelette.', sci: 'noe' },
+  // ancien : « Repos, tenue et profil. » — la tenue n'existe pas (encore) dans cette version, le carnet la remplace.
+  { id: 'chambre', name: 'Quartiers', desc: 'Repos, carnet et profil. Selma veille sur toi.', sci: 'selma' },
+];
+/** Prénom utilisé sur les boutons « Parler à … » (ancien). */
+export const FIRST_NAME: Record<SciId, string> = { iris: 'Iris', noe: 'Noé', selma: 'Selma' };
+/** Indication donnée après la première réplique d'Iris (ancien). */
+export const HINT_FIRST = 'Glisse à droite pour rejoindre le Passeur';
 
 export const BRANCH_LABEL = { scanner: 'Scanner', portage: 'Portage', endurance: 'Endurance', 'réseau': 'Réseau' } as const;
 /** Partie de l'exosquelette que chaque branche allume. */

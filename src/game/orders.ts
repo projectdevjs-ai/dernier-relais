@@ -2,7 +2,7 @@
 // Tout est calculé à partir de l'identifiant de l'emplacement : mêmes commandes pour tous les joueurs.
 import { type LngLat, dist, hash, rng } from '../core/geo';
 import type { ParcelSpot, Shelter } from '../world/types';
-import type { CrateKind, SpecialKind } from './api';
+import type { CrateKind, SlotId, SpecialKind, SurpriseKind } from './api';
 import { DEST, NEWBIE, SHELTER_PERK } from './rules';
 import { makeSpecial, specialFor } from './specials';
 
@@ -43,6 +43,11 @@ export interface Order {
   legM?: number;
   /** Mètres parcourus en véhicule avec ce colis au dos. */
   rideM?: number;
+  /** Emplacement du colis porté (dos par défaut). */
+  slot?: SlotId;
+  /** Surprise révélée à l'écoute, et vrai si l'étiquette suspecte a été trouvée. */
+  surprise?: SurpriseKind;
+  label?: boolean;
 }
 
 interface Item { name: string; crate: CrateKind; min: number; max: number; fragile: number }

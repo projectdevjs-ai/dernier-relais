@@ -1,6 +1,7 @@
 // Sauvegarde du jeu : format versionné, stockage du téléphone, et stockage en mémoire pour les tests.
 import type { LngLat } from '../core/geo';
-import type { CrateKind, SpecialKind } from './api';
+import type { CrateKind, SpecialKind, SurpriseKind } from './api';
+import { isSlot } from './slots';
 import type { Order } from './orders';
 
 export const SAVE_VERSION = 1;
@@ -19,7 +20,7 @@ export interface JamSave {
   state: 'en cours' | 'réussi' | 'raté';
 }
 /** Révision du format à l'intérieur de la version 1 : les champs ajoutés sont facultatifs, une sauvegarde plus ancienne se charge telle quelle. */
-export const SAVE_REV = 2;
+export const SAVE_REV = 3;
 
 export interface GameSave {
   version: 1;
@@ -50,6 +51,7 @@ export interface GameSave {
   contracts: ContractSave[];
   last: LngLat | null;
   // ── Révision 2 (systèmes secondaires). Absents d'une sauvegarde plus ancienne : valeurs vides.
+  // Révision 3 : chaque colis porté peut avoir un emplacement (`slot`) ; sans lui, il est au dos.
   rev?: number;
   /** Caches repérées et caches ouvertes, du jour `day`. */
   cachesFound?: string[];
@@ -79,6 +81,7 @@ const pt = (v: unknown): LngLat | null =>
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 const CRATES: CrateKind[] = ['bois', 'alu', 'plastique', 'carton'];
 const SPECIALS: SpecialKind[] = ['batterie', 'boitenoire', 'cryo', 'ruche'];
+const SURPRISES: SurpriseKind[] = ['chat', 'bonus', 'lore', 'label'];
 
 function jam(v: unknown): JamSave | null {
   const j = obj(v), at = j ? pt(j.at) : null;
@@ -107,6 +110,10 @@ function order(v: unknown): OrderSave | null {
   if (o.front === true) extra.front = true;
   if (typeof o.legM === 'number' && Number.isFinite(o.legM)) extra.legM = num(o.legM, 0, 0);
   if (typeof o.rideM === 'number' && Number.isFinite(o.rideM)) extra.rideM = num(o.rideM, 0, 0);
+  // Révision 3 (rangement) : emplacement du colis porté, surprise révélée à l'écoute.
+  if (o.state === 'porté' && isSlot(o.slot)) extra.slot = o.slot;
+  if (SURPRISES.includes(o.surprise as SurpriseKind)) extra.surprise = o.surprise as SurpriseKind;
+  if (o.label === true) extra.label = true;
   return {
     id: o.id, cell: typeof o.cell === 'string' ? o.cell : '', name: o.name, rareName: typeof o.rareName === 'string' ? o.rareName : null,
     crate: CRATES.includes(o.crate as CrateKind) ? (o.crate as CrateKind) : 'carton',
