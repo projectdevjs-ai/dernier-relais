@@ -178,6 +178,9 @@ export class CinematicBattle {
   private actionAt=0;
   private isDrone=false;
   private mouse=0;
+  private dragId: number | null = null;
+  private dragStart = 0;
+  private dragBearing = 0;
   private readonly reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly onVisibility=():void=>{this.visible=!document.hidden; if(this.visible&&!this.frame) this.frame=requestAnimationFrame(this.tick);};
   constructor(private container:HTMLElement, encounter:Encounter) {
@@ -244,11 +247,25 @@ export class CinematicBattle {
     this.visible=!document.hidden;
     document.addEventListener('visibilitychange',this.onVisibility);
     this.container.addEventListener('pointermove',this.move);
+    this.container.addEventListener('pointerdown',this.down);
+    this.container.addEventListener('pointerup',this.up);
+    this.container.addEventListener('pointercancel',this.up);
     if(this.visible)this.frame=requestAnimationFrame(this.tick);
   }
+  private readonly down=(e:PointerEvent):void=>{
+    if(this.dragId!==null)return;
+    this.dragId=e.pointerId;this.dragStart=e.clientX;this.dragBearing=this.mouse;
+    this.container.setPointerCapture?.(e.pointerId);
+  };
+  private readonly up=(e:PointerEvent):void=>{
+    if(e.pointerId===this.dragId)this.dragId=null;
+  };
   private readonly move=(e:PointerEvent):void=>{
-    if(e.pointerType==='mouse'&&this.container.clientWidth){
-      this.mouse=THREE.MathUtils.clamp((e.offsetX/this.container.clientWidth-.5),-.5,.5);
+    if(this.dragId===e.pointerId){
+      const width=Math.max(1,this.container.clientWidth);
+      this.mouse=THREE.MathUtils.clamp(this.dragBearing+(e.clientX-this.dragStart)/width,-1,1);
+    }else if(e.pointerType==='mouse' && this.dragId===null && this.container.clientWidth){
+      this.mouse=THREE.MathUtils.clamp((e.offsetX/this.container.clientWidth-.5)*1.2,-.7,.7);
     }
   };
   setMood(mood:CombatMood):void {this.mood=mood;this.actionAt=this.t;}
@@ -306,6 +323,9 @@ export class CinematicBattle {
     cancelAnimationFrame(this.frame);this.frame=0;
     document.removeEventListener('visibilitychange',this.onVisibility);
     this.container.removeEventListener('pointermove',this.move);
+    this.container.removeEventListener('pointerdown',this.down);
+    this.container.removeEventListener('pointerup',this.up);
+    this.container.removeEventListener('pointercancel',this.up);
     this.observed?.disconnect();this.observed=null;
     this.scene.traverse(o=>{if(o instanceof THREE.Mesh||o instanceof THREE.Points){
       const g=o.geometry as THREE.BufferGeometry;
