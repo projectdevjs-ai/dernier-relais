@@ -37,6 +37,8 @@ export class RebirthConsole {
   private readonly status = el('span','rb-trigger-alert');
   private last = '';
   private opened = false;
+  /** Ne montre pas à nouveau une confrontation que le joueur a volontairement réduite. */
+  private announcedEncounter: string | null = null;
   private tab: 'survie' | 'fabrication' | 'factions' = 'survie';
   private view: GameView | null = null;
   constructor(root: HTMLElement, private actions: GameActions, private run: (r: ActionResult) => boolean) {
@@ -62,7 +64,11 @@ export class RebirthConsole {
     this.status.textContent = threat ? ' !' : '';
     this.trigger.classList.toggle('rb-in-combat', !!threat);
     // Une confrontation active mérite une ouverture immédiate, sans pop-up durant la marche.
-    if (threat && !this.opened && !v.player.moving && !v.player.vehicle) this.open();
+    if (!threat) this.announcedEncounter = null;
+    if (threat && this.announcedEncounter !== threat.id && !v.player.moving && !v.player.vehicle) {
+      this.announcedEncounter = threat.id;
+      this.open();
+    }
     if (!this.opened) return;
     const key = JSON.stringify({ r:s, st:v.player.stamina, lvl:v.player.level, moving:v.player.moving,
       vehicle:v.player.vehicle, score:v.player.score, tab:this.tab });
