@@ -11,6 +11,8 @@ import './story.css';
 export interface StoryUiOpts {
   /** Appelé à l'affichage d'un message radio, pour dire la réplique. */
   onVoice?: (who: string, text: string) => void;
+  /** Vrai tant que le joueur n'est pas sur la carte (prologue, labo) : messages et cartons attendent. */
+  hold?: () => boolean;
 }
 
 const UI_KEY = 'dernier-relais/histoire-replie';
@@ -118,15 +120,21 @@ export class StoryUi {
     this.journal.open();
   }
 
-  /** Ferme tout de suite le message radio affiché et oublie ceux qui attendaient (retour au labo, démo). */
-  dismissRadio(): void {
-    this.pending.length = 0;
+  /**
+   * Ferme tout de suite le message radio affiché. Ceux qui attendaient sont oubliés (démo), sauf avec
+   * `keep` (retour au labo, prologue) : ils seront montrés au retour sur la carte.
+   */
+  dismissRadio(keep = false): void {
+    if (!keep) this.pending.length = 0;
     if (this.retry) { clearTimeout(this.retry); this.retry = null; }
     if (this.radioTimer) { clearTimeout(this.radioTimer); this.radioTimer = null; }
     this.radio.hidden = true;
-    this.goal.classList.remove('is-away');
+    if (this.card.hidden) this.goal.classList.remove('is-away');
     this.space();
+    if (this.pending.length) this.nextRadio();
   }
+  /** Referme le panneau « Histoire » s'il est ouvert. */
+  closeJournal(): void { this.journal?.close(); }
 
   /** Retire l'interface (changement d'écran, tests). */
   destroy(): void {
@@ -187,7 +195,7 @@ export class StoryUi {
 
   /** Vrai si un écran plein (note de livraison, panneau, carton) occupe le joueur : le message attend. */
   private busy(): boolean {
-    return !this.card.hidden || !!this.root.querySelector('.dr-grade:not([hidden]), .dr-modal:not([hidden])');
+    return !this.card.hidden || this.opts.hold?.() === true || !!this.root.querySelector('.dr-grade:not([hidden]), .dr-modal:not([hidden])');
   }
 
   private nextRadio(): void {
@@ -236,7 +244,7 @@ export class StoryUi {
     setText(this.cardText, typo(text));
     setText(this.cardNext, next ? `À suivre\u00a0: ${next}` : 'Fin de l’histoire, pour l’instant.');
     // Une note de livraison ou un panneau est ouvert : le carton attend son tour.
-    if (this.root.querySelector('.dr-grade:not([hidden]), .dr-modal:not([hidden])')) {
+    if (this.opts.hold?.() === true || this.root.querySelector('.dr-grade:not([hidden]), .dr-modal:not([hidden])')) {
       setTimeout(() => this.showCard(no, title, text, next), 700);
       return;
     }

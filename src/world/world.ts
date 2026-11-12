@@ -16,10 +16,14 @@ export class World {
   async moveTo(lng: number, lat: number): Promise<void> {
     if (this.day !== today()) { this.day = today(); this.cells.clear(); }
     const here = cellAt(lng, lat);
-    await Promise.all(cellsAround(here, this.radius).map(c => this.ensure(c)));
-    // On garde en mémoire une zone un peu plus large que la zone visible.
+    // On garde en mémoire une zone un peu plus large que la zone visible. Les cases trop lointaines sont retirées
+    // AVANT de charger les nouvelles, et le jeu est prévenu : après un grand saut (train, lieu de test), il ne garde
+    // ni les abris ni les colis de l'endroit quitté.
     const keep = new Set(cellsAround(here, this.radius + 2).map(c => c.id));
-    for (const id of this.cells.keys()) if (!keep.has(id)) this.cells.delete(id);
+    let pruned = false;
+    for (const id of this.cells.keys()) if (!keep.has(id)) { this.cells.delete(id); pruned = true; }
+    if (pruned) this.onChange();
+    await Promise.all(cellsAround(here, this.radius).map(c => this.ensure(c)));
   }
   private ensure(c: Cell): Promise<void> {
     if (this.cells.has(c.id)) return Promise.resolve();

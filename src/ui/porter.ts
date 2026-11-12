@@ -186,7 +186,7 @@ export class PorterPanel {
     page.append(
       sec('sun', 'Ambiance'), seg,
       sec('gps', 'Position'), gps,
-      h('p', 'dr-hint', 'Ou visite un lieu de test, en position simulée :'), places,
+      h('p', 'dr-hint', 'Pas de GPS ? Explore un autre lieu, en position simulée :'), places,
       sec('help', 'Aide et histoire'),
       h('div', 'dr-set-btns',
         wide('help', 'Revoir l’aide', () => { this.panel.close(); hooks.replayHelp(); }),

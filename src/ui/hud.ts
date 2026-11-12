@@ -291,6 +291,9 @@ export class Hud implements HudApi {
     this.porter?.showAmbiance(a);
   }
 
+  /** Referme tous les panneaux ouverts (changement d'écran : labo, prologue). */
+  closeAll(): void { this.closePanels(); this.pseudo.panel.close(); }
+
   private closePanels(): void {
     this.shelter.panel.close(); this.order.panel.close(); this.porter.panel.close();
   }

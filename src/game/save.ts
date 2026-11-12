@@ -105,6 +105,8 @@ function order(v: unknown): OrderSave | null {
   if (o.inspected === true) extra.inspected = true;
   if (typeof o.strap === 'number' && Number.isFinite(o.strap)) extra.strap = num(o.strap, 0, 0, 1);
   if (o.front === true) extra.front = true;
+  if (typeof o.legM === 'number' && Number.isFinite(o.legM)) extra.legM = num(o.legM, 0, 0);
+  if (typeof o.rideM === 'number' && Number.isFinite(o.rideM)) extra.rideM = num(o.rideM, 0, 0);
   return {
     id: o.id, cell: typeof o.cell === 'string' ? o.cell : '', name: o.name, rareName: typeof o.rareName === 'string' ? o.rareName : null,
     crate: CRATES.includes(o.crate as CrateKind) ? (o.crate as CrateKind) : 'carton',

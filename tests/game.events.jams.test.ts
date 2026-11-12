@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { dist } from '../src/core/geo';
 import { jamFor, jamSlot, jamsFor } from '../src/game/jams';
 import { baseReward } from '../src/game/orders';
-import { JAM } from '../src/game/rules';
+import { DEST, JAM } from '../src/game/rules';
 import { off, ofType, place, rig, shelter, wait, walk, world } from './game.helpers';
 import { A, B, C, quiet, when } from './game.events.helpers';
 
@@ -25,6 +25,17 @@ describe('embouteillages : règles', () => {
     expect(n / 4000).toBeGreaterThan(JAM.chance * 0.7); expect(n / 4000).toBeLessThan(JAM.chance * 1.3);
     expect(6 * JAM.chance).toBeLessThan(1); // six abris environ dans un secteur de 2 km : rarement plus d'un lot
     for (let s = 0; s < 500; s++) expect(jamFor(A, [A], s)).toBeNull();
+  });
+  it('ne confie des colis que pour des abris à distance de marche : aucun lot si tous les voisins sont au-delà du plafond', () => {
+    const far1 = shelter('F1', off(DEST.capM + 200, 0)), far2 = shelter('F2', off(0, DEST.capM + 400)), near = shelter('N1', off(0, DEST.capM - 300));
+    for (let s = 0; s < 800; s++) {
+      expect(jamFor(A, [A, far1, far2], s)).toBeNull();
+      const j = jamFor(A, [A, far1, near, far2], s);
+      if (!j) continue;
+      expect(j.orders.every(o => o.destId === 'N1')).toBe(true);
+      // Le temps accordé tient dans une sortie.
+      expect(j.minutes).toBeLessThanOrEqual(JAM.baseMin + (JAM.count * DEST.capM / 100) * JAM.minPer100m + 1);
+    }
   });
   it('trois colis légers, connus, pour les abris voisins, avec un temps et un bonus proportionnés', () => {
     expect(LOT.orders).toHaveLength(JAM.count);

@@ -24,6 +24,7 @@ const pref = {
   set(k: string, v: string): void { try { localStorage.setItem(`dernier-relais/${k}`, v); } catch { /* stockage indisponible */ } },
 };
 const ambiance: Ambiance = pref.get('ambiance') === 'clair' ? 'clair' : 'crépuscule';
+let currentAmbiance: Ambiance = ambiance;
 
 // Sons, voix et vibrations : préférences mémorisées. Le navigateur n'autorise le son qu'après un premier toucher.
 const prefs = {
@@ -43,7 +44,8 @@ applyVoice();
 addEventListener('pointerdown', () => { sound.unlock(); voice.unlock(); });
 
 // En ligne : sauvegarde locale d'abord, copie sur le serveur quand il répond. Hors ligne, le jeu reste complet.
-const online = createOnline(new LocalGameStore());
+const localStore = new LocalGameStore();
+const online = createOnline(localStore);
 const game = new Game({ store: online.store });
 const world = new World(() => game.setWorld(world.loaded()));
 let me: LngLat | null = null;
@@ -96,7 +98,7 @@ const hud = new Hud(hudRoot, {
   actions: game,
   onUseGps: () => { stage.recenter(); locator.startGPS(); },
   onRecenter: () => stage.recenter(),
-  onAmbiance: a => { pref.set('ambiance', a); stage.setAmbiance(a); lab.setAmbiance(a); },
+  onAmbiance: a => { currentAmbiance = a; pref.set('ambiance', a); stage.setAmbiance(a); lab.setAmbiance(a); },
   onGoto: (at, label) => {
     simTarget = null;
     stage.jumpTo(at);
@@ -132,7 +134,7 @@ online.net.start();
 
 // Histoire principale : observe le jeu, donne l'objectif en cours et les messages radio de la Station Lumen.
 const story = new Story();
-const storyUi = new StoryUi(hudRoot, story, { onVoice: (who, text) => voice.say(who, text) });
+const storyUi = new StoryUi(hudRoot, story, { onVoice: (who, text) => voice.say(who, text), hold: () => away });
 
 let view: GameView | null = null;
 game.on(e => {
@@ -178,42 +180,77 @@ function frame(): void {
 let inLab = false;
 let gpsStarted = false;
 const lab = new Lab(document.body, {
-  onDepart: () => {
-    lab.close();
-    inLab = false;
-    stage.setPaused?.(false);
-    document.body.classList.remove('dr-in-lab');
-    stage.recenter();
-    if (!gpsStarted) { gpsStarted = true; locator.startGPS(); }
-  },
+  onDepart: () => { lab.close(); leaveLab(); },
   onSkills: () => hud.openPorter('competences'),
   onNetwork: () => hud.openNetwork(),
   onContracts: () => hud.openPorter('contrats'),
   onJournal: () => hud.openPorter('carnet'),
 }, { ambiance });
 
+/** Vrai tant que le joueur n'est pas sur la carte (écran de départ, prologue, labo) : les messages radio attendent. */
+let away = true;
+let prologueOn = false;
+function leaveLab(): void {
+  inLab = false;
+  away = prologueOn;
+  document.body.classList.remove('dr-in-lab');
+  if (!prologueOn) stage.setPaused?.(false);
+  stage.recenter();
+  if (!gpsStarted) { gpsStarted = true; locator.startGPS(); }
+}
+
+function closeEverything(): void { hud.closeAll(); france.close(); storyUi.closeJournal(); }
+
 async function enterLab(): Promise<void> {
+  closeEverything();
+  if (inLab || prologueOn) return; // déjà au labo : il suffit de refermer le panneau
   inLab = true;
+  away = true;
+  simTarget = null;
+  storyUi.dismissRadio(true);
+  voice.stop();
   document.body.classList.add('dr-in-lab');
   stage.setPaused?.(true);
   try { await lab.open(view ?? game.view()); }
-  catch { inLab = false; stage.setPaused?.(false); document.body.classList.remove('dr-in-lab'); if (!gpsStarted) { gpsStarted = true; locator.startGPS(); } }
+  catch { lab.close(); leaveLab(); }
 }
 
 /** Prologue, avec la narration en voix française calée sur les textes à l'écran. */
 async function runPrologue(): Promise<void> {
+  if (prologueOn) return;
+  prologueOn = true;
+  away = true;
+  closeEverything();
+  storyUi.dismissRadio(true);
+  voice.stop();
+  // Revu depuis le labo : le labo se met en veille pendant le film, puis revient.
+  const fromLab = inLab;
+  if (fromLab) lab.close();
   const lines: [number, string, string][] = [
     [1.2, 'narrateur', 'Tu es tombé du ciel.'],
     [14.4, 'iris', 'Dehors, les villes sont coupées les unes des autres.'],
     [18.9, 'iris', 'Plus de routes sûres, plus de liaisons.'],
     [23.3, 'iris', 'Il ne reste que des gens comme toi, qui portent.'],
   ];
-  const timers = lines.map(([t, who, text]) => setTimeout(() => voice.say(who, text), t * 1000));
+  // La narration part quand la première image est là (repère « vent »), pas pendant le chargement.
+  let timers: ReturnType<typeof setTimeout>[] = [];
+  let over = false;
   stage.setPaused?.(true);
-  await playPrologue(document.body, { ambiance });
-  if (!inLab) stage.setPaused?.(false);
+  try {
+    await playPrologue(document.body, {
+      ambiance: currentAmbiance,
+      onSound: cue => {
+        if (cue === 'vent' && !over) timers = lines.map(([t, who, text]) => setTimeout(() => { if (!over) voice.say(who, text); }, t * 1000));
+      },
+    });
+  } catch { /* prologue impossible : on continue sans lui */ }
+  over = true;
   timers.forEach(clearTimeout);
   voice.stop();
+  prologueOn = false;
+  if (fromLab) {
+    try { await lab.open(view ?? game.view()); } catch { lab.close(); leaveLab(); }
+  } else if (!inLab) { away = false; stage.setPaused?.(false); }
 }
 
 /** Écran de départ du tout premier lancement : un toucher est nécessaire pour que le son soit autorisé. */
@@ -229,13 +266,21 @@ function splash(): Promise<void> {
 }
 
 game.load().then(async () => {
-  const saved = game.view().player.at ?? game.snapshot().last ?? START;
+  // Dernière position connue : relue dans la sauvegarde du téléphone (le jeu ne la rend pas tant qu'il n'a pas reçu de position).
+  let lastAt: LngLat | null = null;
+  try {
+    const l = (await localStore.load())?.last;
+    if (Array.isArray(l) && l.length === 2 && Number.isFinite(l[0]) && Number.isFinite(l[1])) lastAt = [l[0], l[1]];
+  } catch { /* stockage indisponible : départ au point par défaut */ }
+  const saved = game.view().player.at ?? game.snapshot().last ?? lastAt ?? START;
   stage.jumpTo(saved);
   locator.simulate(saved[0], saved[1]);
   setInterval(frame, 200);
   frame();
   // Essais automatiques : « ?direct » saute le prologue et le labo.
-  if (new URLSearchParams(location.search).has('direct')) { gpsStarted = true; locator.startGPS(); return; }
+  if (new URLSearchParams(location.search).has('direct')) { away = false; gpsStarted = true; locator.startGPS(); return; }
+  // La carte ne se dessine pas derrière l'écran de départ, le prologue et le labo.
+  stage.setPaused?.(true);
   if (shouldPlayPrologue()) { await splash(); await runPrologue(); }
   await enterLab();
 });

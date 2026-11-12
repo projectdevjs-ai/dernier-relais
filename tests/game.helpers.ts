@@ -53,10 +53,11 @@ export function quietSky(cells: CellContent[], t: number, hours = 6): boolean {
 export interface Rig { game: Game; store: MemoryGameStore; clock: { t: number }; events: GameEvent[] }
 /** Mercredi 11 novembre 2026, 10 h en temps universel. */
 export const T0 = Date.UTC(2026, 10, 11, 10, 0, 0);
-export async function rig(opts: { save?: GameSave | null; t?: number; store?: MemoryGameStore } = {}): Promise<Rig> {
+/** `newcomer` : garde les premières commandes simplifiées du nouveau porteur (désactivées par défaut dans les tests). */
+export async function rig(opts: { save?: GameSave | null; t?: number; store?: MemoryGameStore; newcomer?: boolean } = {}): Promise<Rig> {
   const clock = { t: opts.t ?? T0 };
   const store = opts.store ?? new MemoryGameStore(opts.save ?? null);
-  const game = new Game({ store, now: () => clock.t });
+  const game = new Game({ store, now: () => clock.t, easeNewcomers: opts.newcomer === true });
   const events: GameEvent[] = [];
   game.on(e => events.push(e));
   await game.load();

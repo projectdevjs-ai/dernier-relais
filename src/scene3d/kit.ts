@@ -77,6 +77,11 @@ const FINAL_SHADER = {
     }`,
 };
 
+/** Vrai si l'adresse porte « ?leger » : rendu 3D allégé pour les essais automatiques. */
+export function lightRender(): boolean {
+  try { return new URLSearchParams(location.search).has('leger'); } catch { return false; }
+}
+
 export class Viewport {
   readonly canvas: HTMLCanvasElement;
   readonly renderer: THREE.WebGLRenderer;
@@ -97,7 +102,9 @@ export class Viewport {
     this.canvas.className = 's3-canvas';
     this.canvas.setAttribute('aria-hidden', 'true');
     root.appendChild(this.canvas);
-    const post = opts.post !== false;
+    // « ?leger » (essais automatiques sans carte graphique) : image réduite, sans effets ni ombres.
+    const light = lightRender();
+    const post = opts.post !== false && !light;
     try {
       this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: !post, powerPreference: 'high-performance', alpha: false });
     } catch (e) {
@@ -105,10 +112,10 @@ export class Viewport {
       throw e;
     }
     const r = this.renderer;
-    r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    r.setPixelRatio(light ? 0.25 : Math.min(2, window.devicePixelRatio || 1));
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
-    if (opts.shadows) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap; }
+    if (opts.shadows && !light) { r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap; }
     if (post && r.capabilities.isWebGL2) {
       const pr = r.getPixelRatio();
       // Anticrénelage matériel sur la cible intermédiaire : 4 échantillons sur écran ordinaire, 2 sur écran dense.

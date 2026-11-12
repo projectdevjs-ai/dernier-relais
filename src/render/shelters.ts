@@ -14,6 +14,12 @@ const SHELTER_HEIGHT = 28;
 const SHELTER_WIDTH = 30;
 const NPC_HEIGHT = 10.5;
 const RING_RADIUS = 24;
+/**
+ * Quand le joueur arrive à l'abri (à portée de livraison), le bâtiment de 28 m lui remplirait l'écran :
+ * en deçà de FAR_M il rétrécit peu à peu jusqu'à NEAR_SCALE (à NEAR_M) et recule de NEAR_PUSH_M derrière
+ * le point de livraison, vu de la caméra. Le joueur se tient ainsi devant l'abri, jamais dedans.
+ */
+const NEAR_M = 45, FAR_M = 130, NEAR_SCALE = 0.42, NEAR_PUSH_M = 22;
 
 interface Item {
   id: string;
@@ -21,6 +27,10 @@ interface Item {
   group: THREE.Group;
   npcId: NpcId;
   building: Instance | null;
+  /** Enveloppe du bâtiment : c'est elle qui rétrécit et recule quand le joueur est tout près. */
+  shell: THREE.Group;
+  /** Échelle actuelle de l'enveloppe (1 de loin, NEAR_SCALE de près). */
+  near: number;
   npc: Instance | null;
   npcLoading: boolean;
   mixer: THREE.AnimationMixer | null;
@@ -124,13 +134,15 @@ export class Shelters {
     halo.visible = false;
     group.add(halo);
 
+    const shell = new THREE.Group();
+    group.add(shell);
     group.traverse(o => o.layers.set(WORLD));
     setLayer(halo, TOP);
     setLayer(pipRow, TOP); setLayer(beam, TOP); setLayer(chevron, TOP);
     this.scene.add(group);
 
     const it: Item = {
-      id: s.id, at: [s.at[0], s.at[1]], group, npcId: s.npc, building: null, npc: null, npcLoading: false, mixer: null,
+      id: s.id, at: [s.at[0], s.at[1]], group, npcId: s.npc, shell, near: 1, building: null, npc: null, npcLoading: false, mixer: null,
       arcs, pips, pipRow, beacon, chevron, pulse, glow, halo, height: SHELTER_HEIGHT, stars: -1, deliverable: false, inRange: false, alive: true,
     };
     this.items.set(s.id, it);
@@ -140,8 +152,8 @@ export class Shelters {
       // Dessiné par-dessus la carte (calque TOP) : les immeubles de la carte qui chevauchent son emprise
       // ne le traversent plus, et l'abri reste lisible de partout, comme le porteur.
       setLayer(inst.root, TOP);
-      group.add(inst.root);
-      it.pipRow.position.y = it.height + 3.5;
+      shell.add(inst.root);
+      it.pipRow.position.y = it.height * it.near + 3.5;
       it.halo.position.y = it.height * 0.6;
       if (it.npc) it.npc.root.position.set(inst.size.x * 0.2, 0, Math.min(RING_RADIUS - 5, inst.size.z / 2 + 4));
       this.restyle(it);
@@ -208,6 +220,18 @@ export class Shelters {
     const phase = this.kit.phase;
     for (const it of this.items.values()) {
       it.pipRow.rotation.y = -bearingRad;
+      // De près, le bâtiment rétrécit et recule derrière le point de livraison (vu de la caméra).
+      const gp = it.group.position;
+      const f = Math.min(1, Math.max(0, (Math.hypot(player.x - gp.x, player.z - gp.z) - NEAR_M) / (FAR_M - NEAR_M)));
+      const want = NEAR_SCALE + (1 - NEAR_SCALE) * f * f * (3 - 2 * f);
+      if (Math.abs(want - it.near) > 0.001 || it.near < 1) {
+        it.near += (want - it.near) * Math.min(1, dt * 3.5);
+        const push = ((1 - it.near) / (1 - NEAR_SCALE)) * NEAR_PUSH_M;
+        it.shell.scale.setScalar(it.near);
+        it.shell.position.set(Math.sin(bearingRad) * push, 0, -Math.cos(bearingRad) * push);
+        it.pipRow.position.set(it.shell.position.x, it.height * it.near + 3.5, it.shell.position.z);
+        it.halo.position.set(it.shell.position.x, it.height * it.near * 0.6, it.shell.position.z);
+      }
       // Halo au sol : il respire lentement, comme un feu de camp vu de loin.
       if (it.glow.visible) { const g = RING_RADIUS * (3.4 + 0.22 * Math.sin(timeS * 0.9 + it.group.position.x)); it.glow.scale.set(g, 1, g); }
       if (it.halo.visible) it.halo.rotation.set(pitchRad, -bearingRad, 0);
@@ -217,7 +241,7 @@ export class Shelters {
         it.npc.root.rotation.y = Math.atan2(player.x - (it.group.position.x + p.x), player.z - (it.group.position.z + p.z));
       }
       if (it.deliverable) {
-        it.chevron.position.y = it.height + 13 + Math.sin(timeS * 2.2) * 1.4;
+        it.chevron.position.y = it.height * it.near + 13 + Math.sin(timeS * 2.2) * 1.4;
         it.chevron.rotation.y = timeS * 1.4;
         const r = RING_RADIUS + 4.5 + phase * (it.inRange ? 16 : 9);
         it.pulse.scale.set(r, 1, r);

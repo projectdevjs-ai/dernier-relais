@@ -3,7 +3,7 @@
 import { type LngLat, dist, rng } from '../core/geo';
 import type { Shelter } from '../world/types';
 import { ITEMS, type Order, baseReward } from './orders';
-import { JAM } from './rules';
+import { DEST, JAM } from './rules';
 
 export interface Jam {
   id: string; shelterId: string; shelterName: string; at: LngLat;
@@ -19,8 +19,10 @@ export function jamFor(s: Shelter, shelters: Shelter[], slot: number): Jam | nul
   const r = rng(`embouteillage|${s.id}|${slot}`);
   if (r() >= JAM.chance) return null;
   // Destinataires : les abris les plus proches, chacun le sien tant qu'il y en a assez.
+  // Seulement des abris à distance de marche (plafond des commandes) : le lot doit tenir dans une sortie.
   const others = shelters.filter(o => o.id !== s.id)
-    .map(o => ({ o, d: dist(o.at, s.at) })).sort((a, b) => a.d - b.d || (a.o.id < b.o.id ? -1 : 1)).slice(0, JAM.count);
+    .map(o => ({ o, d: dist(o.at, s.at) })).filter(x => x.d <= DEST.capM)
+    .sort((a, b) => a.d - b.d || (a.o.id < b.o.id ? -1 : 1)).slice(0, JAM.count);
   if (!others.length) return null;
   const id = `lot|${s.id}|${slot}`, orders: Order[] = [];
   const light = ITEMS.filter(i => i.min <= JAM.maxKg);

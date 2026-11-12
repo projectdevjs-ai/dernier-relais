@@ -14,10 +14,31 @@ export const SPEED = {
   /** au-dessus : saut de position (lieu de test), ignoré */ teleport: 30,
   /** déplacement minimal compté, pour ne pas additionner le bruit du GPS */ stepM: 3,
   /** sans nouveau déplacement pendant ce temps, le joueur est à l'arrêt */ idleMs: 5000,
+  /** au-dessus, de façon soutenue : le joueur est dans un véhicule (ni distance, ni ramassage, ni livraison) */ vehicle: 6,
+  /** secondes au-dessus du seuil avant de considérer que c'est un véhicule, et secondes de marche avant de l'oublier */ vehicleS: 8, vehicleCoolS: 20,
+  /** GPS muet plus longtemps que ça : on repart de la nouvelle position sans compter le trajet */ gapMs: 30000,
+  /** précision GPS (m) au-delà de laquelle la position est lissée avant de compter les pas */ noisyAccM: 6,
+  /** pas minimal quand le GPS est imprécis : part de la précision annoncée, plafonnée */ stepPerAcc: 0.7, stepMaxM: 25,
 } as const;
 
+/**
+ * Choix de l'abri destinataire d'un colis : de préférence entre minM et maxM du colis (4 à 9 minutes de marche),
+ * tiré parmi les `pick` plus proches de cette bande. Hors bande, un abri trop près est pénalisé `nearPenalty` fois plus
+ * par mètre qu'un abri trop loin. Seuls les abris des cases voisines du colis (3 x 3) comptent : même résultat pour tous.
+ */
+export const DEST = { minM: 250, maxM: 700, pick: 3, nearPenalty: 2, /** plafond : au-delà, un abri n'est choisi que s'il n'y en a aucun en deçà */ capM: 900 } as const;
+/**
+ * Premières commandes d'un nouveau porteur (tant qu'il a moins de `deliveries` livraisons) : l'emplacement du colis est
+ * le même que pour tout le monde, mais la commande est simplifiée : abri le plus proche à au moins minM (de préférence à moins de maxM), ni fragile, ni délai.
+ */
+export const NEWBIE = { deliveries: 3, minM: 90, maxM: 400 } as const;
+/** Colis transporté en véhicule sur plus de `share` du trajet : les points de la livraison sont multipliés par `mult`. */
+export const VEHICLE = { share: 0.3, mult: 0.25 } as const;
+/** Scanner à vide (rien de révélé, sac vide) : il accroche le colis caché le plus proche jusqu'à cette distance. */
+export const SCAN_ECHO_M = 900;
+
 /** Points d'abri nécessaires pour chaque étoile. */
-export const STAR_THRESHOLDS = [100, 300, 600, 1000, 1500] as const;
+export const STAR_THRESHOLDS = [100, 350, 800, 1600, 3000] as const;
 export const GRADE_MULT: Record<Grade, number> = { E: 0.5, D: 0.75, C: 1, B: 1.25, A: 1.5, S: 2 };
 /** Score minimal (sur 100) de chaque note. */
 export const GRADE_MIN: [Grade, number][] = [['S', 97], ['A', 88], ['B', 76], ['C', 62], ['D', 45], ['E', -Infinity]];
@@ -84,7 +105,7 @@ export const SPECIAL = {
 
 /** Caches : chance par case et par jour, portées, récompenses. */
 export const CACHE = {
-  chance: 0.07, scanM: 70, openM: 25, clearM: 50,
+  chance: 0.14, scanM: 120, openM: 25, clearM: 50,
   points: [30, 80], xp: [20, 40], skillChance: 0.1,
 } as const;
 

@@ -30,8 +30,8 @@ describe('caches : règles', () => {
       expect(c.xp).toBeGreaterThanOrEqual(CACHE.xp[0]); expect(c.xp).toBeLessThanOrEqual(CACHE.xp[1]);
     }
     expect(n / 3600).toBeGreaterThan(CACHE.chance * 0.7); expect(n / 3600).toBeLessThan(CACHE.chance * 1.3);
-    // Un secteur de 5 x 5 cases : une ou deux caches, invisibles tant qu'on n'a pas scanné à côté.
-    expect(25 * CACHE.chance).toBeLessThan(2);
+    // Un secteur de 5 x 5 cases : quelques caches (3 ou 4), invisibles tant qu'on n'a pas scanné à côté.
+    expect(25 * CACHE.chance).toBeGreaterThan(2); expect(25 * CACHE.chance).toBeLessThan(5);
     expect(cacheInCell('pas une case', '2026-11-11', [])).toBeNull();
   });
   it('change d’un jour à l’autre et reste à plus de 50 m des abris', () => {

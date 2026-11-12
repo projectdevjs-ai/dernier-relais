@@ -2,7 +2,7 @@
 // les cases visitées restent nettes, avec une lisière douce entre les deux.
 // Une petite texture (4 x 4 points par case) sert de masque ; son filtrage lisse la transition.
 import * as THREE from 'three';
-import { CELL_Z, cellAt, tileLngLat, type LngLat } from '../core/geo';
+import { CELL_Z, cellAt, tileLngLat, tileXY, type LngLat } from '../core/geo';
 import { type Layer3D, WORLD } from './layer';
 
 /** Côté de la grille de cases couverte, centrée sur le joueur. */
@@ -10,6 +10,8 @@ const N = 16;
 /** Points de masque par côté de case : assez pour que la lisière suive le bord des cases, coins compris. */
 const K = 4;
 const T = N * K;
+/** Rayon autour du joueur où la brume ne se pose jamais, en mètres (un peu plus que la portée du scanner). */
+const CLEAR_M = 190;
 const vert = /* glsl */`
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
@@ -67,17 +69,26 @@ export class ExploreFog {
   sync(at: LngLat | null, visited: string[]): void {
     if (!at || !visited.length) { this.mesh.visible = false; this.key = ''; return; }
     const here = cellAt(at[0], at[1]);
-    const key = `${here.id}|${visited.length}|${visited[visited.length - 1]}`;
+    // Position du joueur en fractions de case, arrondie au quart de case : le masque suit sa marche.
+    const [fx, fy] = tileXY(at[0], at[1], CELL_Z);
+    const qx = Math.round(fx * K) / K, qy = Math.round(fy * K) / K;
+    const key = `${here.id}|${visited.length}|${visited[visited.length - 1]}|${qx}|${qy}`;
     if (key === this.key) return;
     this.key = key;
     this.seen.clear();
     for (const id of visited) this.seen.add(id);
     this.x0 = here.x - N / 2; this.y0 = here.y - N / 2;
     this.any = false;
+    // Rayon toujours dégagé autour du joueur, en cases : même au bord d'une case jamais visitée, la brume ne lui bouche pas la vue.
+    const cellM = (40075016.7 * Math.cos((at[1] * Math.PI) / 180)) / 2 ** CELL_Z, clear = CLEAR_M / cellM;
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const fog = !this.seen.has(`${this.x0 + i}/${this.y0 + j}`);
-      if (fog) this.any = true;
-      for (let b = 0; b < K; b++) this.data.fill(fog ? 255 : 0, (j * K + b) * T + i * K, (j * K + b) * T + i * K + K);
+      for (let b = 0; b < K; b++) for (let a = 0; a < K; a++) {
+        const dx = this.x0 + i + (a + 0.5) / K - fx, dy = this.y0 + j + (b + 0.5) / K - fy;
+        const on = fog && dx * dx + dy * dy > clear * clear;
+        if (on) this.any = true;
+        this.data[(j * K + b) * T + i * K + a] = on ? 255 : 0;
+      }
     }
     this.tex.needsUpdate = true;
     this.mesh.visible = this.any;

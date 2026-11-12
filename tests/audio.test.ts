@@ -161,11 +161,41 @@ describe('son : événements du jeu', () => {
       for (const src of ctx.sources) { expect(src.stopAt).not.toBeNull(); expect(src.stopAt!).toBeGreaterThan(src.startAt!); }
     }
   });
+  it('donne un son discret à chaque événement des systèmes secondaires, plus bas que les sons principaux', () => {
+    const jam = { id: 'l', shelterId: 'a1', shelterName: 'Mairie', at: [0, 0] as [number, number], state: 'en cours' as const, count: 3, delivered: 0, minutes: 12, minutesLeft: 12, bonus: 60, distanceM: 0, inRange: true };
+    const EXTRA: [GameEvent, string][] = [
+      [{ type: 'special', order }, 'special'],
+      [{ type: 'cache', cacheId: 'k', points: 40, xp: 20, skillPoint: false }, 'cacheOpen'],
+      [{ type: 'cache', cacheId: 'k', points: 40, xp: 20, skillPoint: true }, 'cacheOpen'],
+      [{ type: 'wanderer', id: 'w', name: 'Lou', line: '…', gift: 'xp' }, 'wanderer'],
+      [{ type: 'front', phase: 'approche', etaS: 120 }, 'frontNear'], [{ type: 'front', phase: 'entrée' }, 'frontIn'], [{ type: 'front', phase: 'sortie' }, 'frontOut'],
+      [{ type: 'jam', phase: 'début', jam }, 'jamStart'], [{ type: 'jam', phase: 'réussi', jam, bonus: 60 }, 'jamWon'], [{ type: 'jam', phase: 'raté', jam }, 'jamLost'],
+      [{ type: 'inspect', order, xp: 5 }, 'inspect'],
+      [{ type: 'strap', orderId: 'c1', quality: 0.8, xp: 5 }, 'strap'], [{ type: 'strap', orderId: 'c1', quality: 0.1, xp: 0 }, 'strap'],
+      [{ type: 'proof', orderId: 'c1', points: 12 }, 'proof'],
+    ];
+    for (const [e, name] of EXTRA) {
+      const { s, ctx } = unlocked();
+      expect(() => s.handle(e)).not.toThrow();
+      expect(ctx.sources.length, name).toBeGreaterThan(0);
+      for (const src of ctx.sources) { expect(src.stopAt).not.toBeNull(); expect(src.stopAt!).toBeGreaterThan(src.startAt!); }
+      const def = SOUNDS[name as keyof typeof SOUNDS];
+      expect(def.family).toBe('jeu');
+      // Discrets : pas plus longs ni plus prioritaires qu'une livraison notée S.
+      expect(def.dur).toBeLessThanOrEqual(SOUNDS.deliveryS.dur); expect(def.prio).toBeLessThanOrEqual(SOUNDS.deliveryS.prio);
+    }
+    // Les vibrations restent courtes.
+    for (const k of ['special', 'cache', 'strap'] as const) expect(HAPTICS[k].reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(200);
+  });
   it('ignore un événement inconnu', () => {
     const { s, ctx } = unlocked();
     expect(() => {
       s.handle({ type: 'rôdeur', near: true } as unknown as GameEvent);
-      s.handle({ type: 'cache' } as unknown as GameEvent);
+      s.handle({ type: 'météore' } as unknown as GameEvent);
+      // Événements des systèmes secondaires mal formés (champs manquants) : ignorés eux aussi.
+      for (const type of ['special', 'cache', 'wanderer', 'front', 'jam', 'inspect', 'strap', 'proof']) s.handle({ type } as unknown as GameEvent);
+      s.handle({ type: 'front', phase: 'inconnue' } as unknown as GameEvent);
+      s.handle({ type: 'jam', phase: 'inconnue' } as unknown as GameEvent);
       s.handle({} as unknown as GameEvent);
       s.ui('inconnu' as unknown as 'tap');
     }).not.toThrow();

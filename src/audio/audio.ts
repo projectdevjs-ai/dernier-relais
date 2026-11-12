@@ -33,6 +33,9 @@ export const HAPTICS = {
   warn: [35],
   error: [25, 40, 25],
   confirm: [15],
+  special: [20, 60, 40],
+  cache: [20, 30, 20, 30, 40],
+  strap: [12],
 } as const satisfies Record<string, readonly number[]>;
 
 /** Coupe un motif pour que sa durée totale ne dépasse jamais HAPTIC_MAX_MS. */
@@ -141,7 +144,30 @@ export class Sound {
           this.play(e.tone === 'good' ? 'toastGood' : e.tone === 'warn' ? 'toastWarn' : 'toastInfo');
           if (e.tone === 'warn') this.buzz(HAPTICS.warn);
           break;
-        default: break; // le contrat s'enrichira (caches, rôdeurs, fronts…) : rien à faire tant que le son n'est pas écrit
+        // Systèmes secondaires : sons discrets. Un événement mal formé (champ manquant) est ignoré par le « catch ».
+        case 'special': if (e.order) { this.play('special'); this.buzz(HAPTICS.special); } break;
+        case 'cache':
+          if (typeof e.points !== 'number') break;
+          this.play('cacheOpen', e.skillPoint ? 1 : 0); this.buzz(HAPTICS.cache);
+          break;
+        case 'wanderer': if (typeof e.name === 'string') this.play('wanderer'); break;
+        case 'front':
+          if (e.phase === 'approche') { this.play('frontNear'); this.buzz(HAPTICS.warn); }
+          else if (e.phase === 'entrée') { this.play('frontIn'); this.buzz(HAPTICS.dangerIn); }
+          else if (e.phase === 'sortie') this.play('frontOut');
+          break;
+        case 'jam':
+          if (e.phase === 'début') { this.play('jamStart'); this.buzz(HAPTICS.pickup); }
+          else if (e.phase === 'réussi') { this.phrase('jamWon'); this.buzz(HAPTICS.contract); }
+          else if (e.phase === 'raté') this.play('jamLost');
+          break;
+        case 'inspect': if (e.order) this.play('inspect'); break;
+        case 'strap':
+          if (typeof e.quality !== 'number') break;
+          this.play('strap', Math.min(1, Math.max(0, e.quality))); this.buzz(HAPTICS.strap);
+          break;
+        case 'proof': if (typeof e.orderId === 'string') { this.play('proof'); this.buzz(HAPTICS.strap); } break;
+        default: break; // type inconnu : ignoré
       }
     } catch { /* un son raté ne doit jamais interrompre le jeu */ }
   }

@@ -622,3 +622,7 @@
 @media (prefers-reduced-motion: reduce) {
   .dr-hud *, .dr-hud *::before, .dr-hud *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* L'aide et l'action de proximité partagent le même coin : quand les deux sont là, l'aide monte au-dessus. */
+.dr-hud:has(.dr-near:not([hidden])) .dr-help { bottom: calc(var(--sab) + 8px + 64px + 14px + 108px); }
+.dr-hud:has(.dr-near:not([hidden])) .dr-help::after { display: none; }

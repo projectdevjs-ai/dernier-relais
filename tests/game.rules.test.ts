@@ -7,9 +7,9 @@ import { type ContractState, advance, contractView, drawContracts, isDone, progr
 import { dangerInCell, dangersFor, insideDanger } from '../src/game/dangers';
 import { gradeDelivery, gradeFromScore } from '../src/game/grade';
 import { HIDDEN_LINE, LINES, npcLine } from '../src/game/npc';
-import { ITEMS, baseReward, deadlineFor, makeOrder, minutesLeft, orderName, orderReward, pickDestination } from '../src/game/orders';
+import { ITEMS, baseReward, deadlineFor, destPenalty, easeOrder, makeOrder, minutesLeft, orderName, orderReward, pickDestination, sheltersNear } from '../src/game/orders';
 import { addXp } from '../src/game/progress';
-import { BAG_KG, GRADE_MULT, STAR_THRESHOLDS, xpNeeded } from '../src/game/rules';
+import { BAG_KG, DEST, GRADE_MULT, NEWBIE, STAR_THRESHOLDS, xpNeeded } from '../src/game/rules';
 import { nextStarAt, nextUnlock, npcFor, starsFor, unlockText } from '../src/game/shelters';
 import { SKILLS, learnBlock, modsFor, skillViews } from '../src/game/skills';
 import { dayKey, nextDayMs, weekKey } from '../src/game/time';
@@ -23,17 +23,62 @@ describe('commandes', () => {
     expect(makeOrder(s, [A, B, C])).toEqual(makeOrder(s, [C, B, A]));
   });
   it('ne créent rien sans abri', () => { expect(makeOrder(spot('x', BASE), [])).toBeNull(); });
-  it('choisissent un abri autre que le plus proche quand c’est possible', () => {
+  it('choisissent un abri à distance de marche raisonnable, pas celui d’à côté quand c’est possible', () => {
+    // Abris placés dans la case du colis : A à 20 m, B à 280 m, C à 400 m, D à 500 m ; E à 1,3 km (hors des cases voisines).
     for (let i = 0; i < 40; i++) {
       const s = spot(`d${i}`, off(20, 5));
       expect(pickDestination(s, [A, B, C, D, E])!.id).not.toBe('A');
       expect(pickDestination(s, [A, B])!.id).toBe('B');
       expect(pickDestination(s, [A])!.id).toBe('A');
-      // Seulement parmi les trois suivants : l'abri très lointain n'est jamais choisi.
+      // L'abri très lointain n'est jamais choisi.
       expect(pickDestination(s, [A, B, C, D, E])!.id).not.toBe('E');
+      const d = dist(pickDestination(s, [A, B, C, D, E])!.at, s.at);
+      expect(d).toBeGreaterThanOrEqual(DEST.minM); expect(d).toBeLessThanOrEqual(DEST.maxM);
     }
-    const picked = new Set(Array.from({ length: 60 }, (_, i) => pickDestination(spot(`d${i}`, off(20, 5)), [A, B, C, D])!.id));
-    expect(picked.size).toBe(3);
+    const near = (id: string, dx: number, dy: number) => ({ ...shelter(id, off(dx, dy)), cell: cellAt(BASE[0], BASE[1]).id });
+    const pool = [near('A', 0, 0), near('B', 300, 0), near('C', 0, 400), near('D', -500, 0)];
+    const picked = new Set(Array.from({ length: 60 }, (_, i) => pickDestination(spot(`d${i}`, off(20, 5)), pool)!.id));
+    expect([...picked].sort()).toEqual(['B', 'C', 'D']);
+  });
+  it('sans abri dans la bande visée, prennent celui qui s’en écarte le moins, jamais au-delà du plafond s’il y a plus près', () => {
+    const here = cellAt(BASE[0], BASE[1]).id, sh = (id: string, dx: number) => ({ ...shelter(id, off(dx, 0)), cell: here });
+    const s = spot('x1', BASE);
+    // 150 m (trop près) contre 1 300 m (au-delà du plafond) : le plus près.
+    expect(pickDestination(s, [sh('N', 150), sh('F', 1300)])!.id).toBe('N');
+    // 60 m contre 800 m : 800 m s'écarte moins de la bande.
+    expect(pickDestination(s, [sh('N', 60), sh('F', 800)])!.id).toBe('F');
+    // Rien en deçà du plafond : le moins loin.
+    expect(pickDestination(s, [sh('F', 1500), sh('G', 1100)])!.id).toBe('G');
+    expect(destPenalty(DEST.minM)).toBe(0); expect(destPenalty(DEST.maxM)).toBe(0);
+    expect(destPenalty(DEST.minM - 100)).toBe(100 * DEST.nearPenalty); expect(destPenalty(DEST.maxM + 100)).toBe(100);
+  });
+  it('ne regardent que les abris des cases voisines du colis : même résultat où que soit le joueur', () => {
+    const c = cellAt(BASE[0], BASE[1]);
+    const inCell = (id: string, dx: number, cx: number) => ({ ...shelter(id, off(dx, 0)), cell: `${c.x + cx}/${c.y}` });
+    const s = { ...spot('x2', BASE), cell: c.id };
+    const local = [inCell('L1', 300, 0), inCell('L2', 450, 1)], farCells = [inCell('Z1', 320, 2), inCell('Z2', 400, -3)];
+    expect(sheltersNear(s, [...local, ...farCells]).map(x => x.id)).toEqual(['L1', 'L2']);
+    for (let i = 0; i < 30; i++) {
+      const k = { ...spot(`r${i}`, BASE), cell: c.id };
+      expect(pickDestination(k, [...local, ...farCells])!.id).toBe(pickDestination(k, local)!.id);
+      expect(makeOrder(k, [...farCells, ...local])).toEqual(makeOrder(k, local));
+    }
+    // Aucun abri dans les cases voisines : on se rabat sur les abris chargés plutôt que de n'avoir aucune commande.
+    expect(pickDestination(s, farCells)).not.toBeNull();
+  });
+  it('simplifient les premières commandes d’un nouveau porteur : abri proche, ni fragile, ni délai', () => {
+    const here = cellAt(BASE[0], BASE[1]).id, sh = (id: string, dx: number) => ({ ...shelter(id, off(dx, 0)), cell: here });
+    const pool = [sh('P', 30), sh('Q', 200), sh('R', 600)];
+    const s = findSpot('nb', BASE, pool, o => o.fragile && o.deadlineMin !== null && o.destId === 'R');
+    const o = makeOrder(s, pool)!;
+    expect(easeOrder(o, pool)).toBe(true);
+    expect(o).toMatchObject({ destId: 'Q', fragile: false, deadlineMin: null });
+    expect(o.baseReward).toBe(baseReward(o.weightKg, dist(o.at, o.destAt), false, false));
+    // L'abri collé au colis (moins de NEWBIE.minM) n'est pas une destination.
+    expect(NEWBIE.minM).toBeGreaterThan(30);
+    // Déjà simple et déjà proche : rien ne change.
+    const again = { ...o };
+    expect(easeOrder(o, pool)).toBe(false); expect(o).toEqual(again);
   });
   it('ont un nom, une caisse, un poids de 1 à 12 kg et une récompense cohérents', () => {
     const names = new Set(ITEMS.map(i => i.name));
@@ -114,10 +159,10 @@ describe('note', () => {
 });
 
 describe('abris', () => {
-  it('ont 5 étoiles aux seuils 100, 300, 600, 1000, 1500', () => {
-    expect([...STAR_THRESHOLDS]).toEqual([100, 300, 600, 1000, 1500]);
-    expect([0, 99, 100, 299, 300, 600, 1000, 1499, 1500, 99999].map(p => starsFor(p, 5))).toEqual([1, 1, 1, 1, 2, 3, 4, 4, 5, 5]);
-    expect([0, 1, 2, 3, 4, 5].map(nextStarAt)).toEqual([100, 300, 600, 1000, 1500, null]);
+  it('ont 5 étoiles aux seuils 100, 350, 800, 1600, 3000', () => {
+    expect([...STAR_THRESHOLDS]).toEqual([100, 350, 800, 1600, 3000]);
+    expect([0, 99, 100, 349, 350, 800, 1600, 2999, 3000, 99999].map(p => starsFor(p, 5))).toEqual([1, 1, 1, 1, 2, 3, 4, 4, 5, 5]);
+    expect([0, 1, 2, 3, 4, 5].map(nextStarAt)).toEqual([100, 350, 800, 1600, 3000, null]);
   });
   it('donnent la première étoile dès la première livraison', () => {
     expect(starsFor(0, 0)).toBe(0); expect(starsFor(20, 1)).toBe(1);

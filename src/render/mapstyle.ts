@@ -76,8 +76,13 @@ export interface GameStyle {
 }
 
 /** Hauteur des bâtiments de la carte : un peu tassée, pour que les abris et le porteur dominent. */
+/** Au-dessus de TALL_FROM mètres, seule la part TALL_KEEP de la hauteur est gardée. */
+const TALL_FROM = 7, TALL_KEEP = 0.22;
 function heightExpr(prop: 'render_height' | 'render_min_height'): unknown {
-  return ['*', 0.8, ['coalesce', ['get', prop], prop === 'render_height' ? 6 : 0]];
+  // Hauteur réelle réduite à 80 %, puis tassée au-dessus de 7 m (22 % du surplus) : en centre-ville (immeubles
+  // de 25 m) le joueur ne se retrouve plus au fond d'un canyon qui cache le sol, les colis et le fil d'Ariane.
+  const real = ['*', 0.8, ['coalesce', ['get', prop], prop === 'render_height' ? 6 : 0]];
+  return ['min', real, ['+', TALL_FROM, ['*', TALL_KEEP, ['-', real, TALL_FROM]]]];
 }
 
 const byHeight = (low: string, high: string): unknown => ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6], 3, low, 14, mixHex(low, high, 0.55), 34, high];

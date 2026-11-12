@@ -3,7 +3,7 @@
 import { type LngLat, dist, hash, rng } from '../core/geo';
 import type { ParcelSpot, Shelter } from '../world/types';
 import type { CrateKind, SpecialKind } from './api';
-import { SHELTER_PERK } from './rules';
+import { DEST, NEWBIE, SHELTER_PERK } from './rules';
 import { makeSpecial, specialFor } from './specials';
 
 export interface Order {
@@ -39,6 +39,10 @@ export interface Order {
   strap?: number;
   /** A traversé un front de mauvais temps au dos du joueur. */
   front?: boolean;
+  /** Distance à l'abri au moment du ramassage, en mètres. */
+  legM?: number;
+  /** Mètres parcourus en véhicule avec ce colis au dos. */
+  rideM?: number;
 }
 
 interface Item { name: string; crate: CrateKind; min: number; max: number; fragile: number }
@@ -68,15 +72,59 @@ export const ORDER = { deadlineChance: 0.35, rareChance: 0.15, itemCrateChance: 
 
 const round5 = (n: number): number => Math.max(5, Math.round(n / 5) * 5);
 
-/** Abri destinataire : jamais le plus proche du colis quand il y en a d'autres ; choix reproductible parmi les 3 suivants. */
+const cellXY = (id: string): [number, number] | null => {
+  const m = /^(-?\d+)\/(-?\d+)$/.exec(id);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+};
+/** Abris des cases voisines du colis (3 x 3 cases autour de la sienne). Tous les abris si la case est inconnue. */
+export function sheltersNear(spot: ParcelSpot, shelters: Shelter[]): Shelter[] {
+  const c = cellXY(spot.cell);
+  if (!c) return shelters;
+  return shelters.filter(s => { const k = cellXY(s.cell); return k !== null && Math.abs(k[0] - c[0]) <= 1 && Math.abs(k[1] - c[1]) <= 1; });
+}
+/** Écart d'une distance à la bande visée (0 dedans). Trop près coûte plus cher que trop loin. */
+export const destPenalty = (d: number): number => (d < DEST.minM ? (DEST.minM - d) * DEST.nearPenalty : d > DEST.maxM ? d - DEST.maxM : 0);
+
+/**
+ * Abri destinataire : un abri à distance de marche raisonnable du colis (DEST.minM à DEST.maxM), tiré de façon
+ * reproductible parmi les 3 plus proches de cette bande. Sans abri dans la bande : celui qui s'en écarte le moins
+ * (un abri à 150 m vaut mieux qu'un abri à 1,3 km). Seuls les abris des cases voisines du colis sont regardés,
+ * pour que le résultat ne dépende pas de l'endroit où se tient le joueur ; s'il n'y en a aucun, tous les abris chargés.
+ */
 export function pickDestination(spot: ParcelSpot, shelters: Shelter[]): Shelter | null {
   if (!shelters.length) return null;
-  const sorted = shelters
+  let pool = sheltersNear(spot, shelters);
+  if (!pool.length) pool = shelters;
+  const sorted = pool
     .map(s => ({ s, d: dist(s.at, spot.at) }))
     .sort((a, b) => a.d - b.d || (a.s.id < b.s.id ? -1 : 1));
   if (sorted.length === 1) return sorted[0].s;
-  const cands = sorted.slice(1, 4);
-  return cands[hash(`dest|${spot.id}`) % cands.length].s;
+  const band = sorted.filter(x => destPenalty(x.d) === 0).slice(0, DEST.pick);
+  if (band.length) return band[hash(`dest|${spot.id}`) % band.length].s;
+  // Plafond : un abri au-delà de DEST.capM n'est retenu que s'il n'y a rien en deçà.
+  const within = sorted.filter(x => x.d <= DEST.capM), list = within.length ? within : sorted;
+  let best = list[0];
+  for (const x of list) if (destPenalty(x.d) < destPenalty(best.d)) best = x;
+  return best.s;
+}
+
+/**
+ * Simplifie une commande pour un nouveau porteur : abri le plus proche à courte distance, ni fragile, ni délai.
+ * Les colis spéciaux, perdus ou de lot ne changent pas. Renvoie vrai si la commande a été modifiée.
+ */
+export function easeOrder(o: Order, shelters: Shelter[]): boolean {
+  if (o.special || o.lost || o.jam) return false;
+  let dest: Shelter | null = null, bd = Infinity;
+  for (const s of shelters) {
+    const d = dist(s.at, o.at);
+    if (d >= NEWBIE.minM && (d < bd || (d === bd && dest !== null && s.id < dest.id))) { dest = s; bd = d; }
+  }
+  const cur = dist(o.at, o.destAt);
+  const changed = (dest !== null && bd < cur) || o.fragile || o.deadlineMin !== null;
+  if (dest && bd < cur) { o.destId = dest.id; o.destName = dest.name; o.destAt = dest.at; }
+  o.fragile = false; o.deadlineMin = null;
+  if (changed) o.baseReward = baseReward(o.weightKg, dist(o.at, o.destAt), false, false);
+  return changed;
 }
 
 export function baseReward(weightKg: number, distanceM: number, fragile: boolean, deadline: boolean): number {

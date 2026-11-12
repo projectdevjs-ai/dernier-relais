@@ -177,7 +177,7 @@ describe('scanner', () => {
     expect(r.game.view().scanner.ready).toBe(true);
   });
   it('porte 40 m plus loin autour d’un abri à 4 étoiles', async () => {
-    const r = await rig({ save: save({ shelters: { B: { points: 1000, deliveries: 9 } } }) });
+    const r = await rig({ save: save({ shelters: { B: { points: 1600, deliveries: 9 } } }) });
     r.game.setWorld(SMALL);
     place(r, off(300, 20));
     expect(r.game.view().scanner.rangeM).toBe(200);
@@ -366,7 +366,7 @@ describe('portage', () => {
   });
   it('rend l’endurance plus vite dans un abri, et encore plus à 3 étoiles', async () => {
     const gain = async (at: LngLat) => {
-      const r = await rig({ save: save({ stamina: 0.1, shelters: { B: { points: 600, deliveries: 6 } } }) });
+      const r = await rig({ save: save({ stamina: 0.1, shelters: { B: { points: 800, deliveries: 6 } } }) });
       r.game.setWorld(SMALL); place(r, at);
       wait(r, 5);
       return r.game.view().player.stamina - 0.1;
@@ -462,9 +462,9 @@ describe('livraison', () => {
 
 describe('étoiles des abris', () => {
   it('gagne une étoile au seuil et annonce ce qu’elle débloque', async () => {
-    const { r, id } = await oneParcel(plain, { save: { shelters: { B: { points: 290, deliveries: 3 } } } });
+    const { r, id } = await oneParcel(plain, { save: { shelters: { B: { points: 340, deliveries: 3 } } } });
     const before = r.game.view().shelters.find(s => s.id === 'B')!;
-    expect(before).toMatchObject({ stars: 1, points: 290, nextStarAt: 300, nextUnlock: unlockText(2) });
+    expect(before).toMatchObject({ stars: 1, points: 340, nextStarAt: 350, nextUnlock: unlockText(2) });
     const reward1 = r.game.view().orders[0].reward;
     r.game.pickup(id);
     walk(r, off(295, 0), 1.3, i => { if (i % 5 === 0) r.game.steady(); });
@@ -472,21 +472,21 @@ describe('étoiles des abris', () => {
     const res = ofType(r.events, 'delivery')[0].result;
     expect(res).toMatchObject({ starsBefore: 1, starsAfter: 2, unlock: 'Commandes de cet abri mieux payées (+15 %)' });
     const after = r.game.view().shelters.find(s => s.id === 'B')!;
-    expect(after).toMatchObject({ stars: 2, nextStarAt: 600, nextUnlock: unlockText(3) });
+    expect(after).toMatchObject({ stars: 2, nextStarAt: 800, nextUnlock: unlockText(3) });
     expect(LINES[after.npc].étoile).toContain(after.line);
     expect(reward1).toBeGreaterThan(0);
   });
   it('paie mieux les commandes d’un abri à 2 étoiles', async () => {
     const one = await oneParcel(plain, { save: { shelters: { B: { points: 100, deliveries: 2 } } } });
-    const two = await oneParcel(plain, { save: { shelters: { B: { points: 300, deliveries: 4 } } } });
+    const two = await oneParcel(plain, { save: { shelters: { B: { points: 350, deliveries: 4 } } } });
     const r1 = one.r.game.view().orders[0].reward, r2 = two.r.game.view().orders[0].reward;
     expect(r2).toBeGreaterThan(r1);
     expect(r2 / r1).toBeGreaterThan(1.05); expect(r2 / r1).toBeLessThan(1.25);
   });
   it('propose des commandes rares à 5 étoiles, et n’a plus d’étoile à gagner', async () => {
     const rare = (o: { rareName: string | null; fragile: boolean; deadlineMin: number | null }) => o.rareName !== null && !o.fragile && o.deadlineMin === null;
-    const four = await oneParcel(rare, { save: { shelters: { B: { points: 1400, deliveries: 12 } } } });
-    const five = await oneParcel(rare, { save: { shelters: { B: { points: 1500, deliveries: 12 } } } });
+    const four = await oneParcel(rare, { save: { shelters: { B: { points: 2900, deliveries: 12 } } } });
+    const five = await oneParcel(rare, { save: { shelters: { B: { points: 3000, deliveries: 12 } } } });
     const o4 = four.r.game.view().orders[0], o5 = five.r.game.view().orders[0];
     expect(o5.name).not.toBe(o4.name);
     expect(o5.reward).toBeGreaterThan(o4.reward * 1.8);

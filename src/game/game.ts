@@ -17,9 +17,9 @@ import { type Jam, jamMinutesLeft, jamSlot, jamsFor } from './jams';
 import { lostFor, lostFromNetwork } from './lost';
 import { gradeDelivery, isWet } from './grade';
 import { HIDDEN_LINE, type Situation, npcLine } from './npc';
-import { type Order, elapsedMin, makeOrder, minutesLeft, orderName, orderReward } from './orders';
+import { type Order, easeOrder, elapsedMin, makeOrder, minutesLeft, orderName, orderReward } from './orders';
 import { addXp } from './progress';
-import { BALANCE, CACHE, DAMAGED, FRONT, GESTURE, PROOF, SAVE_EVERY_MS, SHELTER_PERK, SPEED, WANDER, XP, xpNeeded } from './rules';
+import { BALANCE, CACHE, DAMAGED, FRONT, GESTURE, NEWBIE, PROOF, SAVE_EVERY_MS, SCAN_ECHO_M, SHELTER_PERK, SPEED, VEHICLE, WANDER, XP, xpNeeded } from './rules';
 import { type GameSave, type GameStore, type JamSave, type OrderSave, SAVE_REV, type ShelterSave, emptyGameSave } from './save';
 import { nextStarAt, nextUnlock, npcFor, starsFor, unlockText } from './shelters';
 import { type Mods, learnBlock, modsFor, skillDef, skillViews } from './skills';
@@ -53,6 +53,14 @@ export class Game implements GameEngine {
   private anchor: LngLat | null = null;
   private anchorT = 0;
   private lastMoveT = 0;
+  /** Position lissée (GPS imprécis) : c'est elle qui sert à compter les pas, pas la position brute. */
+  private smooth: LngLat | null = null;
+  private lastFixT = 0;
+  private idleMs: number = SPEED.idleMs;
+  /** Déplacement en véhicule : secondes passées trop vite, secondes passées de nouveau à pied. */
+  private vehicle = false;
+  private fastS = 0;
+  private slowS = 0;
   private level = 1;
   private xp = 0;
   private skillPoints = 0;
@@ -120,13 +128,18 @@ export class Game implements GameEngine {
   private lastSaveT = -Infinity;
   private saving: Promise<void> = Promise.resolve();
 
-  constructor(opts: { store: GameStore; now?: () => number }) {
+  /** Les premières commandes d'un nouveau porteur sont simplifiées (voir NEWBIE). */
+  private easeNewcomers: boolean;
+
+  /** `easeNewcomers: false` : pas de premières commandes simplifiées (tests des règles ordinaires). */
+  constructor(opts: { store: GameStore; now?: () => number; easeNewcomers?: boolean }) {
+    this.easeNewcomers = opts.easeNewcomers !== false;
     this.store = opts.store;
     this.now = opts.now ?? (() => Date.now());
     const t = this.now();
     this.day = dayKey(t);
     this.nextDay = nextDayMs(t);
-    this.contracts = this.drawAll(t, []);
+    this.contracts = this.drawAll([]);
   }
 
   // ───────────────────────── chargement et sauvegarde
@@ -138,6 +151,11 @@ export class Game implements GameEngine {
     this.day = dayKey(t);
     this.nextDay = nextDayMs(t);
     const save = s ?? emptyGameSave(this.day);
+    // Horloge du téléphone reculée : le jour de jeu ne revient jamais en arrière (sinon les contrats déjà payés se rejoueraient).
+    if (/^\d{4}-\d{2}-\d{2}$/.test(save.day) && save.day > this.day && Number.isFinite(Date.parse(save.day))) {
+      this.day = save.day;
+      this.nextDay = nextDayMs(Date.parse(save.day));
+    }
     this.level = save.level; this.xp = save.xp; this.skillPoints = save.skillPoints;
     this.score = save.score; this.deliveries = save.deliveries; this.distanceM = save.distanceM; this.stamina = save.stamina;
     this.ranks = { ...save.skills };
@@ -157,7 +175,7 @@ export class Game implements GameEngine {
     this.jams = new Map((save.jams ?? []).filter(j => sameDay || j.state === 'en cours').map(j => [j.id, { ...j }]));
     this.strapUntil.clear(); this.proofs.clear(); this.frontS.clear();
     this.relayIds = new Map(Object.entries(save.relays ?? {}).filter(([id]) => this.orders.get(id)?.state === 'porté'));
-    this.contracts = this.drawAll(t, save.contracts);
+    this.contracts = this.drawAll(save.contracts);
     this.skillsCache = this.contractsCache = null;
     this.lastSaveT = t;
     this.dirty = false;
@@ -193,9 +211,9 @@ export class Game implements GameEngine {
   /** Sauvegarde automatique : au plus une écriture toutes les 2 s. */
   private autosave(): void { if (this.dirty && this.now() - this.lastSaveT >= SAVE_EVERY_MS) this.saveNow(); }
 
-  private drawAll(t: number, saved: { id: string; progress: number; claimed: boolean }[]): ContractState[] {
+  private drawAll(saved: { id: string; progress: number; claimed: boolean }[]): ContractState[] {
     const old = new Map(saved.map(c => [c.id, c]));
-    return [...drawContracts('jour', dayKey(t)), ...drawContracts('semaine', weekKey(t))].map(d => {
+    return [...drawContracts('jour', this.day), ...drawContracts('semaine', weekKey(Date.parse(this.day)))].map(d => {
       const o = old.get(d.id);
       return { ...d, progress: o ? Math.min(d.goal, o.progress) : 0, claimed: o ? o.claimed : false };
     });
@@ -210,6 +228,12 @@ export class Game implements GameEngine {
     this.shelterById = new Map(this.shelters.map(s => [s.id, s]));
     // Les colis non scannés sont recalculés à chaque fois ; les colis connus du joueur ne bougent plus.
     for (const [id, o] of this.orders) if (o.state === 'caché') this.orders.delete(id);
+    // Colis révélés mais jamais ramassés dont la case n'est plus chargée (le joueur est parti loin, en train par exemple) :
+    // ils sont oubliés, sinon l'interface guiderait vers un colis à des centaines de kilomètres. Ils seront à rescanner au retour.
+    const loaded = new Set(this.loadedCells);
+    for (const [id, o] of this.orders) {
+      if (o.state === 'révélé' && o.pickedAt === null && o.cell && !o.jam && !o.lost?.net && !loaded.has(o.cell)) this.orders.delete(id);
+    }
     for (const c of cells) for (const spot of c.parcels) {
       if (this.orders.has(spot.id) || this.done.has(spot.id)) continue;
       const o = makeOrder(spot, this.shelters);
@@ -243,21 +267,49 @@ export class Game implements GameEngine {
     if (!Number.isFinite(fix.lng) || !Number.isFinite(fix.lat)) return;
     const t = this.now(), p: LngLat = [fix.lng, fix.lat];
     this.mode = fix.source;
-    if (!this.pos || !this.anchor) { this.anchor = p; this.anchorT = t; }
-    else {
-      const d = dist(this.anchor, p);
-      const dtS = Math.min(SPEED.idleMs / 1000, Math.max(0.001, (t - this.anchorT) / 1000));
+    const acc = typeof fix.acc === 'number' && Number.isFinite(fix.acc) && fix.acc > 0 ? fix.acc : 0;
+    const noisy = acc > SPEED.noisyAccM;
+    const gap = t - this.lastFixT;
+    this.lastFixT = t;
+    if (!this.pos || !this.anchor || !this.smooth) { this.anchor = p; this.smooth = p; this.anchorT = t; }
+    else if (gap > SPEED.gapMs || gap < 0) {
+      // GPS muet un long moment (tunnel, application en veille) ou horloge reculée : on repart d'ici, sans compter le trajet.
+      this.anchor = p; this.smooth = p; this.anchorT = t; this.speed = 0;
+    } else {
+      // GPS imprécis : la position saute de plusieurs mètres à l'arrêt. On la lisse et on exige un pas plus grand.
+      const k = noisy ? Math.max(0.1, 1.5 / acc) : 1;
+      const q: LngLat = [this.smooth[0] + (p[0] - this.smooth[0]) * k, this.smooth[1] + (p[1] - this.smooth[1]) * k];
+      this.smooth = q;
+      const step = noisy ? Math.min(SPEED.stepMaxM, Math.max(SPEED.stepM, acc * SPEED.stepPerAcc)) : SPEED.stepM;
+      this.idleMs = noisy ? Math.max(SPEED.idleMs, step * 2000) : SPEED.idleMs;
+      const d = dist(this.anchor, q);
+      const dtS = Math.min(this.idleMs / 1000, Math.max(0.001, (t - this.anchorT) / 1000));
       const v = d / dtS;
-      if (d >= SPEED.stepM && v > SPEED.teleport) {
+      if (d >= step && v > SPEED.teleport) {
         // Saut de position (lieu de test, GPS perdu) : ni distance, ni vitesse.
-        this.anchor = p; this.anchorT = t; this.speed = 0;
-      } else if (d >= SPEED.stepM) {
-        this.heading = bearing(this.anchor, p);
+        this.anchor = p; this.smooth = p; this.anchorT = t; this.speed = 0;
+      } else if (d >= step) {
+        this.heading = bearing(this.anchor, q);
         this.speed = this.speed > 0 ? 0.5 * this.speed + 0.5 * v : v;
-        this.distanceM += d;
-        this.progress({ type: 'marche', meters: d });
-        this.anchor = p; this.anchorT = t; this.lastMoveT = t;
+        if (v > SPEED.vehicle) {
+          // Trop vite pour un marcheur : au bout de quelques secondes, c'est un véhicule.
+          this.fastS += dtS; this.slowS = 0;
+          if (!this.vehicle && this.fastS >= SPEED.vehicleS) {
+            this.vehicle = true;
+            this.emit({ type: 'toast', text: 'Tu vas trop vite pour un porteur : en véhicule, ni distance, ni ramassage, ni livraison.', tone: 'warn' });
+          }
+          // Les colis portés retiennent le chemin fait en véhicule.
+          for (const o of this.carried()) o.rideM = (o.rideM ?? 0) + d;
+        } else if (!this.vehicle) {
+          this.distanceM += d;
+          this.progress({ type: 'marche', meters: d });
+        }
+        this.anchor = q; this.anchorT = t; this.lastMoveT = t;
         this.dirty = true;
+      } else if (noisy && t - this.lastMoveT > this.idleMs) {
+        // À l'arrêt, le point de référence suit doucement la moyenne des positions : le bruit ne finit pas par faire un pas.
+        this.anchor = [this.anchor[0] + (q[0] - this.anchor[0]) * 0.05, this.anchor[1] + (q[1] - this.anchor[1]) * 0.05];
+        this.anchorT = t;
       }
     }
     this.pos = p;
@@ -272,10 +324,19 @@ export class Game implements GameEngine {
     const t = this.now();
     if (t >= this.nextDay) this.newDay(t);
     this.cooldownLeft = Math.max(0, this.cooldownLeft - dtS);
-    if (this.speed > 0 && t - this.lastMoveT > SPEED.idleMs) this.speed = 0;
+    if (this.speed > 0 && t - this.lastMoveT > this.idleMs) this.speed = 0;
     // Après une longue pause (application en arrière-plan), on ne rattrape pas le temps perdu.
     const dt = Math.min(dtS, 5);
-    const moving = this.speed > SPEED.moving, running = this.speed > SPEED.run;
+    // Retour à pied : après un moment sous le seuil, le véhicule est oublié.
+    if (this.speed <= SPEED.vehicle) {
+      this.slowS += dt;
+      if (this.slowS >= SPEED.vehicleCoolS) {
+        this.fastS = 0;
+        if (this.vehicle) { this.vehicle = false; this.emit({ type: 'toast', text: 'De nouveau à pied : le compteur reprend.', tone: 'info' }); }
+      }
+    } else this.slowS = 0;
+    // En véhicule le porteur ne marche pas : ni fatigue, ni balancement, ni course.
+    const moving = !this.vehicle && this.speed > SPEED.moving, running = !this.vehicle && this.speed > SPEED.run;
     const carried = this.carried();
     const loadFrac = this.carriedKg(carried) / this.mods.capacityKg;
     this.refreshTimed(t);
@@ -331,8 +392,19 @@ export class Game implements GameEngine {
     if (this.cooldownLeft > 0) return no('Le scanner se recharge.');
     const range = this.scanRange();
     let found = 0;
+    // Nouveau porteur : ses premières commandes sont simplifiées (abri tout proche, ni fragile, ni délai).
+    const newbie = this.easeNewcomers && this.deliveries < NEWBIE.deliveries;
+    let known = 0, far: Order | null = null, farD: number = SCAN_ECHO_M;
     for (const o of this.orders.values()) {
-      if (o.state === 'caché' && dist(o.at, this.pos) <= range) { o.state = 'révélé'; found++; }
+      if (o.state !== 'caché') { known++; continue; }
+      const d = dist(o.at, this.pos);
+      if (d <= range) { o.state = 'révélé'; if (newbie) easeOrder(o, this.shelters); found++; }
+      else if (d <= farD) { far = o; farD = d; }
+    }
+    // Scanner à vide et rien d'autre à faire (campagne, forêt) : il accroche le signal le plus proche, même lointain.
+    if (!found && !known && far) {
+      far.state = 'révélé'; if (newbie) easeOrder(far, this.shelters); found++;
+      this.emit({ type: 'toast', text: `Signal lointain : un colis ${whereText(this.pos, far.at)}.`, tone: 'info' });
     }
     // Les caches ne répondent qu'à courte portée.
     let caches = 0;
@@ -351,9 +423,12 @@ export class Game implements GameEngine {
     if (!o || o.state === 'caché') return no('Colis introuvable.');
     if (o.state === 'porté') return no('Ce colis est déjà dans le sac.');
     if (!this.pos) return no('Position inconnue.');
+    if (this.vehicle) return no('Tu vas trop vite : arrête-toi et descends pour ramasser.');
     if (dist(o.at, this.pos) > this.pickupRange()) return no('Trop loin du colis.');
     if (this.carriedKg(this.carried()) + o.weightKg > this.mods.capacityKg) return no('Sac trop lourd : pose d’abord un colis.');
     o.state = 'porté';
+    // Distance à faire à pied, retenue pour reconnaître un trajet fait en véhicule.
+    o.legM = Math.round(dist(this.pos, o.destAt));
     const t = this.now(), wasKnown = o.inspected === true;
     if (o.pickedAt === null) o.pickedAt = t;
     o.inspected = true;
@@ -382,9 +457,11 @@ export class Game implements GameEngine {
   }
 
   deliver(shelterId: string): ActionResult {
-    const sh = this.shelterById.get(shelterId);
+    // Abri sorti des cases chargées (ou disparu de la carte) : un colis porté qui lui est destiné suffit à le retrouver.
+    const sh = this.shelterById.get(shelterId) ?? this.ghostShelter(shelterId);
     if (!sh) return no('Abri introuvable.');
     if (!this.pos) return no('Position inconnue.');
+    if (this.vehicle) return no('Tu vas trop vite : arrête-toi et descends pour livrer.');
     if (dist(sh.at, this.pos) > RANGE.deliver) return no('Trop loin de l’abri.');
     const mine = this.carried().filter(o => o.destId === shelterId);
     if (!mine.length) return no('Aucun colis pour cet abri.');
@@ -395,11 +472,15 @@ export class Game implements GameEngine {
     for (const o of mine) {
       const starsBefore = starsFor(st.points, st.deliveries);
       const g = gradeDelivery({ condition: o.condition, deadlineMin: o.deadlineMin, elapsedMin: elapsedMin(o, t), weather: this.weather.kind, night: this.weather.night, front: o.front === true || this.inFront });
+      // Colis transporté en véhicule sur une bonne part du trajet : la livraison ne rapporte presque rien.
+      const leg = Math.max(60, o.legM ?? 0);
+      const ridden = (o.rideM ?? 0) > VEHICLE.share * leg;
+      if (ridden) g.notes.push('Transporté en véhicule');
       if (o.special) g.notes.push('Colis spécial');
       if (o.lost) g.notes.push(`Colis de ${o.lost.by} retrouvé`);
       const relayId = this.relayIds.get(o.id) ?? null;
       if (relayId) { g.notes.push('Colis de relais'); this.relayIds.delete(o.id); }
-      const points = Math.round(orderReward(o, starsBefore) * g.mult * this.mods.pointsMult);
+      const points = Math.round(orderReward(o, starsBefore) * g.mult * this.mods.pointsMult * (ridden ? VEHICLE.mult : 1));
       const xp = Math.round((XP.perDelivery + points * XP.perPoint) * this.mods.xpMult);
       st.points += points; st.deliveries++;
       const starsAfter = starsFor(st.points, st.deliveries);
@@ -663,7 +744,19 @@ export class Game implements GameEngine {
         nextStarAt: nextStarAt(stars), nextUnlock: nextUnlock(stars), distanceM: d, inRange: p !== null && d <= RANGE.deliver,
         deliverable: mine.map(o => o.id), line: this.line(s.id, stars, st?.deliveries ?? 0, mine, t),
       };
-    }).sort(byDist);
+    });
+    // Colis portés dont l'abri n'est pas dans les cases chargées : l'abri reste affiché et livrable.
+    for (const [id, mine] of deliverable) {
+      if (this.shelterById.has(id)) continue;
+      const o = mine[0], st = this.shelterSave.get(id), points = st?.points ?? 0, stars = st ? starsFor(st.points, st.deliveries) : 0;
+      const d = p ? dist(o.destAt, p) : 0;
+      shelters.push({
+        id, name: o.destName, kind: 'carrefour', at: o.destAt, npc: npcFor(id), stars, points,
+        nextStarAt: nextStarAt(stars), nextUnlock: nextUnlock(stars), distanceM: d, inRange: p !== null && d <= RANGE.deliver,
+        deliverable: mine.map(x => x.id), line: this.line(id, stars, st?.deliveries ?? 0, mine, t),
+      });
+    }
+    shelters.sort(byDist);
 
     const dangers: DangerView[] = this.dangers.map(z => ({ id: z.id, at: z.at, radiusM: z.radiusM, inside: p !== null && insideDanger(z, p) }));
     this.skillsCache ??= skillViews(this.ranks, this.skillPoints);
@@ -698,7 +791,7 @@ export class Game implements GameEngine {
     }
     return {
       player: {
-        at: p, headingDeg: this.heading, speedMps: this.speed, moving: this.speed > SPEED.moving, mode: this.mode,
+        at: p, headingDeg: this.heading, speedMps: this.speed, moving: !this.vehicle && this.speed > SPEED.moving, mode: this.mode,
         level: this.level, xp: this.xp, xpNext: xpNeeded(this.level), stamina: this.stamina, skillPoints: this.skillPoints,
         carriedKg, capacityKg: this.mods.capacityKg, balance: this.balance, score: this.score, deliveries: this.deliveries,
         distanceKm: Math.round(this.distanceM / 10) / 100,
@@ -722,6 +815,13 @@ export class Game implements GameEngine {
     const out: Order[] = [];
     for (const o of this.orders.values()) if (o.state === 'porté') out.push(o);
     return out;
+  }
+  /** Abri reconstruit à partir d'un colis porté qui lui est destiné, quand il n'est plus dans les cases chargées. */
+  private ghostShelter(id: string): Shelter | null {
+    for (const o of this.orders.values()) {
+      if (o.state === 'porté' && o.destId === id) return { id, cell: cellAt(o.destAt[0], o.destAt[1]).id, name: o.destName, kind: 'carrefour', at: o.destAt, source: 'secours' };
+    }
+    return null;
   }
   private carriedKg(list: Order[]): number { let kg = 0; for (const o of list) kg += o.weightKg; return kg; }
   private starsOf(shelterId: string): number {
@@ -889,7 +989,7 @@ export class Game implements GameEngine {
     this.done.clear();
     this.cachesFound.clear(); this.cachesOpened.clear(); this.met.clear(); this.frontWarned.clear();
     for (const [id, j] of this.jams) if (j.state !== 'en cours') this.jams.delete(id);
-    this.contracts = this.drawAll(t, this.contracts);
+    this.contracts = this.drawAll(this.contracts);
     this.contractsCache = null;
     this.setWorld(this.cells);
     this.saveNow();

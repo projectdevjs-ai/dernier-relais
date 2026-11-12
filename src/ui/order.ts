@@ -62,7 +62,8 @@ export class OrderPanel {
       setTimeout(() => {
         this.listening = false;
         this.listen.classList.remove('is-on');
-        if (this.id === id) ctx.run(ctx.events.actions.inspect(id));
+        // Ramassé entre-temps : il n'y a plus rien à écouter au sol.
+        if (this.id === id && this.state !== 'porté') ctx.run(ctx.events.actions.inspect(id));
       }, 900);
     });
     this.panel.body.append(
@@ -75,7 +76,8 @@ export class OrderPanel {
     this.act.addEventListener('click', () => {
       if (!this.id) return;
       const a = ctx.events.actions;
-      if (ctx.run(this.state === 'porté' ? a.drop(this.id) : a.pickup(this.id)) && this.state === 'porté') this.panel.close();
+      // Dans les deux cas la fiche se referme : après un ramassage, elle cacherait le geste d'arrimage.
+      if (ctx.run(this.state === 'porté' ? a.drop(this.id) : a.pickup(this.id))) this.panel.close();
     });
     this.panel.foot.append(this.act);
     this.panel.onClose = () => { this.id = null; };

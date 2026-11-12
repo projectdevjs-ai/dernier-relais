@@ -421,7 +421,7 @@ export class Lab {
 
   // ---------- Départ par le Passeur ----------
   private depart(): void {
-    if (this.departT >= 0 || this.departed) return;
+    if (!this.opened || this.departT >= 0 || this.departed) return;
     if (!this.lab || !this.vp) { this.departed = true; this.events.onDepart(); return; }
     this.go('teleporteur');
     this.card.hidden = true;

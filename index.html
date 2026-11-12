@@ -15,7 +15,9 @@
   #hud{z-index:10}
   /* Au labo : seuls les panneaux de l'interface restent visibles, par-dessus la scène 3D. */
   body.dr-in-lab #hud{z-index:45}
-  body.dr-in-lab #hud>*:not(.dr-modal){display:none!important}
+  body.dr-in-lab #hud>*:not(.dr-modal):not(.dr-toasts){display:none!important}
+  /* Les messages courts ne se montrent au labo que par-dessus un panneau ouvert (refus d'une action, par exemple). */
+  body.dr-in-lab #hud:not(:has(.dr-modal:not([hidden])))>.dr-toasts{display:none!important}
   #splash{position:fixed;inset:0;z-index:70;border:0;margin:0;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
     background:radial-gradient(120% 80% at 50% 40%,#22302c,#0c1413 70%);color:#e6e1d3;font:500 15px/1.4 system-ui,sans-serif;cursor:pointer;transition:opacity .45s}
   #splash.out{opacity:0}
@@ -23,12 +25,24 @@
   #splash strong{font:800 34px/1.05 "Roboto Condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;text-align:center}
   #splash .go{margin-top:38px;font-size:14px;color:#8fa29c;animation:spl 2.2s ease-in-out infinite}
   @keyframes spl{50%{opacity:.35}}
+  /* Téléphone couché : le jeu se joue à la verticale, on le dit simplement. */
+  #rotate{display:none;position:fixed;inset:0;z-index:90;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;
+    background:radial-gradient(120% 80% at 50% 40%,#22302c,#0c1413 70%);color:#e6e1d3;font:500 15px/1.4 system-ui,sans-serif}
+  #rotate svg{width:54px;height:54px;color:#e8a24a;margin-bottom:6px}
+  #rotate strong{font:800 24px/1.1 "Roboto Condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase}
+  #rotate span{color:#8fa29c;font-size:14px}
+  @media (orientation:landscape) and (max-height:520px) and (min-width:600px){#rotate{display:flex}}
   @media (prefers-reduced-motion:reduce){#splash .go{animation:none}}
 </style>
 </head>
 <body>
 <div id="stage"></div>
 <div id="hud"></div>
+<div id="rotate" role="alert">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7.5" y="3" width="9" height="18" rx="2"/><path d="M11 18h2M2.5 9.5a8 8 0 0 1 2.4-4.6M2.5 9.5l-.4-2.6M2.5 9.5l2.5-.6M21.5 14.5a8 8 0 0 1-2.4 4.6M21.5 14.5l.4 2.6M21.5 14.5l-2.5.6"/></svg>
+  <strong>Tourne ton téléphone</strong>
+  <span>Dernier Relais se joue à la verticale.</span>
+</div>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

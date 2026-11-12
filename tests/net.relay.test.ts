@@ -8,7 +8,7 @@ import { OnlineLink, collectiveView } from '../src/net/link';
 import { Network, porterName } from '../src/net/network';
 import { BASE, type Rig, findSpot, off, ofType, place, rig, shelter, walk, world } from './game.helpers';
 
-const A = shelter('A', BASE), B = shelter('B', off(300, 0)), C = shelter('C', off(900, 0));
+const A = shelter('A', BASE), B = shelter('B', off(300, 0)), C = shelter('C', off(650, 0));
 const SHELTERS = [A, B, C];
 const SPOT = findSpot('relais', off(15, 0), SHELTERS, o => o.destId === 'C' && o.deadlineMin === null && o.weightKg <= 6);
 const CELLS = world(SHELTERS, [SPOT]);

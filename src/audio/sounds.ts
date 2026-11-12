@@ -17,7 +17,9 @@ export type SoundName =
   | 'star' | 'levelUp' | 'contract' | 'dangerIn' | 'dangerOut'
   | 'toastInfo' | 'toastGood' | 'toastWarn'
   | 'uiTap' | 'uiOpen' | 'uiClose' | 'uiError' | 'uiConfirm'
-  | 'step' | 'pulse' | 'nightNote' | 'thunder';
+  | 'step' | 'pulse' | 'nightNote' | 'thunder'
+  | 'special' | 'cacheOpen' | 'wanderer' | 'frontNear' | 'frontIn' | 'frontOut'
+  | 'jamStart' | 'jamWon' | 'jamLost' | 'inspect' | 'strap' | 'proof';
 
 /** Outils d'écriture d'un son : mêmes briques que le banc, niveau et priorité déjà réglés. */
 interface Kit {
@@ -297,6 +299,95 @@ export const SOUNDS: Record<SoundName, SoundDef> = {
       const p = 0.35 + 0.65 * v;
       k.noise({ t, dur: 2.6, gain: 0.5 * p, f: 300 + 500 * v, to: 80, type: 'lowpass', q: 0.6, attack: 0.05 + 0.2 * (1 - v), send: 0.3, prio: 0 });
       k.noise({ t: t + 0.45, dur: 2.4, gain: 0.35 * p, f: 260, to: 70, type: 'lowpass', q: 0.9, attack: 0.35, hold: 0.2, send: 0.3, prio: 0 });
+    },
+  },
+  // ── Systèmes secondaires : sons discrets, dans la même gamme, plus bas que les sons principaux.
+  // Colis spécial : deux notes tenues à la quinte, avec un léger battement (quelque chose d'inhabituel).
+  special: {
+    dur: 1.5, next: 0.7, prio: 2, trim: 0.9, family: 'jeu',
+    make(k, t) {
+      k.tone({ f: n(2), t, dur: 0.7, gain: 0.16, attack: 0.03, fm: { ratio: 2, index: 0.6, decay: 0.3 }, send: 0.55 });
+      k.tone({ f: n(2) * 1.006, t: t + 0.02, dur: 0.7, gain: 0.1, attack: 0.05, send: 0.55 });
+      bell(k, t + 0.32, 5, 0.18, 0.6, 0.7, 0.5);
+    },
+  },
+  // Cache ouverte : loquet, couvercle, trois notes claires qui montent (v = point de compétence trouvé : une note de plus).
+  cacheOpen: {
+    dur: 1.5, next: 0.7, prio: 2, trim: 0.95, family: 'jeu',
+    make(k, t, v) {
+      k.noise({ t, dur: 0.03, gain: 0.16, f: 2600, q: 5, attack: 0.001 });
+      thud(k, t + 0.06, 140, 0.26, 0.08);
+      [0, 2, 3].forEach((d, i) => bell(k, t + 0.18 + i * 0.09, d + 5, 0.15, 0.4, 0.5, 0.45));
+      if (v > 0.5) bell(k, t + 0.5, 10, 0.17, 0.6, 0.8, 0.55);
+    },
+  },
+  // Rôdeur : deux notes feutrées, comme un salut.
+  wanderer: {
+    dur: 1.0, next: 0.5, prio: 1, trim: 1, family: 'jeu',
+    make(k, t) { felt(k, t, 2, 0.2, 0.22, 1800); felt(k, t + 0.16, 4, 0.2, 0.4, 2000, 0.45); },
+  },
+  // Front qui approche : un souffle qui enfle et une note grave. Entrée : le souffle retombe sur le joueur. Sortie : il s'éclaircit.
+  frontNear: {
+    dur: 1.8, next: 0.9, prio: 2, trim: 0.9, family: 'jeu',
+    make(k, t) {
+      k.noise({ t, dur: 1.2, gain: 0.12, f: 250, to: 900, q: 0.8, attack: 0.6, send: 0.4 });
+      k.tone({ f: n(-5), t: t + 0.2, dur: 0.9, gain: 0.18, attack: 0.2, type: 'triangle', lp: 700, send: 0.4 });
+    },
+  },
+  frontIn: {
+    dur: 1.6, next: 0.8, prio: 2, trim: 0.9, family: 'jeu',
+    make(k, t) {
+      k.noise({ t, dur: 0.9, gain: 0.16, f: 1400, to: 350, q: 0.8, attack: 0.05, send: 0.35 });
+      k.tone({ f: n(-3), to: n(-5), glide: 0.4, t: t + 0.05, dur: 0.8, gain: 0.2, attack: 0.04, type: 'triangle', lp: 800, send: 0.4 });
+    },
+  },
+  frontOut: {
+    dur: 1.4, next: 0.7, prio: 1, trim: 0.95, family: 'jeu',
+    make(k, t) {
+      k.noise({ t, dur: 0.7, gain: 0.1, f: 400, to: 1800, q: 0.8, attack: 0.1, send: 0.3 });
+      k.tone({ f: n(0), t: t + 0.25, dur: 0.7, gain: 0.18, attack: 0.03, fm: { ratio: 2, index: 0.3, decay: 0.2 }, send: 0.5 });
+    },
+  },
+  // Lot pris : trois petits chocs de caisses puis une note d'élan. Réussi : arpège court. Raté : deux notes qui retombent.
+  jamStart: {
+    dur: 1.2, next: 0.6, prio: 2, trim: 0.95, family: 'jeu',
+    make(k, t) {
+      [0, 0.1, 0.2].forEach((dt, i) => thud(k, t + dt, 180 - 20 * i, 0.22, 0.06));
+      bell(k, t + 0.34, 5, 0.2, 0.5, 0.5, 0.4);
+    },
+  },
+  jamWon: {
+    dur: 1.6, next: 0.9, prio: 2, trim: 0.9, family: 'jeu',
+    make(k, t) { [5, 7, 8, 10].forEach((d, i) => bell(k, t + i * 0.1, d, 0.17, i === 3 ? 0.8 : 0.3, 0.6 + 0.1 * i, 0.5)); },
+  },
+  jamLost: {
+    dur: 1.2, next: 0.6, prio: 2, trim: 1, family: 'jeu',
+    make(k, t) { felt(k, t, 1, 0.22, 0.3, 1200); felt(k, t + 0.2, -2, 0.22, 0.55, 1000, 0.4); },
+  },
+  // Écoute d'un colis : un petit coup contre la caisse et sa résonance.
+  inspect: {
+    dur: 0.8, next: 0.3, prio: 1, trim: 1.1, family: 'jeu',
+    make(k, t) {
+      k.noise({ t, dur: 0.025, gain: 0.14, f: 1800, q: 4, attack: 0.001 });
+      k.tone({ f: n(7), t: t + 0.03, dur: 0.3, gain: 0.13, attack: 0.004, lp: 2600, send: 0.5 });
+    },
+  },
+  // Arrimage : la sangle qui file, le cliquet ; v = qualité (bien serré : une note claire en plus).
+  strap: {
+    dur: 0.9, next: 0.35, prio: 1, trim: 1.05, family: 'jeu',
+    make(k, t, v) {
+      k.noise({ t, dur: 0.14, gain: 0.13, f: 800, to: 2600, q: 3, attack: 0.03 });
+      k.noise({ t: t + 0.15, dur: 0.03, gain: 0.15, f: 3200, q: 6, attack: 0.001 });
+      if (v >= 0.7) bell(k, t + 0.2, 8, 0.14, 0.35, 0.5, 0.35); else felt(k, t + 0.2, 3, 0.13, 0.25, 1500);
+    },
+  },
+  // Photo-preuve : déclic d'obturateur et une note brève.
+  proof: {
+    dur: 0.8, next: 0.3, prio: 1, trim: 1.05, family: 'jeu',
+    make(k, t) {
+      k.noise({ t, dur: 0.02, gain: 0.16, f: 4200, q: 3, attack: 0.001 });
+      k.noise({ t: t + 0.06, dur: 0.03, gain: 0.13, f: 2600, q: 3, attack: 0.001 });
+      bell(k, t + 0.12, 9, 0.13, 0.3, 0.4, 0.4);
     },
   },
 };
