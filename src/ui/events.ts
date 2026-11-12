@@ -25,13 +25,15 @@ export class EventsBar {
   private threatLabel = h('span', 'dr-near-sub');
   private avoid = btn('dr-btn dr-btn-sm', null, 'Éviter');
   private negotiate = btn('dr-btn dr-btn-sm', null, 'Négocier');
+  private engage = btn('dr-btn dr-btn-sm', null, '⚔ Affronter');
 
   constructor(private root: HTMLElement, ctx: Ctx) {
     this.front = h('div', 'dr-chip dr-evt dr-evt-front', icon('front'), this.frontTxt);
     this.front.setAttribute('role', 'status');
     this.jam = btn('dr-chip dr-evt dr-evt-jam', null, icon('stack'), this.jamTxt);
     this.jam.addEventListener('click', () => { if (this.jamShelter) ctx.openShelter(this.jamShelter); });
-    this.threat.append(icon('shield'), this.threatLabel, this.avoid, this.negotiate);
+    this.threat.append(icon('shield'), this.threatLabel, this.avoid, this.negotiate, this.engage);
+    this.engage.addEventListener('click', () => { if (this.threatId) ctx.run(ctx.events.actions.engageThreat?.(this.threatId) ?? { ok:false, why:'Combat indisponible' }); });
     this.avoid.addEventListener('click', () => { if (this.threatId) ctx.run(ctx.events.actions.resolveThreat?.(this.threatId, 'eviter') ?? { ok: false, why: 'Rencontre indisponible' }); });
     this.negotiate.addEventListener('click', () => { if (this.threatId) ctx.run(ctx.events.actions.resolveThreat?.(this.threatId, 'negocier') ?? { ok: false, why: 'Rencontre indisponible' }); });
     this.front.hidden = this.jam.hidden = this.threat.hidden = true;
@@ -77,6 +79,7 @@ export class EventsBar {
       setText(this.threatLabel, `${enemy.enemy ?? 'Menace'} · ${stopped ? 'Choisis une action' : 'Arrête-toi pour agir'}`);
       this.avoid.disabled = !stopped;
       this.negotiate.disabled = !stopped || v.player.score < 20;
+      this.engage.disabled = !stopped || !!v.player.rebirth?.encounter;
     } else this.threatId = '';
     const any = !!f || !!j || !!enemy;
     show(this.el, any);

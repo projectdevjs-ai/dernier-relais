@@ -19,6 +19,7 @@ import { PseudoPrompt } from './pseudo';
 import { Sheet } from './sheet';
 import { ShelterPanel } from './shelter';
 import { Toasts } from './toasts';
+import { RebirthConsole } from './rebirth';
 
 const SLOT_NAME: Record<string, string> = { dos: 'Dos', brasG: 'Bras gauche', brasD: 'Bras droit', jambeG: 'Jambe gauche', jambeD: 'Jambe droite' };
 const WEATHER: Record<WeatherKind, { ic: IconName; label: string }> = {
@@ -43,6 +44,7 @@ export class Hud implements HudApi {
   private grade: GradeScreen;
   private help: Help;
   private eventsBar: EventsBar;
+  private rebirthConsole: RebirthConsole;
   private near: NearAction;
   private events: HudEvents;
   private pseudo: PseudoPrompt;
@@ -184,6 +186,8 @@ export class Hud implements HudApi {
       quick: () => this.quick,
       overlay: (open) => events.onOverlay?.(open),
     });
+    this.rebirthConsole = new RebirthConsole(root, events.actions, (r) => this.run(r),
+      open => events.onOverlay?.(open));
     this.pseudo = new PseudoPrompt(root, ctx);
     this.passenger = new PassengerPrompt(root, ctx);
     this.porter.showAmbiance(this.ambiance);
@@ -249,6 +253,7 @@ export class Hud implements HudApi {
     }
 
     this.eventsBar.render(view);
+    this.rebirthConsole.render(view);
     this.near.render(view);
     this.sheet.render(view);
     if (this.shelter.id) this.shelter.render(view);

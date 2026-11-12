@@ -3,6 +3,7 @@
 //   src/render  la scène 3D sur la carte, affiche un GameView
 //   src/ui      l'interface (HUD, fiches, panneaux), affiche un GameView et appelle les actions
 import type { LngLat } from '../core/geo';
+import type { Rebirth, Recipe, CombatMove } from './rebirth';
 import type { Fix } from '../player/gps';
 import type { CellContent, ShelterKind } from '../world/types';
 
@@ -227,6 +228,7 @@ export interface PlayerView {
   deliveries: number;
   /** Réputation gagnée en aidant les relais, sans points ni XP. */
   reputation?: number;
+  rebirth?: Rebirth;
   distanceKm: number;
   // ── Ajouts (rangement) : facultatifs, une vue sans eux reste valide.
   /** Les cinq emplacements de chargement, verrouillés ou non. `capacityKg` est la somme des emplacements débloqués. */
@@ -315,6 +317,8 @@ export type GameEvent =
   | { type: 'levelUp'; level: number }
   | { type: 'contract'; contract: ContractView }
   | { type: 'danger'; entered: boolean }
+  /** Son de combat tactique généré localement, sans dépendance externe. */
+  | { type: 'combat'; phase: 'start' | 'strike' | 'guard' | 'pulse' | 'evade' | 'victory' | 'defeat' }
   | { type: 'toast'; text: string; tone?: 'info' | 'good' | 'warn' }
   /** Vitesse de véhicule détectée ('début') ou retour à pied ('fin'). L'interface demande alors si le joueur est passager. */
   | { type: 'vehicle'; phase: 'début' | 'fin' }
@@ -384,6 +388,16 @@ export interface GameActions {
   relayMission?(shelterId: string): ActionResult;
   /** Rencontre tactique, uniquement à l'arrêt, dans une zone de danger. */
   resolveThreat?(zoneId: string, choice: 'eviter' | 'negocier'): ActionResult;
+  /** Engager une rencontre tactique depuis une zone, seulement à l'arrêt. */
+  engageThreat?(zoneId: string): ActionResult;
+  /** Un tour de combat tactique avec riposte ennemie. */
+  combatMove?(move: CombatMove): ActionResult;
+  /** Fabriquer un objet ou réparer l'armure depuis les matériaux récoltés. */
+  craftItem?(recipe: Recipe): ActionResult;
+  /** Utiliser une ration ou une trousse de soin. */
+  useSupply?(supply: 'rations' | 'medkits'): ActionResult;
+  /** Répond à une transmission découverte pendant l'exploration. */
+  answerRadio?(choice: 'secourir' | 'extraire'): ActionResult;
   /** Met dans le sac un colis pris à la chaîne de relais (il faut être à un abri). `dryRun` : vérifie sans rien changer. */
   takeFromRelay?(relay: { id: string; parcel: RelayCrate }, dryRun?: boolean): ActionResult;
 }

@@ -1,5 +1,7 @@
 // Sauvegarde du jeu : format versionné, stockage du téléphone, et stockage en mémoire pour les tests.
 import type { LngLat } from '../core/geo';
+import type { Rebirth } from './rebirth';
+import { cleanRebirth, freshRebirth } from './rebirth';
 import type { CrateKind, SpecialKind, SurpriseKind } from './api';
 import { isSlot } from './slots';
 import type { Order } from './orders';
@@ -20,7 +22,7 @@ export interface JamSave {
   state: 'en cours' | 'réussi' | 'raté';
 }
 /** Révision du format à l'intérieur de la version 1 : les champs ajoutés sont facultatifs, une sauvegarde plus ancienne se charge telle quelle. */
-export const SAVE_REV = 5;
+export const SAVE_REV = 6;
 
 export interface GameSave {
   version: 1;
@@ -35,6 +37,8 @@ export interface GameSave {
   reputation?: number;
   missions?: Record<string, { cycle: number; progress: number; active: boolean }>;
   threatsResolved?: string[];
+  /** Survie et combat sauvegardés même si une bataille est interrompue. */
+  rebirth?: Rebirth;
   deliveries: number;
   distanceM: number;
   stamina: number;
@@ -73,7 +77,7 @@ export function emptyGameSave(day = ''): GameSave {
   return {
     version: 1, savedAt: 0, level: 1, xp: 0, skillPoints: 0, score: 0, reputation: 0, deliveries: 0, distanceM: 0, stamina: 1,
     skills: {}, shelters: {}, discovered: [], visited: [], day, orders: [], done: [], contracts: [], last: null,
-    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [], relays: {}, missions: {}, threatsResolved: [],
+    rev: SAVE_REV, cachesFound: [], cachesOpened: [], met: [], jams: [], relays: {}, missions: {}, threatsResolved: [], rebirth: freshRebirth(),
   };
 }
 
@@ -155,6 +159,7 @@ export function parseGameSave(raw: unknown): GameSave | null {
     discovered: strs(o.discovered), visited: strs(o.visited), day: typeof o.day === 'string' ? o.day : '',
     orders: (Array.isArray(o.orders) ? o.orders : []).map(order).filter((x): x is OrderSave => x !== null),
     done: strs(o.done), contracts, last: pt(o.last), threatsResolved: strs(o.threatsResolved),
+    ...(o.rebirth !== undefined ? { rebirth: cleanRebirth(o.rebirth) } : {}),
     missions: Object.fromEntries(Object.entries(obj(o.missions) ?? {}).flatMap(([id, raw]) => {
       const m = obj(raw);
       return m ? [[id, { cycle: Math.floor(num(m.cycle, 0, 0, 100000)), progress: num(m.progress, 0, 0, 10000), active: m.active === true }]] : [];
