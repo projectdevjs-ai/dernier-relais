@@ -6,11 +6,13 @@ export type Resources = Record<Resource, number>;
 export type Faction = 'lumen' | 'nomades' | 'archives';
 export type Factions = Record<Faction, number>;
 export type Recipe = 'ration' | 'medkit' | 'charge' | 'repair';
-export type CombatMove = 'strike' | 'guard' | 'pulse' | 'evade';
+export type CombatMove = 'strike' | 'guard' | 'pulse' | 'evade' | 'focus' | 'feint';
+export type EnemyIntent = 'charge' | 'strike' | 'sweep' | 'recover';
 export type EnemyKind = 'scavenger' | 'drone' | 'stray';
 export interface Encounter {
   id: string; kind: EnemyKind; name: string; title: string; subtitle: string;
   turn: number; hp: number; maxHp: number; guard: number; last: string;
+  focus: number; stunned: number;
 }
 export interface Rebirth {
   resources: Resources; factions: Factions; integrity: number;
@@ -56,7 +58,7 @@ export function kindFor(id: string): EnemyKind { return (['scavenger', 'drone', 
 export function spawnEncounter(id: string): Encounter {
   const kind = kindFor(id), data = ENEMIES[kind];
   return { id, kind, name: data.name, title: data.title, subtitle: data.subtitle, turn: 0,
-    hp: data.hp, maxHp: data.hp, guard: 0, last: 'Menace détectée. Choisis ta stratégie.' };
+    hp: data.hp, maxHp: data.hp, guard: 0, focus: 0, stunned: 0, last: 'Menace détectée. Choisis ta stratégie.' };
 }
 export function freshRebirth(): Rebirth {
   return { resources: { ...DEFAULT_RESOURCES }, factions: { ...DEFAULT_FACTIONS },
@@ -77,7 +79,8 @@ export function cleanRebirth(raw: unknown): Rebirth {
     const data = ENEMIES[e.kind];
     encounter = { id: e.id, kind: e.kind, name: data.name, title: data.title, subtitle: data.subtitle,
       turn: finite(e.turn, 0, 100), hp: finite(e.hp, data.hp, data.hp), maxHp: data.hp,
-      guard: finite(e.guard, 0, 100), last: typeof e.last === 'string' ? e.last.slice(0, 160) : '' };
+      guard: finite(e.guard, 0, 100), focus: finite(e.focus, 0, 2), stunned: finite(e.stunned, 0, 2),
+      last: typeof e.last === 'string' ? e.last.slice(0, 160) : '' };
   }
   const rawRadio=x.radio;
   const radio=rawRadio && typeof rawRadio.id==='string' && rawRadio.id.length<150 &&
@@ -104,43 +107,88 @@ export function craft(s: Rebirth, recipe: Recipe): Rebirth | null {
   return n;
 }
 export interface BattleResult { state: Rebirth; outcome: 'continue' | 'victory' | 'escape' | 'defeat' | 'invalid'; message: string; }
+/** L'adversaire annonce sa prochaine intention avant chaque action. */
+export function enemyIntent(e: Encounter): EnemyIntent {
+  // Un tour de récupération toutes les 4 actions offre une vraie fenêtre d'attaque.
+  if (e.turn > 0 && e.turn % 4 === 3) return 'recover';
+  const r = hash(e.id + ':intent:' + e.turn) % 4;
+  if (r === 0 || (e.kind === 'drone' && e.turn % 3 === 0)) return 'charge';
+  if (r === 1) return 'sweep';
+  return 'strike';
+}
+export const INTENT_LABELS: Record<EnemyIntent, string> = {
+  charge: 'ATTAQUE CHARGÉE · puissante mais vulnérable à la feinte',
+  strike: 'FRAPPE DIRECTE · protège-toi ou neutralise',
+  sweep: 'BALAYAGE · dégâts modérés, esquive difficile',
+  recover: 'RÉCUPÉRATION · fenêtre idéale pour charger ton attaque',
+};
 export function combat(s: Rebirth, move: CombatMove): BattleResult {
   const n = cleanRebirth(s), e = n.encounter;
   if (!e) return { state: n, outcome: 'invalid', message: 'Aucune rencontre active.' };
-  if (!['strike','guard','pulse','evade'].includes(move)) return { state:n, outcome:'invalid', message:'Action inconnue.' };
-  if (move === 'pulse' && n.resources.charges === 0) return { state:n, outcome:'invalid', message:'Aucune charge EMP dans le sac.' };
+  if (!(['strike','guard','pulse','evade','focus','feint'] as string[]).includes(move)) {
+    return { state: n, outcome:'invalid',message:'Action inconnue.' };
+  }
+  if (move === 'pulse' && n.resources.charges < 1) return { state:n, outcome:'invalid', message:'Aucune charge EMP dans le sac.' };
+  const intent = enemyIntent(e);
   e.turn++;
+  let text = '', parry = false;
   if (move === 'evade') {
     const escaped = (hash(e.id + ':escape:' + e.turn) % 100) < 65 || e.turn >= 4;
     if (escaped) { n.encounter = null; return { state:n, outcome:'escape', message:'Retraite réussie. Le secteur reste dangereux.' }; }
-    e.last = 'Retraite impossible : la menace coupe ton itinéraire.';
+    text = 'La retraite échoue. L’ennemi te bloque la route.';
   } else if (move === 'guard') {
     e.guard = 1;
-    e.last = 'Position défensive : prochaine attaque amortie.';
+    parry = intent === 'strike' || intent === 'charge';
+    text = parry ? 'Parade synchronisée ! La riposte sera presque entièrement absorbée.' :
+      'Protection activée : tu réduis les dégâts du prochain assaut.';
   } else if (move === 'pulse') {
     n.resources.charges--;
     const damage = e.kind === 'drone' ? 31 : 19;
     e.hp = Math.max(0, e.hp - damage);
-    e.last = 'Impulsion déclenchée : -' + damage + ' intégrité ennemie.';
-  } else {
-    const damage = 10 + (hash(e.id + ':hit:' + e.turn) % 7);
+    if (e.kind === 'drone') e.stunned = 1;
+    text = 'Onde EMP : -' + damage + ' armure ennemie' + (e.stunned ? ' et systèmes momentanément coupés.' : '.');
+  } else if (move === 'focus') {
+    e.focus = Math.min(2,e.focus+1);
+    text = 'Calibrage de visée : précision stockée ('+e.focus+'/2). Ta garde reste ouverte.';
+  } else if (move === 'feint') {
+    const damage = 5 + (hash(e.id + ':feint:' + e.turn) % 5);
     e.hp = Math.max(0, e.hp - damage);
-    e.last = 'Coup porté : -' + damage + ' intégrité ennemie.';
+    // Fenêtre de contre-attaque : une feinte annule un assaut chargé.
+    if (intent === 'charge') e.stunned = 1;
+    text = 'Déviation : -' + damage + (e.stunned ? ' · charge ennemie interrompue !' : '.');
+  } else {
+    const boost = e.focus * 8;
+    const damage = 10 + (hash(e.id + ':hit:' + e.turn) % 7) + boost;
+    e.focus = 0;
+    e.hp = Math.max(0, e.hp - damage);
+    text = 'Frappe ciblée : -' + damage + ' armure ennemie' + (boost ? ' (tir calibré).' : '.');
   }
   if (e.hp <= 0) {
-    n.encounter = null; n.victories++;
+    n.encounter = null;n.victories++;
     n.resources.scrap += 2 + hash(e.id) % 3;
     if (e.kind === 'drone') n.resources.circuits++;
-    const faction = ENEMIES[e.kind].faction;
-    n.factions[faction] = Math.max(-100, n.factions[faction] - 2);
-    return { state:n, outcome:'victory', message:'Menace neutralisée. Matériaux récupérés, mais ta réputation auprès de cette faction diminue.' };
+    const faction=ENEMIES[e.kind].faction;
+    n.factions[faction]=Math.max(-100,n.factions[faction]-2);
+    return { state:n, outcome:'victory',
+      message:'Menace neutralisée. Butin récupéré et influence de faction modifiée.' };
+  }
+  if (intent === 'recover' || e.stunned > 0) {
+    if (e.stunned > 0) e.stunned--;
+    e.last=text + ' L’adversaire ne peut pas riposter ce tour.';
+    return { state:n, outcome:'continue', message:e.last };
   }
   const base = ENEMIES[e.kind].damage;
-  const incoming = Math.max(1, base + (hash(e.id + ':counter:' + e.turn) % 5) - (e.guard ? 8 : 0));
+  const intentBoost = intent === 'charge' ? 9 : intent === 'sweep' ? 3 : 0;
+  const reduction = e.guard ? (parry ? 16 : 8) : 0;
+  const incoming = Math.max(1, base + intentBoost + (hash(e.id + ':counter:' + e.turn) % 5) - reduction);
   e.guard = 0;
-  n.integrity = Math.max(0, n.integrity - incoming);
-  e.last += ' Contre-attaque : -' + incoming + ' intégrité.';
-  if (!n.integrity) { n.integrity = 30; n.encounter = null;
-    return { state:n, outcome:'defeat', message:'Système de secours activé. Tu survis, mais ton équipement est endommagé.' }; }
+  n.integrity = Math.max(0,n.integrity-incoming);
+  e.last = text + ' Riposte (' + (intent==='charge'?'chargée':intent==='sweep'?'balayage':'directe') +
+    ') : -'+incoming+' intégrité.';
+  if (!n.integrity) {
+    n.integrity=30;n.encounter=null;
+    return { state:n, outcome:'defeat',
+      message:'Système de secours activé. Tu survis, mais ton équipement est gravement endommagé.' };
+  }
   return { state:n, outcome:'continue', message:e.last };
 }
