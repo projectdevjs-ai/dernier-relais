@@ -61,8 +61,10 @@ const prefs = {
   voices: pref.get('voix') !== 'non',
   haptics: pref.get('vibrations') !== 'non',
   volume: (() => { const v = Number(pref.get('volume') ?? '0.8'); return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8; })(),
+  ambientVolume: (() => { const v = Number(pref.get('volume-ambiance') ?? '0.35'); return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.35; })(),
 };
 const sound = new Sound({ muted: !prefs.sound, haptics: prefs.haptics, volume: prefs.volume });
+sound.setAmbientVolume(prefs.ambientVolume);
 const voice = new Voice();
 /** Interjection courte propre à chaque personnage (« huh » de MMORPG), à la place des voix de synthèse. */
 const blip = (who: string): void => { try { (sound as Sound & { blip?: (who: string) => void }).blip?.(who); } catch { /* le son ne doit jamais gêner le jeu */ } };
@@ -154,6 +156,7 @@ const hud = new Hud(hudRoot, {
   onVoices: on => { prefs.voices = on; pref.set('voix', on ? 'oui' : 'non'); applyVoice(); },
   onHaptics: on => { prefs.haptics = on; pref.set('vibrations', on ? 'oui' : 'non'); sound.setHaptics(on); },
   onVolume: v => { prefs.volume = v; pref.set('volume', String(v)); sound.setVolume(v); applyVoice(); },
+  onAmbientVolume: v => { prefs.ambientVolume = v; pref.set('volume-ambiance', String(v)); sound.setAmbientVolume(v); },
   onUi: kind => sound.ui(kind),
   onInstall: () => {
     const p = installPrompt;
