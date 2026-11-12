@@ -29,6 +29,7 @@ import { EXO, type Rig, SLOTS, SLOT_IDS, arrange, bestSlot, capacityKg, isSlot, 
 import { LORE, SURPRISE, SURPRISE_NOTE, loreFor, surpriseFor } from './surprises';
 import { SPECIALS, UNKNOWN_SPECIAL, specialDrainMult, specialWearPerSecond } from './specials';
 import { dayKey, nextDayMs, weekKey } from './time';
+import { type Rebirth, type Recipe, type CombatMove, RECIPES, cleanRebirth, freshRebirth, spawnEncounter, combat, craft } from './rebirth';
 import { type Wanderer, wanderGift, wanderLine, wanderSlot, wandererAt, wanderersFor, whereText } from './wanderers';
 
 const no = (why: string): ActionResult => ({ ok: false, why });
@@ -72,6 +73,7 @@ export class Game implements GameEngine {
   private skillPoints = 0;
   private score = 0;
   private reputation = 0;
+  private rebirth: Rebirth = freshRebirth();
   private missions = new Map<string, { cycle: number; progress: number; active: boolean }>();
   private deliveries = 0;
   private distanceM = 0;
@@ -166,7 +168,7 @@ export class Game implements GameEngine {
       this.nextDay = nextDayMs(Date.parse(save.day));
     }
     this.level = save.level; this.xp = save.xp; this.skillPoints = save.skillPoints;
-    this.score = save.score; this.reputation = save.reputation ?? 0; this.deliveries = save.deliveries;
+    this.score = save.score; this.reputation = save.reputation ?? 0; this.rebirth = cleanRebirth(save.rebirth); this.deliveries = save.deliveries;
     this.missions = new Map(Object.entries(save.missions ?? {}).map(([k, v]) => [k, { ...v }])); this.distanceM = save.distanceM; this.stamina = save.stamina;
     this.ranks = { ...save.skills };
     this.mods = modsFor(this.ranks);
@@ -200,6 +202,7 @@ export class Game implements GameEngine {
     return {
       version: 1, savedAt: this.now(), level: this.level, xp: this.xp, skillPoints: this.skillPoints, score: this.score, reputation: this.reputation,
       missions: Object.fromEntries(this.missions),
+      rebirth: cleanRebirth(this.rebirth),
       deliveries: this.deliveries, distanceM: this.distanceM, stamina: this.stamina, skills: { ...this.ranks },
       shelters: Object.fromEntries(this.shelterSave), discovered: [...this.discovered], visited: [...this.visitedList],
       day: this.day, orders, done: [...this.done], threatsResolved: [...this.threatsResolved],
@@ -557,6 +560,9 @@ export class Game implements GameEngine {
         special: o.special ?? null, lostBy: o.lost?.by ?? null, proofBonus: bonus, relayId,
         ...(counted ? { surprise: counted } : {}), ...(lore ? { lore: { index: lore.index, total: LORE.length, text: lore.text } } : {}),
       };
+      this.rebirth.resources.scrap += 1;
+      if (this.deliveries % 4 === 0) this.rebirth.resources.circuits += 1;
+      this.rebirth.factions.lumen = Math.min(100, this.rebirth.factions.lumen + 1);
       this.emit({ type: 'delivery', result });
       for (const level of levels) this.emit({ type: 'levelUp', level });
       if (o.jam) this.jamDelivered(o.jam, t);
@@ -613,9 +619,67 @@ export class Game implements GameEngine {
     }
   }
 
+  /** Démarre une bataille tactique uniquement quand le joueur est immobile. */
+  engageThreat(zoneId: string): ActionResult {
+    const zone = this.dangers.find(d => d.id === zoneId);
+    if (!zone || !this.pos || !insideDanger(zone, this.pos)) return no('Approche-toi du signal pour intervenir.');
+    if (this.threatsResolved.has(zoneId)) return no('Menace déjà neutralisée pour aujourd’hui.');
+    if (this.vehicle || this.speed > SPEED.moving) return no('Immobilise-toi dans un endroit sûr avant le combat.');
+    if (this.rebirth.encounter) return no('Une rencontre est déjà en cours.');
+    this.rebirth.encounter = spawnEncounter(zoneId);
+    this.emit({ type: 'toast', text: 'Signal hostile verrouillé. Ouverture de la confrontation tactique.', tone: 'warn' });
+    this.saveNow();
+    return OK;
+  }
+
+  /** Les tours ne progressent jamais pendant que le porteur se déplace. */
+  combatMove(move: CombatMove): ActionResult {
+    if (!this.rebirth.encounter) return no('Aucun combat en cours.');
+    if (this.vehicle || this.speed > SPEED.moving) return no('Arrête-toi pour jouer un tour.');
+    const id = this.rebirth.encounter.id;
+    const result = combat(this.rebirth, move);
+    if (result.outcome === 'invalid') return no(result.message);
+    this.rebirth = result.state;
+    if (result.outcome === 'victory') {
+      this.threatsResolved.add(id);
+      this.reputation += 3;
+      const levels = this.gainXp(20);
+      for (const level of levels) this.emit({ type: 'levelUp', level });
+    } else if (result.outcome === 'defeat') {
+      this.threatsResolved.add(id);
+    }
+    this.emit({ type: 'toast', text: result.message, tone: result.outcome === 'victory' ? 'good' : result.outcome === 'defeat' ? 'warn' : 'info' });
+    this.saveNow();
+    return OK;
+  }
+
+  craftItem(recipe: Recipe): ActionResult {
+    if (!(recipe in RECIPES)) return no('Plan de fabrication inconnu.');
+    const next = craft(this.rebirth, recipe);
+    if (!next) return no('Ressources insuffisantes ou équipement déjà réparé.');
+    this.rebirth = next;
+    this.emit({ type: 'toast', text: RECIPES[recipe].title + ' fabriqué.', tone: 'good' });
+    this.saveNow();
+    return OK;
+  }
+
+  useSupply(supply: 'rations' | 'medkits'): ActionResult {
+    if (supply !== 'rations' && supply !== 'medkits') return no('Consommable inconnu.');
+    if (this.rebirth.resources[supply] < 1) return no('Tu n’en as plus.');
+    if (supply === 'rations' && this.stamina >= 0.99) return no('Endurance déjà au maximum.');
+    if (supply === 'medkits' && this.rebirth.integrity >= 100) return no('Armure déjà en parfait état.');
+    this.rebirth.resources[supply]--;
+    if (supply === 'rations') this.stamina = Math.min(1, this.stamina + 0.55);
+    else this.rebirth.integrity = Math.min(100, this.rebirth.integrity + 45);
+    this.emit({ type: 'toast', text: supply === 'rations' ? 'Ration consommée : endurance restaurée.' : 'Trousse utilisée : intégrité restaurée.', tone: 'good' });
+    this.saveNow();
+    return OK;
+  }
+
   /** Rencontres dans les zones dangereuses : choix tactique seulement à l'arrêt. */
   resolveThreat(zoneId: string, choice: 'eviter' | 'negocier'): ActionResult {
     const d = this.dangers.find(x => x.id === zoneId);
+    if (this.rebirth.encounter) return no('Termine la confrontation en cours.');
     if (!d || !this.pos || !insideDanger(d, this.pos)) return no('Aucune menace à proximité.');
     if (this.threatsResolved.has(zoneId)) return no('Cette menace a déjà été résolue.');
     if (this.speed > SPEED.moving || this.vehicle) return no('Arrête-toi dans un endroit sûr pour prendre une décision.');
@@ -709,6 +773,8 @@ export class Game implements GameEngine {
     this.cachesOpened.add(c.id);
     this.cachesFound.delete(c.id);
     this.score += c.points;
+    this.rebirth.resources.scrap += 2 + (hash(c.id) % 4);
+    if (hash(c.id) % 3 === 0) this.rebirth.resources.circuits += 1;
     if (c.skillPoint) { this.skillPoints++; this.skillsCache = null; }
     const levels = this.gainXp(c.xp);
     this.emit({ type: 'cache', cacheId, points: c.points, xp: c.xp, skillPoint: c.skillPoint });
@@ -1005,7 +1071,7 @@ export class Game implements GameEngine {
       player: {
         at: p, headingDeg: this.heading, speedMps: this.speed, moving: !this.vehicle && this.speed > SPEED.moving, mode: this.mode, vehicle: this.vehicle, passenger: this.passenger,
         level: this.level, xp: this.xp, xpNext: xpNeeded(this.level), stamina: this.stamina, skillPoints: this.skillPoints,
-        carriedKg, capacityKg: capacityKg(rig), balance: this.balance, score: this.score, reputation: this.reputation, deliveries: this.deliveries,
+        carriedKg, capacityKg: capacityKg(rig), balance: this.balance, score: this.score, reputation: this.reputation, rebirth: cleanRebirth(this.rebirth), deliveries: this.deliveries,
         distanceKm: Math.round(this.distanceM / 10) / 100,
         slots, exoTier: rig.tier,
         exo: EXO.map((e, i) => ({ tier: i, name: e.name, desc: e.desc, installed: i <= rig.tier, level: e.level })),
