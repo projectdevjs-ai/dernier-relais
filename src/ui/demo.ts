@@ -76,7 +76,7 @@ server.tables.relays = [
   waiting('r3', 's2', { name: 'Lampes', crate: 'plastique', weightKg: 2, fragile: false, reward: 60, ...dest('s4') }, ['u-1'], 3),
   waiting('r4', 's1', { name: 'Savon', crate: 'carton', weightKg: 2, fragile: false, reward: 50, ...dest('s3') }, ['u-5'], 4),
 ];
-server.tables.relay_rewards = [{ id: 1, relay_id: 'r0', player: 'u-1', points: 72, hops: 3, parcel: 'Semences', created_at: '2026-11-11T08:00:00Z', claimed_at: null }];
+server.tables.relay_rewards = [{ id: 1, relay_id: 'r0', player: 'u-1', points: 72, hops: 3, parcel: 'Engrais', created_at: '2026-11-11T08:00:00Z', claimed_at: null }];
 const net = new Network(new NetClient({ create: () => server.db() }), { storage: null });
 
 /** Ce que la démo retient de la chaîne de relais : colis confiés (sortis du sac) et colis pris. */

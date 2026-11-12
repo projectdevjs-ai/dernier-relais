@@ -53,7 +53,7 @@ export interface Order {
 interface Item { name: string; crate: CrateKind; min: number; max: number; fragile: number }
 export const ITEMS: Item[] = [
   { name: 'Médicaments', crate: 'plastique', min: 1, max: 4, fragile: 0.8 },
-  { name: 'Semences', crate: 'carton', min: 1, max: 3, fragile: 0.1 },
+  { name: 'Engrais', crate: 'carton', min: 1, max: 3, fragile: 0.1 },
   { name: 'Pièces de pompe', crate: 'alu', min: 4, max: 10, fragile: 0 },
   { name: 'Filtres à eau', crate: 'plastique', min: 2, max: 6, fragile: 0.3 },
   { name: 'Outils', crate: 'bois', min: 5, max: 12, fragile: 0 },

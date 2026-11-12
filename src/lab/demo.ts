@@ -1,5 +1,5 @@
 // Démo du labo seul, avec un faux état de jeu. Paramètres d'URL :
-//   ?station=cartes|passeur|chambre   va à ce poste    &exo=1 (atelier de l'exosquelette)    &chambre=1 (entre dans les quartiers)    &chats=2 (chats clandestins)
+//   ?station=cartes|passeur|chambre   va à ce poste    &exo=1 (atelier de l'exosquelette)    &chambre=1 (entre dans les quartiers)    &chats=2 (chats clandestins ; aucun par défaut)    &repos=1 (avec chambre=1 : porteur allongé)
 //   &ambiance=clair    &parle=iris|noe|selma (ouvre une bulle)    &debut=1 (porteur débutant : rien d'appris)
 //   &max=1 (toutes les compétences au maximum)    &fige=1 (une image par changement : pour les captures)
 //   &depart=1 (lance la séquence du Passeur ; &depart=0.75 la fige à cette fraction)       &oubli=1 (oublie les rencontres déjà faites)
@@ -40,6 +40,7 @@ void lab.open(view).then(() => {
   if (q.has('chats')) lab.setCats(Number(q.get('chats')) || 1);
   if (q.has('exo')) lab.openExo(true);
   if (q.has('chambre')) lab.enterRoom(true);
+  if (q.has('repos')) lab.restPose();
   const parle = q.get('parle') as SciId | null;
   if (parle) lab.talk(parle);
   if (q.has('depart')) (document.querySelector('.lab-go') as HTMLButtonElement).click();

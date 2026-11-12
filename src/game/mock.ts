@@ -12,7 +12,7 @@ export function mockView(c: LngLat = [-1.5761, 47.1822], t = 0): GameView {
   ];
   const orders: OrderView[] = [
     { id: 'o1', name: 'Pièces de pompe', crate: 'alu', weightKg: 6, fragile: false, at: off(40, 60), destId: 's1', destName: shelters[0].name, destAt: shelters[0].at, state: 'révélé', condition: 1, minutesLeft: 42, reward: 80, distanceM: 72, inRange: false },
-    { id: 'o2', name: 'Semences', crate: 'carton', weightKg: 2, fragile: false, at: off(-12, 14), destId: 's3', destName: shelters[2].name, destAt: shelters[2].at, state: 'révélé', condition: 1, minutesLeft: null, reward: 45, distanceM: 18, inRange: true },
+    { id: 'o2', name: 'Engrais', crate: 'carton', weightKg: 2, fragile: false, at: off(-12, 14), destId: 's3', destName: shelters[2].name, destAt: shelters[2].at, state: 'révélé', condition: 1, minutesLeft: null, reward: 45, distanceM: 18, inRange: true },
     { id: 'o3', name: 'Médicaments', crate: 'plastique', weightKg: 3, fragile: true, at: off(-90, -40), destId: 's2', destName: shelters[1].name, destAt: shelters[1].at, state: 'porté', condition: 0.86, minutesLeft: 7, reward: 120, distanceM: 32, inRange: false, slot: 'brasG' },
     { id: 'o4', name: 'Outils', crate: 'bois', weightKg: 9, fragile: false, at: off(120, -150), destId: 's4', destName: shelters[3].name, destAt: shelters[3].at, state: 'porté', condition: 0.97, minutesLeft: -3, reward: 95, distanceM: 412, inRange: false, slot: 'dos' },
   ];

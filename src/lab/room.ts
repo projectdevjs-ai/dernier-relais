@@ -190,6 +190,8 @@ export interface LabScene {
   tick(t: number, dt: number, depart: number): void;
   /** Assied le porteur au bord du lit (chambre). */
   seatPorter(): void;
+  /** Allonge le porteur sur le matelas (repos). */
+  liePorter(): void;
   /** Lampe de la chambre : 1 allumée, 0 en veilleuse. */
   lamp(k: number): void;
   /** Chats clandestins installés dans la chambre (0 à 3). */
@@ -326,7 +328,7 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
   const sciIds: SciId[] = ['iris', 'noe', 'selma'];
   const [tele, exoM, holoM, consoleM, litM, racks, caisses, hydro, med, bench, porterM, ...sciM] = await Promise.all([
     loader.load('teleporteur', { height: 3.1 }), loader.load('exo_rack', { height: EXO_H }), loader.load('holo_table', { height: 1.5 }),
-    loader.load('lab_console', { height: 1.35 }), loader.load('lit_repos', { width: 2.6 }), loader.load('lab_racks', { height: 2.3 }),
+    loader.load('lab_console', { height: 1.35 }), loader.load('lit_repos', { width: 2.4 }), loader.load('lab_racks', { height: 2.3 }),
     loader.load('lab_caisses', { height: 1.1 }), loader.load('hydroponie', { height: 1.85 }), loader.load('med_bay', { height: 1.9 }),
     loader.load('workbench', { height: 1.25 }),
     loader.load('porteur_civil', { height: 1.78, fallback: 'perso' }),
@@ -614,27 +616,55 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     shell.visible = stations.some(Boolean);
   };
 
-  // Assise : le dessus du matelas est cherché par un rayon, comme dans l'ancien.
-  let seatTop = -1;
+  // Assise et couchage : le matelas est mesuré par des rayons et le porteur est calé sur ses os (bassin, tête, pieds),
+  // comme dans l'ancien (bedSeat / civSit / civSleep).
+  const bone = (name: string): THREE.Object3D | null => { let b: THREE.Object3D | null = null; porterM.root.traverse(o => { if (!b && (o as THREE.Bone).isBone && o.name === name) b = o; }); return b; };
+  const hips = bone('Hips'), head = bone('Head'), footL = bone('LeftFoot'), footR = bone('RightFoot');
+  const wpos = (o: THREE.Object3D): THREE.Vector3 => o.getWorldPosition(new THREE.Vector3());
+  let bed: { cx: number; top: number; front: number; back: number; rim: number } | null = null;
+  const measureBed = (): { cx: number; top: number; front: number; back: number; rim: number } => {
+    if (bed) return bed;
+    bedG.updateMatrixWorld(true);
+    const cx = CHAMBER.x + BED.x, zc = CHAMBER.z + BED.z, rc = new THREE.Raycaster();
+    // dessus du matelas : première surface sous 1,15 m (la coque de la capsule passe au-dessus)
+    const at = (x: number, z: number): number | null => { rc.set(V(x, 1.15, z), V(0, -1, 0)); const h = rc.intersectObject(litM.root, true)[0]; return h ? h.point.y : null; };
+    const top = at(cx, zc) ?? 0.5;
+    let front = zc, back = zc;
+    for (let z = zc; z < zc + 2; z += 0.03) { const y = at(cx, z); if (y === null || Math.abs(y - top) > 0.09) break; front = z; }
+    for (let z = zc; z > zc - 2; z -= 0.03) { const y = at(cx, z); if (y === null || Math.abs(y - top) > 0.09) break; back = z; }
+    const box = new THREE.Box3().setFromObject(litM.root);
+    return bed = { cx, top, front, back, rim: box.max.z };
+  };
+  const still = (name: string): void => { porter.play(name, 0); porter.update(0); porter.update(0); pg.updateMatrixWorld(true); };
+  /** Assis AU BORD du lit : bassin au niveau du matelas, cuisses par-dessus le rebord, pieds au sol devant la capsule. */
   const seatPorter = (): void => {
-    if (seatTop < 0) {
-      bedG.updateMatrixWorld(true);
-      const was = chamber.visible;
-      chamber.visible = true;
-      const rc = new THREE.Raycaster(V(CHAMBER.x + BED.x, 1.25, CHAMBER.z + BED.z + litM.size.z * 0.2), V(0, -1, 0));
-      const h = rc.intersectObject(litM.root, true).find(x => x.point.y < 1.15);
-      chamber.visible = was;
-      seatTop = h ? h.point.y : 0.5;
-    }
-    const sit = porter.pick('Chair_Sit_Idle_M');
-    if (sit) {
-      porter.play(sit, 0);
-      pg.position.set(CHAMBER.x + BED.x + 0.15, Math.max(0, seatTop - 0.47), CHAMBER.z + BED.z + litM.size.z * 0.5 - 0.22);
-      pg.rotation.y = 0.15;
-    } else {
-      pg.position.set(CHAMBER.x + 0.5, 0, CHAMBER.z + 0.2); pg.rotation.y = 0.3;
-    }
-    porter.update(0);
+    const B = measureBed(), sit = porter.pick('Chair_Sit_Idle_M');
+    if (!sit || !hips) { pg.position.set(CHAMBER.x + 0.5, 0, CHAMBER.z + 0.2); pg.rotation.set(0, 0.3, 0); porter.update(0); return; }
+    pg.rotation.set(0, 0.22, 0); pg.position.set(B.cx + 0.3, 0, B.front);
+    still(sit);
+    const h = wpos(hips), feet = [footL, footR].filter((f): f is THREE.Object3D => !!f).map(wpos);
+    const footZ = feet.length ? Math.min(...feet.map(f => f.z)) : h.z + 0.35, footY = feet.length ? Math.min(...feet.map(f => f.y)) : 0.12;
+    // le bassin au bord du matelas, mais assez en avant pour que les pieds passent devant le rebord de la capsule
+    const hipZ = Math.max(B.front + 0.02, B.rim + 0.06 - (footZ - h.z));
+    pg.position.z += hipZ - h.z;
+    pg.position.x += B.cx + 0.3 - h.x;
+    // hauteur : le bassin 9 cm au-dessus du matelas (épaisseur du corps), sans que les pieds traversent le sol
+    pg.position.y = Math.max(B.top + 0.09 - h.y, 0.1 - footY);
+    pg.updateMatrixWorld(true);
+  };
+  /** Allongé pour dormir : le corps entier sur le matelas, dans la longueur de la capsule (ancien : civSleep). */
+  const liePorter = (): void => {
+    const B = measureBed(), sleep = porter.pick('Sleep_Normally');
+    if (!sleep || !hips || !head) return;
+    pg.rotation.set(0, 0, 0); pg.position.set(0, 0, 0);
+    still(sleep);
+    let h = wpos(hips), hd = wpos(head);
+    pg.rotation.y = Math.PI / 2 - Math.atan2(hd.x - h.x, hd.z - h.z); // la tête vers +x
+    pg.updateMatrixWorld(true);
+    h = wpos(hips); hd = wpos(head);
+    const zm = (B.front + B.back) / 2;
+    pg.position.set(B.cx - 0.06 - h.x, B.top + 0.11 - Math.min(h.y, hd.y), zm - (h.z + hd.z) / 2);
+    pg.updateMatrixWorld(true);
   };
   const lamp = (k: number): void => {
     const i = points.find(p => p.l === lampL);
@@ -736,5 +766,5 @@ export async function buildLab(vp: Viewport, loader: Loader3D, ambiance: Ambianc
     scene.environment = null;
   };
 
-  return { scene, porter, porterG: pg, scis, hits, setAmbiance, sync, show, tick, seatPorter, lamp, setCats, dispose };
+  return { scene, porter, porterG: pg, scis, hits, setAmbiance, sync, show, tick, seatPorter, liePorter, lamp, setCats, dispose };
 }

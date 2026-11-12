@@ -564,13 +564,21 @@ export class Lab {
       try { this.events.onRest?.(); } catch (e) { console.warn('[labo] repos', e); }
     };
     if (!lab || this.still || this.calm) { end(); return; }
+    // ancien : noir, le porteur est allongé, la lampe baisse, on le voit dormir un moment, noir, il se rassied.
     this.busyRoom = true;
     this.panel.hidden = true;
-    const lie = lab.porter.pick('Sit_Lie_Bed', 'Sleep_Normally');
-    if (lie) lab.porter.play(lie, 0.35, true);
-    this.later(1900, () => { this.dim.style.opacity = '0.93'; });
-    this.later(2700, () => lab.lamp(0));
-    this.later(5400, end);
+    this.dim.style.opacity = '1';
+    this.later(650, () => { lab.liePorter(); lab.lamp(0.3); this.dirty = 3; this.dim.style.opacity = '0.2'; });
+    this.later(4200, () => { this.dim.style.opacity = '1'; });
+    this.later(4850, end);
+  }
+
+  /** Démo et captures : montre tout de suite le porteur allongé (pose de « Se reposer »). */
+  restPose(): void {
+    if (this.mode !== 'room' || !this.lab) return;
+    this.lab.liePorter(); this.lab.lamp(0.3);
+    this.panel.hidden = true;
+    this.dirty = 3;
   }
 
   private figures(list: [string, string][]): HTMLDivElement {

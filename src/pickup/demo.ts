@@ -63,7 +63,7 @@ game.on(e => {
 const fake = (): SeqParcel => {
   const kind = q.get('colis') ?? 'bois', special = (['cryo', 'ruche', 'batterie', 'boitenoire'] as SpecialKind[]).find(k => k === kind) ?? null;
   const crate: CrateKind = special ? SPECIALS[special].crate : (['bois', 'alu', 'plastique', 'carton'] as CrateKind[]).find(k => k === kind) ?? 'bois';
-  const names: Record<string, string> = { bois: 'Outils', alu: 'Pièces de pompe', plastique: 'Médicaments', carton: 'Semences' };
+  const names: Record<string, string> = { bois: 'Outils', alu: 'Pièces de pompe', plastique: 'Médicaments', carton: 'Engrais' };
   const labels: Record<string, string> = { bois: 'Caisse en bois', alu: 'Caisse en aluminium', plastique: 'Bac plastique', carton: 'Carton' };
   return {
     id: `démo-${kind}`, name: special ? SPECIALS[special].label : names[crate], crate, weightKg: Number(q.get('kg') ?? (special === 'batterie' ? 16 : 7)) || 7,
